@@ -168,6 +168,12 @@ async def run_analysis(job: JobContext, container: AppContainer, request: Analys
                 group.create_task(worker())
     except* (JobCancelled, asyncio.CancelledError):
         status = "cancelled"
+    finally:
+        for close in ctx.shared.get("closers", []):
+            try:
+                await close()
+            except Exception:  # noqa: BLE001 - closing must never fail the analysis
+                log.debug("Kunne ikke lukke klient", exc_info=True)
     if failures:
         ctx.limitations.append(f"{failures} element(er) kunne ikke analyseres. Se loggen for detaljer.")
     if status == "complete" and (failures or view.errors):
@@ -185,6 +191,7 @@ async def run_analysis(job: JobContext, container: AppContainer, request: Analys
         row.scope = {"type": request.scope, "module_ids": request.module_ids,
                      "items": [i.model_dump() for i in request.items],
                      "objects": {d: sorted(v) for d, v in covered.items()},
+                     "links": list(ctx.shared.get("link_results", {}).values()),
                      "stats": {k: len(view.get(k)) for k in ("page", "assignment", "discussion", "quiz", "file",
                                                               "module", "module_item", "media")}}
     if status == "cancelled":

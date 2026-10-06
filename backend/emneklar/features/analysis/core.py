@@ -102,9 +102,18 @@ class AnalysisContext:
             for obj in self.view.get(kind):
                 if kind == "syllabus" and self.request.scope != "course":
                     continue
+                if kind == "assignment" and self._mirrors_other_object(obj):
+                    continue
                 if self.in_scope(obj):
                     out.append(obj)
         return out
+
+    @staticmethod
+    def _mirrors_other_object(obj: SnapObj) -> bool:
+        """Quiz and graded-discussion assignments only mirror the quiz/discussion text."""
+        types = obj.meta.get("submission_types") or []
+        return bool(obj.meta.get("quiz_id")) or "online_quiz" in types or "discussion_topic" in types or bool(
+            obj.meta.get("discussion_topic"))
 
     def content_doc(self, obj: SnapObj) -> ContentDoc:
         modules = self.view.module_of.get(obj.ref)

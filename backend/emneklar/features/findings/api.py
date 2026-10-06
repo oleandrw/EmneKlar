@@ -21,6 +21,22 @@ CLASS_ORDER = {"violation": 0, "likely_violation": 1, "should_review": 2, "manua
 SEVERITY_ORDER = {"critical": 0, "serious": 1, "moderate": 2, "minor": 3, "info": 4}
 
 
+def category_label(domain: str, category: str) -> str:
+    if domain == "content_quality":
+        from emneklar.features.content_quality.rules import CATEGORY_LABELS as CQ_LABELS
+
+        return CQ_LABELS.get(category, category)
+    if domain == "structure":
+        from emneklar.features.course_structure.rules import CATEGORY_LABELS as ST_LABELS
+
+        return ST_LABELS.get(category, category)
+    if domain == "quiz":
+        from emneklar.features.quiz_assistant.rules import CATEGORY_LABELS as QZ_LABELS
+
+        return QZ_LABELS.get(category, category)
+    return CATEGORY_LABELS.get(category, category)
+
+
 def enrich(row: Finding, profile_id: str | None) -> dict[str, Any]:
     data = finding_dict(row)
     if row.domain == "accessibility":
@@ -30,7 +46,7 @@ def enrich(row: Finding, profile_id: str | None) -> dict[str, Any]:
             data["rule"] = rule_info(rule)
             profile = get_profile(profile_id)
             data["legal"] = legal_status(profile, rule.wcag, document=row.category == "documents")
-    data["category_label"] = CATEGORY_LABELS.get(row.category, data.get("category_label") or row.category)
+    data["category_label"] = category_label(row.domain, row.category)
     return data
 
 
@@ -82,7 +98,7 @@ async def list_findings(
         "page": page,
         "page_size": page_size,
         "summary": summary,
-        "categories": [{"id": cat, "label": CATEGORY_LABELS.get(cat, cat)} for cat in categories],
+        "categories": [{"id": cat, "label": category_label(domain, cat)} for cat in categories],
         "runs": [run_dict(r) for r in runs],
         "profile": {"id": get_profile(profile_id).id, "title": get_profile(profile_id).title,
                     "version": get_profile(profile_id).version},

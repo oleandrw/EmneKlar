@@ -44,6 +44,22 @@ class FixParams(BaseModel):
     decorative: bool = False
     level: int | None = Field(default=None, ge=2, le=6)
     lang: str | None = Field(default=None, max_length=20)
+    url: str | None = Field(default=None, max_length=2000)
+    unlink: bool = False
+    options: list[str] | None = Field(default=None, max_length=10)
+
+
+def _valid_href(url: str) -> str:
+    url = (url or "").strip()
+    parts = urlsplit(url)
+    if parts.scheme in ("http", "https") and parts.hostname:
+        return url
+    if parts.scheme in ("mailto", "tel") and parts.path:
+        return url
+    if not parts.scheme and url.startswith("/") and not url.startswith("//"):
+        return url
+    raise AppError("validation_error", message="Skriv en gyldig adresse som starter med https:// (eller /courses/… "
+                   "for innhold i Canvas).")
 
 
 # ----------------------------------------------------------------------------------- helpers
@@ -97,6 +113,17 @@ def transform(html: str, finding: Finding, params: FixParams) -> str:
     fparams = fix.get("params") or {}
     soup = parse_html(html)
     location = finding.location or {}
+
+    if ftype == "cleanup":
+        from emneklar.features.content_quality.hygiene import CLEANUP_OPTIONS, cleanup, protected_signature
+
+        options = set(params.options or CLEANUP_OPTIONS) & set(CLEANUP_OPTIONS)
+        cleaned, _counts = cleanup(html, options)
+        result = serialize(cleaned)
+        if protected_signature(html) != protected_signature(result):
+            raise AppError("conflict", status=409, message="Oppryddingen ville endret lenker, innebygd innhold eller "
+                           "tekst, og ble stoppet. Rydd opp manuelt i Canvas.")
+        return result
 
     if ftype == "demote_headings":
         headings = soup.find_all(["h1", "h2", "h3", "h4", "h5"])
@@ -155,6 +182,13 @@ def transform(html: str, finding: Finding, params: FixParams) -> str:
         el.append(NavigableString(text))
     elif ftype == "set_iframe_title":
         el["title"] = _require_text(params, "en tittel", 200)
+    elif ftype == "replace_link_href":
+        if params.unlink:
+            if not fparams.get("allow_unlink"):
+                raise AppError("validation_error", message="Denne lenken kan ikke fjernes her.")
+            el.unwrap()
+        else:
+            el["href"] = _valid_href(params.url or "")
     elif ftype == "remove_element":
         el.decompose()
     elif ftype == "unwrap_element":
@@ -304,12 +338,14 @@ async def fix_stage(finding_id: int, params: FixParams, c: AppContainer = Depend
     finding = FindingStore(c.db).get(finding_id)
     result = await build_fix(c, finding, params)
     label = (finding.fix or {}).get("label") or finding.title
+    suffix = {"accessibility": "universell utforming", "content_quality": "innholdskvalitet"}.get(
+        finding.domain, finding.domain)
     return c.changes.stage(
-        course_id=finding.course_id, domain="accessibility", kind=result["kind"],
-        title=f"{finding.object_title}: universell utforming",
+        course_id=finding.course_id, domain=finding.domain, kind=result["kind"],
+        title=f"{finding.object_title}: {suffix}",
         target={"object_type": finding.object_type, "object_id": finding.object_id, "title": finding.object_title,
                 "url": finding.object_url},
         before=result["before_state"], proposed={result["field"]: result["after"]},
         rationale=f"{label} – {finding.message}", risk=result["risk"],
-        source={"feature": "accessibility", "finding_fingerprints": [finding.fingerprint], "rule_ids": [finding.rule_id]},
+        source={"feature": finding.domain, "finding_fingerprints": [finding.fingerprint], "rule_ids": [finding.rule_id]},
         editable=False, merge=True)

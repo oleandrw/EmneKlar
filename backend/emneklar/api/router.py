@@ -14,6 +14,7 @@ ROUTERS = [
     "emneklar.core.changes.api",
     "emneklar.features.accessibility.fixes",
     "emneklar.features.overview.api",
+    "emneklar.features.content_quality.api",
 ]
 
 

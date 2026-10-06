@@ -69,10 +69,28 @@ def fake_state() -> FakeCanvasState:
     return seed_state(CANVAS_BASE)
 
 
+def fake_internet(request: httpx.Request) -> httpx.Response:
+    """External sites as seen by the link checker in tests (never the real network)."""
+    url = str(request.url)
+    if "youtube.com/oembed" in url:
+        return httpx.Response(404)
+    if "vimeo.com/api/oembed" in url:
+        return httpx.Response(200, json={"title": "ok"})
+    routes = {
+        "https://www.example.org/plan": httpx.Response(200),
+        "https://www.example.org/missing": httpx.Response(404),
+        "https://www.example.org/oppgave": httpx.Response(301, headers={"Location": "https://www.example.org/ny-oppgave"}),
+        "https://www.example.org/ny-oppgave": httpx.Response(200),
+        "https://www.example.org/ressurs": httpx.Response(403),
+    }
+    return routes.get(url.split("?")[0], httpx.Response(200))
+
+
 @pytest.fixture
 def canvas_container(config: RuntimeConfig, fake_state: FakeCanvasState) -> AppContainer:
     transport = httpx.ASGITransport(app=create_fake_canvas(fake_state))
-    return AppContainer(config, secret_store=MemorySecretStore(), canvas_transport=transport)
+    return AppContainer(config, secret_store=MemorySecretStore(), canvas_transport=transport,
+                        link_transport=httpx.MockTransport(fake_internet))
 
 
 @pytest.fixture
