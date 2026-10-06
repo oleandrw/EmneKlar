@@ -208,6 +208,10 @@ def seed_state(origin: str = "http://canvas.test") -> FakeCanvasState:
         "9002": (minimal_docx(image_alt=None, title=None), c.files["9002"]["content-type"]),
         "9005": (minimal_pptx(), c.files["9005"]["content-type"]),
     }
+    # 1×1 transparent PNG for image previews and AI alt-text tests.
+    state.file_bytes["9004"] = (bytes.fromhex(
+        "89504e470d0a1a0a0000000d4948445200000001000000010806000000"
+        "1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082"), "image/png")
     for fid, (data, _) in state.file_bytes.items():
         c.files[fid]["size"] = len(data)
     c.media_objects = [

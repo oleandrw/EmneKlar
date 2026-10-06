@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any
 from urllib.parse import quote
 
@@ -142,6 +143,23 @@ class CanvasAPI:
 
     async def get_file(self, file_id: str) -> dict[str, Any]:
         return await self.client.get_json(f"/api/v1/files/{file_id}")
+
+    async def file_bytes(self, url: str, *, max_bytes: int) -> tuple[bytes, str | None]:
+        """Download a Canvas-hosted file referenced in content (…/files/:id/preview etc.) via the Files API."""
+        from emneklar.core.canvas.html import canvas_ref
+
+        host = self.client.base_url.split("://", 1)[-1].split("/")[0].split(":")[0]
+        ref = canvas_ref(url, host)
+        match = None if ref else re.match(r"^(?:https?://[^/]+)?/files/(\d+)", url)
+        file_id = ref.ident if ref and ref.kind == "files" and ref.ident and ref.ident.isdigit() else (
+            match.group(1) if match else None)
+        if file_id:
+            meta = await self.get_file(file_id)
+            target = str(meta.get("url") or "")
+            if not target:
+                raise CanvasError("canvas_not_found", status=404, detail="Filen har ingen nedlastingsadresse")
+            return await self.client.fetch_bytes(target, max_bytes=max_bytes)
+        return await self.client.fetch_bytes(url, max_bytes=max_bytes)
 
     async def list_media_objects(self, course_id: str) -> list[dict[str, Any]]:
         return await self.client.get_paginated(f"/api/v1/courses/{course_id}/media_objects", [("exclude[]", "sources")])

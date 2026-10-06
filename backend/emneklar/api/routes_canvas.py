@@ -262,7 +262,7 @@ async def image_proxy(url: str, c: AppContainer = Depends(get_container)) -> Res
                                                         parts.path or ""):
         raise AppError("url_blocked", status=400)
     try:
-        data, content_type = await client.fetch_bytes(url, max_bytes=8 * 1024 * 1024)
+        data, content_type = await CanvasAPI(client).file_bytes(url, max_bytes=8 * 1024 * 1024)
     except CanvasError as exc:
         raise AppError("not_found", status=404, detail=exc.code) from exc
     content_type = (content_type or "").split(";")[0].strip().lower()

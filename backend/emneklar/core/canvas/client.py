@@ -333,6 +333,8 @@ class CanvasClient:
                             raise CanvasError("canvas_error", detail="Omdirigering uten adresse")
                         current = urljoin(current, location)
                         continue
+                    if response.status_code >= 400:
+                        await response.aread()  # error bodies are small; needed for the error message
                     self.raise_for_status(response)
                     declared = response.headers.get("Content-Length")
                     if declared and declared.isdigit() and int(declared) > max_bytes:
