@@ -68,6 +68,7 @@ export interface Job {
   course_id: string | null;
   title: string;
   status: "queued" | "running" | "pausing" | "paused" | "cancelling" | "completed" | "failed" | "cancelled" | "interrupted";
+  params?: { domains?: string[]; scope?: string } & Record<string, unknown>;
   supports_pause: boolean;
   error: string | null;
   result: Record<string, unknown>;
@@ -100,6 +101,8 @@ export interface Finding {
   fix: { type: string; label: string; params?: Record<string, unknown> } | null;
   status: "open" | "ignored" | "staged" | "fixed";
   created_at: string;
+  fingerprint?: string;
+  category_label?: string;
   rule?: RuleInfo;
   legal?: { status: string; note?: string | null; profile_title: string };
 }
@@ -108,7 +111,10 @@ export interface RuleInfo {
   id: string;
   title: string;
   category: string;
+  category_label: string;
+  classification: string;
   wcag: string[];
+  wcag_titles: Record<string, string>;
   wcag_version: string | null;
   level: string | null;
   testability: TestMethod;

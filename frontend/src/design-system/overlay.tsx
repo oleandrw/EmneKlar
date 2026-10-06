@@ -112,6 +112,7 @@ export function ConfirmDialog({
   cancelLabel = "Avbryt",
   danger,
   loading,
+  confirmDisabled,
 }: {
   open: boolean;
   onClose: () => void;
@@ -122,6 +123,7 @@ export function ConfirmDialog({
   cancelLabel?: string;
   danger?: boolean;
   loading?: boolean;
+  confirmDisabled?: boolean;
 }) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   return (
@@ -137,7 +139,7 @@ export function ConfirmDialog({
           <Button ref={cancelRef} onClick={onClose} disabled={loading}>
             {cancelLabel}
           </Button>
-          <Button variant={danger ? "danger" : "primary"} onClick={onConfirm} loading={loading}>
+          <Button variant={danger ? "danger" : "primary"} onClick={onConfirm} loading={loading} disabled={confirmDisabled}>
             {confirmLabel}
           </Button>
         </>

@@ -45,7 +45,7 @@
   max-width: var(--content-max);
   margin: 0 auto;
 }
-.ek-shell__menu-button {
+.ek-shell__header .ek-shell__menu-button {
   display: none;
 }
 
@@ -144,7 +144,7 @@
   .ek-shell__nav {
     display: none;
   }
-  .ek-shell__menu-button {
+  .ek-shell__header .ek-shell__menu-button {
     display: inline-flex;
   }
   .ek-shell__header {
@@ -166,8 +166,10 @@
   margin: 0;
   padding: 0;
   border: 0;
-  display: flex;
   flex-direction: column;
+}
+.ek-nav-drawer:not([open]) {
+  display: none;
 }
 .ek-nav-drawer[open] {
   display: flex;
@@ -1186,4 +1188,22 @@ button.ek-card--link:hover {
   background: var(--tone-success-bg);
   color: var(--tone-success-text);
   border-color: var(--tone-success-border);
+}
+
+/* ============================================================== wizard */
+.ek-wizard {
+  display: grid;
+  grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+@media (max-width: 48rem) {
+  .ek-wizard {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Badges never stretch inside column layouts. */
+.ek-stack > .ek-badge {
+  align-self: flex-start;
 }

@@ -71,6 +71,7 @@ class JobState:
             "course_id": self.course_id,
             "title": self.title,
             "status": self.status,
+            "params": self.params,
             "supports_pause": self.supports_pause,
             "error": self.error,
             "result": self.result,

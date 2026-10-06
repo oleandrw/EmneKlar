@@ -114,6 +114,46 @@ async def job_events(job_id: str, request: Request, c: AppContainer = Depends(ge
                              headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
+@router.get("/courses/{course_id}/content-index")
+async def content_index(course_id: str, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
+    """Modules and content items for choosing an analysis scope (live from Canvas)."""
+    import asyncio
+
+    from emneklar.core.canvas.api import CanvasAPI
+
+    course_id = require_course_id(course_id)
+    api = CanvasAPI(c.canvas())
+    modules, pages, assignments, discussions, quizzes = await asyncio.gather(
+        api.list_modules(course_id), api.list_pages(course_id, include_body=False), api.list_assignments(course_id),
+        api.list_discussions(course_id), api.list_quizzes(course_id), return_exceptions=True)
+
+    def ok(value: Any) -> list[dict[str, Any]]:
+        return value if isinstance(value, list) else []
+
+    module_of: dict[str, str] = {}
+    for module in ok(modules):
+        for item in module.get("items") or []:
+            kind = {"Page": "page", "Assignment": "assignment", "Discussion": "discussion", "Quiz": "quiz"}.get(
+                str(item.get("type")))
+            ident = item.get("page_url") if kind == "page" else item.get("content_id")
+            if kind and ident is not None:
+                module_of.setdefault(f"{kind}:{ident}", module.get("name") or "")
+    items: list[dict[str, Any]] = []
+    for kind, rows, id_key, title_key in (("page", pages, "url", "title"), ("assignment", assignments, "id", "name"),
+                                          ("discussion", discussions, "id", "title"),
+                                          ("quiz", quizzes, "id", "title")):
+        for row in ok(rows):
+            ident = str(row.get(id_key))
+            items.append({"object_type": kind, "object_id": ident, "title": row.get(title_key) or "",
+                          "module": module_of.get(f"{kind}:{ident}")})
+    return {
+        "modules": [{"id": str(m["id"]), "name": m.get("name") or "", "items_count": len(m.get("items") or [])}
+                    for m in ok(modules)],
+        "items": items,
+        "partial": any(isinstance(x, BaseException) for x in (modules, pages, assignments, discussions, quizzes)),
+    }
+
+
 @router.get("/courses/{course_id}/runs")
 async def list_runs(course_id: str, limit: int = 20, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
     course_id = require_course_id(course_id)

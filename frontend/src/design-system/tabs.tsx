@@ -30,7 +30,7 @@ export function Tabs<T extends string>({
   const index = Math.max(0, tabs.findIndex((t) => t.id === selected));
 
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    let next = index;
+    let next: number;
     if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
     else if (event.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
     else if (event.key === "Home") next = 0;

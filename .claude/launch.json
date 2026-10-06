@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "emneklar-dev",
+      "runtimeExecutable": "backend/.venv/Scripts/python.exe",
+      "runtimeArgs": ["backend/tests/fakes/dev_server.py", "--port", "8766", "--canvas-port", "8790"],
+      "port": 8766
+    },
+    {
+      "name": "emneklar-dev-configured",
+      "runtimeExecutable": "backend/.venv/Scripts/python.exe",
+      "runtimeArgs": ["backend/tests/fakes/dev_server.py", "--port", "8767", "--canvas-port", "8791", "--configured"],
+      "port": 8767
+    }
+  ]
+}
