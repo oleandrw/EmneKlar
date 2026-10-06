@@ -130,7 +130,7 @@ def check_markup(doc: ContentDoc) -> list[Issue]:
     for el in soup.find_all(["marquee", "blink"]):
         issues.append(Issue("UU-MOVING", f"<{el.name}> beveger eller blinker automatisk.", element=el,
                             fix=fix("unwrap_element", "Vis teksten statisk", path=element_path(el))))
-    for el in soup.find_all(attrs={"aria-hidden": "true"}):
+    for el in soup.find_all(True, attrs={"aria-hidden": "true"}):
         focusable = [f for f in el.find_all(FOCUSABLE) if not (f.name == "a" and not f.get("href"))
                      and str(f.get("tabindex") or "") != "-1"]
         if focusable:

@@ -26,7 +26,7 @@ def test_version_is_consistent() -> None:
 
 def test_server_refuses_non_loopback_host(tmp_path: Path) -> None:
     with pytest.raises(ConfigError):
-        RuntimeConfig(host="0.0.0.0", data_dir=tmp_path).validate()  # noqa: S104 - the point of the test
+        RuntimeConfig(host="0.0.0.0", data_dir=tmp_path).validate()
 
 
 def test_data_dir_is_separate_from_code(config: RuntimeConfig) -> None:
@@ -40,6 +40,19 @@ def test_migrations_create_schema_and_backup_before_upgrade(container: AppContai
     # Running again is a no-op and does not create a backup.
     again = container.db.migrate(container.config.backups_dir)
     assert again.previous == again.current and again.backup_path is None
+
+
+def test_migrations_match_models(container: AppContainer) -> None:
+    """Every model change must come with a migration (alembic autogenerate finds no difference)."""
+    from alembic.autogenerate import compare_metadata
+    from alembic.migration import MigrationContext
+
+    from emneklar.core.storage.models import Base
+
+    container.migrate()
+    with container.db.engine.connect() as connection:
+        diff = compare_metadata(MigrationContext.configure(connection, opts={"render_as_batch": True}), Base.metadata)
+    assert diff == [], f"Models and migrations differ – add a migration: {diff}"
 
 
 def test_settings_roundtrip_has_no_secret_fields(container: AppContainer) -> None:

@@ -74,7 +74,7 @@ def lix(text: str) -> tuple[float, int]:
 def check_language(doc: ContentDoc) -> list[Issue]:
     issues: list[Issue] = []
     soup = doc.soup
-    for el in soup.find_all(attrs={"lang": True}):
+    for el in soup.find_all(True, attrs={"lang": True}):
         value = str(el.get("lang") or "").strip()
         if not LANG_RE.match(value):
             issues.append(Issue("UU-LANG-INVALID", f"Språkkoden «{value}» er ikke gyldig.", element=el,
@@ -118,8 +118,7 @@ def check_language(doc: ContentDoc) -> list[Issue]:
         if el.find_parent("a"):
             continue
         style = str(el.get("style") or "").lower().replace(" ", "")
-        if el.name == "u" or "text-decoration:underline" in style:
-            if text_of(el):
+        if (el.name == "u" or "text-decoration:underline" in style) and text_of(el):
                 issues.append(Issue("UU-UNDERLINE", f"«{text_of(el)[:60]}» er understreket, men er ikke en lenke.",
                                     element=el, fix=fix("remove_underline", "Fjern understrekingen",
                                                         path=element_path(el))))

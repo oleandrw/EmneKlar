@@ -45,8 +45,10 @@ def _port_free(host: str, port: int) -> bool:
 
 
 def _http_json(url: str, *, method: str = "GET", headers: dict[str, str] | None = None, timeout: float = 2.0) -> dict:
-    request = urllib.request.Request(url, method=method, headers=headers or {}, data=b"" if method == "POST" else None)
-    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - fixed local URL
+    # Only ever called with http://127.0.0.1:<port>/control/... built by this module.
+    request = urllib.request.Request(  # noqa: S310
+        url, method=method, headers=headers or {}, data=b"" if method == "POST" else None)
+    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
         return json.loads(response.read().decode("utf-8"))
 
 

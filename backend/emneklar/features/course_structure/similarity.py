@@ -43,10 +43,10 @@ class TfIdf:
 
     @staticmethod
     def centroid(vectors: list[dict[str, float]]) -> dict[str, float]:
-        acc: Counter[str] = Counter()
+        acc: dict[str, float] = {}
         for vec in vectors:
             for t, v in vec.items():
-                acc[t] += v
+                acc[t] = acc.get(t, 0.0) + v
         norm = math.sqrt(sum(v * v for v in acc.values())) or 1.0
         return {t: v / norm for t, v in acc.items()}
 

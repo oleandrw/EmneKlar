@@ -30,7 +30,7 @@ def category_label(domain: str, category: str) -> str:
         from emneklar.features.course_structure.rules import CATEGORY_LABELS as ST_LABELS
 
         return ST_LABELS.get(category, category)
-    if domain == "quiz":
+    if domain in ("quiz", "quiz_ai"):
         from emneklar.features.quiz_assistant.rules import CATEGORY_LABELS as QZ_LABELS
 
         return QZ_LABELS.get(category, category)

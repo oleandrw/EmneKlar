@@ -74,7 +74,7 @@ def inspect_pdf(path: Path) -> dict[str, Any]:
                 return {"format": "pdf", "encrypted": True}
         except Exception:  # noqa: BLE001 - any failure means we cannot read it
             return {"format": "pdf", "encrypted": True}
-    root = reader.trailer["/Root"]
+    root: Any = reader.trailer["/Root"]
     mark_info = root.get("/MarkInfo")
     marked = bool(mark_info.get("/Marked")) if mark_info is not None else False
     tagged = marked and "/StructTreeRoot" in root
@@ -86,7 +86,7 @@ def inspect_pdf(path: Path) -> dict[str, Any]:
     for page in reader.pages[: min(5, pages)]:
         try:
             text += page.extract_text() or ""
-        except Exception:  # noqa: BLE001 - broken content streams
+        except Exception:  # noqa: BLE001, S112 - broken content streams are skipped
             continue
         if len(text) > 2000:
             break

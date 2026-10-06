@@ -68,6 +68,14 @@ def finding_dict(f: Finding) -> dict[str, Any]:
     }
 
 
+def _covered(row: Finding, covered: set[str]) -> bool:
+    """Whether a newer run analysed the finding's object (quiz questions are covered by their quiz)."""
+    if f"{row.object_type}:{row.object_id}" in covered:
+        return True
+    quiz_id = (row.evidence or {}).get("quiz_id") if row.object_type == "quiz_question" else None
+    return bool(quiz_id) and f"quiz:{quiz_id}" in covered
+
+
 class FindingStore:
     def __init__(self, db: Database) -> None:
         self.db = db
@@ -118,8 +126,7 @@ class FindingStore:
                 rows = session.scalars(select(Finding).where(Finding.run_id == run.id, Finding.domain == domain)).all()
                 contributed = False
                 for row in rows:
-                    ref = f"{row.object_type}:{row.object_id}"
-                    if ref not in covered:
+                    if not _covered(row, covered):
                         result.append(row)
                         contributed = True
                 if contributed or not used:

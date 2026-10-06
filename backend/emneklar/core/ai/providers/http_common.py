@@ -33,7 +33,7 @@ def _retry_delay(response: httpx.Response, attempt: int) -> float:
 
 
 async def post_json(client: httpx.AsyncClient, url: str, payload: dict[str, Any], headers: dict[str, str], *,
-                    retries: int = 2) -> dict[str, Any]:
+                    retries: int = 1) -> dict[str, Any]:
     attempt = 0
     while True:
         try:

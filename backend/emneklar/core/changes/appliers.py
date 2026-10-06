@@ -51,6 +51,8 @@ class Applier:
     object_type: ClassVar[str]
     undo_capability: ClassVar[str] = "full"
     undo_note: ClassVar[str] = "Kan angres fra endringsloggen så lenge innholdet ikke er endret av andre etterpå."
+    #: True for kinds that create an object; the result is kept (proposed["_created"]) so undo can find it.
+    stores_created: ClassVar[bool] = False
 
     async def current(self, api: CanvasAPI, change: ChangeData) -> dict[str, Any]:
         raise NotImplementedError
@@ -192,6 +194,7 @@ HTML_KIND_BY_OBJECT = {"page": PageBody, "assignment": AssignmentDescription, "d
 
 
 class PageCreate(Applier):
+    stores_created = True
     kind = "page.create"
     label = "Opprett ny side"
     object_type = "page"
@@ -208,7 +211,8 @@ class PageCreate(Applier):
         return False
 
     async def apply(self, api: CanvasAPI, change: ChangeData, permit: WritePermit) -> dict[str, Any]:
-        fields = {k: change.proposed[k] for k in ("title", "body", "published", "front_page") if k in change.proposed}
+        fields: dict[str, Any] = {k: change.proposed[k] for k in ("title", "body", "published", "front_page")
+                                  if k in change.proposed}
         fields.setdefault("published", False)
         page = await api.create_page(change.course_id, fields, permit=permit)
         return {"url": page.get("url"), "page_id": page.get("page_id"), "title": page.get("title"),
@@ -299,7 +303,7 @@ class ModuleItemUpdate(Applier):
             validate_requirement(str(change.target.get("item_type")), requirement)
 
     async def current(self, api: CanvasAPI, change: ChangeData) -> dict[str, Any]:
-        module_id = change.target.get("module_id")
+        module_id = str(change.target.get("module_id") or "")
         try:
             item = await api.get_module_item(change.course_id, module_id, change.target["object_id"])
         except CanvasError as exc:
@@ -371,6 +375,7 @@ class ModuleUpdate(Applier):
 
 
 class ModuleItemCreate(Applier):
+    stores_created = True
     kind = "module_item.create"
     label = "Legg til modulelement"
     object_type = "module_item"

@@ -188,7 +188,6 @@ def upgrade() -> None:
     sa.Column('grounding', sa.String(length=16), nullable=False),
     sa.Column('generator', sa.JSON(), nullable=False),
     sa.Column('batch_id', sa.String(length=36), nullable=True),
-    sa.Column('used_in', sa.JSON(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('id')

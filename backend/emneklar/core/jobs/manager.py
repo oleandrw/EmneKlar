@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
 import contextlib
 import logging
 import uuid
@@ -269,7 +270,7 @@ class JobManager:
             jobs = [j for j in jobs if j.status in ACTIVE]
         return sorted(jobs, key=lambda j: j.created_at, reverse=True)
 
-    def history(self, *, course_id: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+    def history(self, *, course_id: str | None = None, limit: int = 20) -> builtins.list[dict[str, Any]]:
         with self._db.session() as session:
             query = select(Job).order_by(Job.created_at.desc()).limit(limit)
             if course_id is not None:

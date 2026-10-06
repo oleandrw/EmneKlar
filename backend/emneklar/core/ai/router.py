@@ -130,7 +130,9 @@ def route(task: str, settings: AppSettings, models: list[dict[str, Any]], ready:
 
     adequate = [m for m in usable if m["quality_class"] >= required]
     pool = adequate or sorted(usable, key=lambda m: -m["quality_class"])[:1]
-    structured_first = (lambda m: 0 if (m["structured_output"] or not profile.structured) else 1)
+    def structured_first(m: dict[str, Any]) -> int:
+        return 0 if (m["structured_output"] or not profile.structured) else 1
+
     if strategy == "speed":
         ordered = sorted(pool, key=lambda m: (structured_first(m), -m["speed_class"], m["cost_class"], -m["quality_class"]))
     elif strategy == "quality":
@@ -145,7 +147,7 @@ def route(task: str, settings: AppSettings, models: list[dict[str, Any]], ready:
         return decision
     decision.primary = ordered[0]
     # Fallbacks: other adequate models, then stronger ones if everything else fails.
-    rest = [m for m in ordered[1:]] + [m for m in sorted(usable, key=lambda m: -m["quality_class"])
+    rest = list(ordered[1:]) + [m for m in sorted(usable, key=lambda m: -m["quality_class"])
                                        if m not in ordered]
     decision.fallbacks = rest[:3]
     m = decision.primary

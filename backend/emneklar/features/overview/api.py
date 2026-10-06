@@ -68,7 +68,8 @@ def _next_steps(cards: dict[str, dict[str, Any]], pending_changes: int) -> list[
     media = sum(c["by_rule"].get(r, 0) for r in MEDIA_RULES)
     if media:
         steps.append({"key": "media", "count": media, "domain": "content_quality",
-                      "title": f"{media} videoer er utilgjengelige", "description": "Innebygd video som er fjernet eller privat.",
+                      "title": f"{media} videoer er utilgjengelige",
+                      "description": "Innebygd video som er fjernet eller privat.",
                       "path": "/innholdskvalitet", "tone": "warning"})
     s = cards["structure"]
     placement = sum(s["by_rule"].get(r, 0) for r in PLACEMENT_RULES)

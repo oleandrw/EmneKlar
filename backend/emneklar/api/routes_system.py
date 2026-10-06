@@ -15,6 +15,7 @@ from emneklar.core import flags
 from emneklar.core.auth.secrets import CANVAS_TOKEN
 from emneklar.core.container import AppContainer
 from emneklar.core.security.web import session_cookie_from_scope, session_cookie_header
+from emneklar.core.storage.settings import AppSettings
 
 router = APIRouter()
 
@@ -85,7 +86,7 @@ class DryRunBody(BaseModel):
 
 @router.put("/api/system/dry-run")
 async def set_dry_run(body: DryRunBody, c: AppContainer = Depends(get_container)) -> dict[str, bool]:
-    def mutate(s):  # type: ignore[no-untyped-def]
+    def mutate(s: AppSettings) -> None:
         s.dry_run = body.enabled
 
     settings = c.settings.update(mutate)

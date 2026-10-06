@@ -25,7 +25,8 @@ CATEGORY_LABELS = {"links": "Lenker", "media": "Video og innebygd innhold", "htm
 _RULES = [
     CQRule("CQ-LINK-DEAD", "links", "Lenken fungerer ikke", "violation", "serious", "deterministic",
            "Lenkemålet finnes ikke (for eksempel «404 Ikke funnet», eller domenet finnes ikke). Studentene får en feilside.",
-           "Finn riktig adresse og erstatt lenken, eller fjern lenken og behold teksten. EmneKlar sletter aldri lenker automatisk."),
+           "Finn riktig adresse og erstatt lenken, eller fjern lenken og behold teksten. "
+           "EmneKlar sletter aldri lenker automatisk."),
     CQRule("CQ-LINK-INTERNAL-MISSING", "links", "Intern lenke til innhold som ikke finnes", "violation", "serious",
            "deterministic",
            "Lenken peker til en side, oppgave eller fil i emnet som ikke finnes (lenger). Dette skjer ofte når innhold "
@@ -56,7 +57,8 @@ _RULES = [
            "Bytt til en tilgjengelig video eller lenk til en alternativ kilde."),
     CQRule("CQ-MEDIA-MISSING", "media", "Medieobjekt i Canvas ble ikke funnet", "should_review", "moderate",
            "heuristic",
-           "Siden viser et medieobjekt som ikke finnes i emnets medieliste. Det kan komme fra et annet emne eller være slettet.",
+           "Siden viser et medieobjekt som ikke finnes i emnets medieliste. "
+           "Det kan komme fra et annet emne eller være slettet.",
            "Åpne siden i Canvas og kontroller at videoen spilles av."),
     CQRule("CQ-EMBED-BROKEN", "media", "Innebygd innhold laster ikke", "violation", "serious", "deterministic",
            "Adressen til det innebygde innholdet (iframe) finnes ikke.",

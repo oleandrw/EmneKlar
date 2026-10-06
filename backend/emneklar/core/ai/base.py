@@ -109,7 +109,8 @@ def status_to_error(status: int, body: str) -> AIError:
         return AIError("ai_model_missing", status=502, detail=f"HTTP 404: {snippet}")
     if status == 429:
         if any(code in lowered for code in ("insufficient_quota", "credit_balance", "spend_limit", "usage_limit")):
-            return AIError("ai_rate_limited", status=503, detail="Kvoten eller kostnadsgrensen hos leverandøren er brukt opp")
+            return AIError("ai_rate_limited", status=503,
+                           detail="Kvoten eller kostnadsgrensen hos leverandøren er brukt opp")
         return AIError("ai_rate_limited", status=503, detail=f"HTTP 429: {snippet}")
     if status == 400 and "content_filter" in lowered:
         return AIError("ai_refused", status=502, detail="Innholdsfilteret hos leverandøren stoppet forespørselen")

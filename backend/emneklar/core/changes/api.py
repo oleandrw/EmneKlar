@@ -34,7 +34,7 @@ class ProposedBody(BaseModel):
 @router.get("/changes")
 async def list_changes(course_id: str | None = None, include_done: bool = False,
                        c: AppContainer = Depends(get_container)) -> dict[str, Any]:
-    statuses = ("staged", "approved", "conflict", "failed")
+    statuses: tuple[str, ...] = ("staged", "approved", "conflict", "failed")
     if include_done:
         statuses = (*statuses, "applied", "discarded", "undone")
     items = c.changes.list(course_id, statuses)

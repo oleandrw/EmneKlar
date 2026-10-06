@@ -50,10 +50,15 @@ class CanvasSettings(_Section):
     last_verified_at: datetime | None = None
 
 
+AnalysisDomain = Literal["accessibility", "content_quality", "structure", "quiz"]
+
+
+def _default_domains() -> list[AnalysisDomain]:
+    return ["accessibility", "content_quality", "structure"]
+
+
 class AnalysisSettings(_Section):
-    default_domains: list[Literal["accessibility", "content_quality", "structure", "quiz"]] = Field(
-        default_factory=lambda: ["accessibility", "content_quality", "structure"]
-    )
+    default_domains: list[AnalysisDomain] = Field(default_factory=_default_domains)
     regulatory_profile: str = "no-offentlig-2023"
     check_external_links: bool = True
     link_timeout_seconds: int = Field(10, ge=3, le=60)

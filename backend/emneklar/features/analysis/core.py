@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 
 Domain = Literal["accessibility", "content_quality", "structure", "quiz"]
 DOMAINS: tuple[str, ...] = ("accessibility", "content_quality", "structure", "quiz")
+#: Areas checked by default in the analysis dialog (quiz is opt-in).
+DEFAULT_DOMAINS: tuple[Domain, ...] = ("accessibility", "content_quality", "structure")
 
 
 class ItemRef(BaseModel):
@@ -33,7 +35,7 @@ class AnalysisRequest(BaseModel):
     scope: Literal["course", "modules", "items"] = "course"
     module_ids: list[str] = Field(default_factory=list, max_length=500)
     items: list[ItemRef] = Field(default_factory=list, max_length=2000)
-    domains: list[Domain] = Field(default_factory=lambda: ["accessibility", "content_quality", "structure"])
+    domains: list[Domain] = Field(default_factory=lambda: list(DEFAULT_DOMAINS))
 
 
 @dataclass

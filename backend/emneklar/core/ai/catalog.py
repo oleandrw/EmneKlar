@@ -8,6 +8,7 @@ because model-list endpoints do not tell what a model is good at or costs.
 
 from __future__ import annotations
 
+import builtins
 import json
 from pathlib import Path
 from typing import Any
@@ -122,7 +123,7 @@ class ModelRegistry:
                 raise AppError("conflict", status=409, message="Modeller fra startlisten kan slås av, men ikke slettes.")
             session.delete(row)
 
-    def merge_discovered(self, provider_id: str, models: list[DiscoveredModel], *, local: bool) -> int:
+    def merge_discovered(self, provider_id: str, models: builtins.list[DiscoveredModel], *, local: bool) -> int:
         added = 0
         with self.db.session() as session:
             existing = {m.model_id for m in session.scalars(select(AIModel).where(AIModel.provider_id == provider_id))}

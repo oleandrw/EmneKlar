@@ -14,6 +14,7 @@ from emneklar.api.deps import get_container, require_course_id
 from emneklar.core.container import AppContainer
 from emneklar.core.errors import AppError, NotFoundError
 from emneklar.core.flags import is_enabled
+from emneklar.core.jobs.manager import JobContext
 from emneklar.core.storage.models import AnalysisRun, Job
 from emneklar.features.analysis.core import AnalysisRequest
 from emneklar.features.analysis.orchestrator import run_analysis
@@ -31,10 +32,10 @@ async def start_analysis(body: AnalysisRequest, c: AppContainer = Depends(get_co
         domains.remove("quiz")
     if not domains or (body.scope == "modules" and not body.module_ids) or (body.scope == "items" and not body.items):
         raise AppError("analysis_nothing_selected")
-    body.domains = domains  # type: ignore[assignment]
+    body.domains = domains
     c.canvas()  # fail fast with a clear message if Canvas is not configured
 
-    async def runner(ctx):  # type: ignore[no-untyped-def]
+    async def runner(ctx: JobContext) -> dict[str, Any]:
         return await run_analysis(ctx, c, body)
 
     scope_label = {"course": "hele emnet", "modules": "valgte moduler", "items": "valgte elementer"}[body.scope]
@@ -123,9 +124,10 @@ async def content_index(course_id: str, c: AppContainer = Depends(get_container)
 
     course_id = require_course_id(course_id)
     api = CanvasAPI(c.canvas())
-    modules, pages, assignments, discussions, quizzes = await asyncio.gather(
+    results: list[Any] = await asyncio.gather(
         api.list_modules(course_id), api.list_pages(course_id, include_body=False), api.list_assignments(course_id),
         api.list_discussions(course_id), api.list_quizzes(course_id), return_exceptions=True)
+    modules, pages, assignments, discussions, quizzes = results
 
     def ok(value: Any) -> list[dict[str, Any]]:
         return value if isinstance(value, list) else []

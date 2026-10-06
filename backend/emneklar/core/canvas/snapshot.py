@@ -199,11 +199,11 @@ class SnapshotBuilder:
                 snapshot_id=snapshot_id, object_type=o.object_type, canvas_id=o.canvas_id, parent_id=o.parent_id,
                 title=o.title[:1000], html_url=o.html_url, body=o.body, meta=o.meta,
                 canvas_updated_at=o.canvas_updated_at, content_hash=content_hash(o.body)) for o in objects)
-            snap = session.get(Snapshot, snapshot_id)
-            assert snap is not None
-            snap.status = "partial" if errors else "complete"
-            snap.stats = stats
-            snap.errors = errors
+            stored = session.get(Snapshot, snapshot_id)
+            assert stored is not None
+            stored.status = "partial" if errors else "complete"
+            stored.stats = stats
+            stored.errors = errors
         return snapshot_id
 
 

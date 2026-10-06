@@ -42,7 +42,7 @@ include = ["emneklar*"]
 emneklar = ["**/*.json", "**/*.md", "**/*.html", "**/*.css"]
 
 [tool.ruff]
-line-length = 120
+line-length = 125
 target-version = "py311"
 extend-exclude = ["migrations/versions"]
 
@@ -57,6 +57,7 @@ ignore = [
     "S603",   # subprocess without shell=True is intended; arguments are fixed
     "S105",   # constant names like SESSION_COOKIE are not passwords
     "RUF012", # class-level constant tables are intentional
+    "SIM905", # word lists written as "a b c".split() are easier to read
 ]
 
 [tool.ruff.lint.per-file-ignores]

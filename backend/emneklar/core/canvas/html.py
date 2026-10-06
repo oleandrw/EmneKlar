@@ -40,7 +40,7 @@ def element_path(el: Tag) -> str:
         parent = node.parent
         if parent is None:
             break
-        siblings = [s for s in parent.find_all(node.name, recursive=False)]
+        siblings = list(parent.find_all(node.name, recursive=False))
         index = siblings.index(node) + 1 if node in siblings else 1
         parts.append(f"{node.name}:nth-of-type({index})")
         node = parent if isinstance(parent, Tag) else None

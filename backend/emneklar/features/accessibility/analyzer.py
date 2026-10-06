@@ -86,7 +86,7 @@ class AccessibilityAnalyzer:
     def _captions(self, ctx: AnalysisContext) -> CaptionCache:
         if "captions" not in ctx.shared:
             ctx.shared["captions"] = CaptionCache(ctx)
-        return ctx.shared["captions"]  # type: ignore[no-any-return]
+        return ctx.shared["captions"]
 
     def object_check(self, ctx: AnalysisContext) -> ObjectCheck:
         captions = self._captions(ctx)
@@ -156,12 +156,12 @@ class AccessibilityAnalyzer:
         result = []
         seen: set[str] = set()
         for file_id in wanted:
-            obj = files.get(file_id)
-            if obj is None or file_id in seen:
+            file_obj = files.get(file_id)
+            if file_obj is None or file_id in seen:
                 continue
             seen.add(file_id)
-            if document_format(str(obj.meta.get("filename") or obj.title), obj.meta.get("content_type")):
-                result.append(obj)
+            if document_format(str(file_obj.meta.get("filename") or file_obj.title), file_obj.meta.get("content_type")):
+                result.append(file_obj)
         unlinked = len([f for f in files.values() if document_format(str(f.meta.get("filename") or f.title),
                                                                      f.meta.get("content_type"))]) - len(result)
         if unlinked > 0 and ctx.request.scope == "course":

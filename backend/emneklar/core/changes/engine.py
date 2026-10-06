@@ -13,6 +13,7 @@ Undo is never promised universally: each change kind declares full/partial/none.
 
 from __future__ import annotations
 
+import builtins
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -161,7 +162,7 @@ class ChangeEngine:
                      .group_by(StagedChange.domain))
             if course_id:
                 query = query.where(StagedChange.course_id == course_id)
-            by_domain = {d: n for d, n in session.execute(query).all()}
+            by_domain = dict(session.execute(query).tuples().all())
         return {"pending": sum(by_domain.values()), "by_domain": by_domain}
 
     def get(self, change_id: int) -> dict[str, Any]:
@@ -196,7 +197,7 @@ class ChangeEngine:
             self._mark_findings(session, (row.source or {}).get("finding_fingerprints") or [], "open")
             return change_dict(row)
 
-    def approve(self, change_ids: list[int]) -> list[dict[str, Any]]:
+    def approve(self, change_ids: builtins.list[int]) -> builtins.list[dict[str, Any]]:
         result = []
         with self.db.session() as session:
             for change_id in change_ids:
@@ -210,7 +211,7 @@ class ChangeEngine:
 
     # -- conflicts ---------------------------------------------------------------------------------
 
-    async def check_conflicts(self, change_ids: list[int]) -> list[dict[str, Any]]:
+    async def check_conflicts(self, change_ids: builtins.list[int]) -> builtins.list[dict[str, Any]]:
         api = CanvasAPI(self.c.canvas())
         results = []
         for change_id in change_ids:
@@ -242,7 +243,7 @@ class ChangeEngine:
         return ChangeData(row.id, row.course_id, row.kind, dict(row.target), dict(row.before),
                           dict(row.proposed)), row
 
-    def submit_apply(self, change_ids: list[int], *, confirm_high_risk: bool, course_id: str | None) -> JobState:
+    def submit_apply(self, change_ids: builtins.list[int], *, confirm_high_risk: bool, course_id: str | None) -> JobState:
         if not change_ids:
             raise AppError("validation_error", detail="Ingen endringer valgt")
         for change_id in change_ids:
@@ -260,7 +261,7 @@ class ChangeEngine:
                                   params={"change_ids": change_ids}, supports_pause=False, hard_cancel=False,
                                   exclusive=True)
 
-    async def apply_many(self, ctx: JobContext, change_ids: list[int]) -> dict[str, Any]:
+    async def apply_many(self, ctx: JobContext, change_ids: builtins.list[int]) -> dict[str, Any]:
         api = CanvasAPI(self.c.canvas())
         progress = ctx.progress
         progress.set_phase("apply", "Gjennomfører endringer", index=1, count=1, determinate=True)
@@ -308,7 +309,7 @@ class ChangeEngine:
             log.warning("Endring %s feilet: %s", data.id, exc.code)
             return self._fail(data, base_log, _friendly_error(exc), backup_id=backup_id, before=current)
         proposed = dict(row.proposed or {})
-        if data.kind in ("page.create", "module_item.create"):
+        if applier.stores_created:
             proposed["_created"] = after
         entry_id = self._log(**base_log, action="apply", before=current, after=after, backup_id=backup_id,
                              undoable=applier.undo_capability != "none",
@@ -364,7 +365,7 @@ class ChangeEngine:
         current = await applier.current(api, data)
         if applier.conflict(entry_after, current):
             raise ConflictError("undo_conflict")
-        base = {"course_id": data.course_id, "change_id": data.id, "kind": data.kind,
+        base: dict[str, Any] = {"course_id": data.course_id, "change_id": data.id, "kind": data.kind,
                 "object_type": row.target.get("object_type") or applier.object_type,
                 "object_id": str(row.target.get("object_id") or ""), "object_title": row.target.get("title"),
                 "reason": f"Angret endring: {row.title}", "user_action": "undo"}

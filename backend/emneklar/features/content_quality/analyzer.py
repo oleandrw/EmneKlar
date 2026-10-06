@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from html import escape
 from typing import Any
 from urllib.parse import quote, urlsplit
-
-from html import escape
 
 import httpx
 from bs4 import BeautifulSoup, Tag
@@ -185,10 +184,10 @@ class ContentQualityAnalyzer:
             tasks.append(AnalysisTask(type="link", item=f"Lenke: {urlsplit(url).hostname or url[:60]}",
                                       operation="Sjekker lenke", domain=DOMAIN,
                                       run=self._link_runner(ctx, checker, url, uses)))
-        for (service, ident), uses in videos.items():
+        for (service, ident), video_uses in videos.items():
             tasks.append(AnalysisTask(type="media", item=f"Video ({service}): {ident}",
                                       operation="Kontrollerer at videoen finnes", domain=DOMAIN,
-                                      run=self._video_runner(ctx, checker.client, service, ident, uses)))
+                                      run=self._video_runner(ctx, checker.client, service, ident, video_uses)))
         return tasks
 
     def _checker(self, ctx: AnalysisContext) -> LinkChecker:
@@ -202,7 +201,7 @@ class ContentQualityAnalyzer:
                                                      per_host=settings.link_per_host, db=ctx.container.db,
                                                      cache_hours=settings.link_cache_hours)
             ctx.shared.setdefault("closers", []).append(client.aclose)
-        return ctx.shared["link_checker"]  # type: ignore[no-any-return]
+        return ctx.shared["link_checker"]
 
     def _link_runner(self, ctx: AnalysisContext, checker: LinkChecker, url: str,
                      uses: list[tuple[SnapObj, Tag, str]]) -> Any:

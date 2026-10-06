@@ -300,7 +300,6 @@ class QuestionBankItem(Base):
     grounding: Mapped[str] = mapped_column(String(16), default="verified")  # verified|partial|unverified
     generator: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     batch_id: Mapped[str | None] = mapped_column(String(36), index=True)
-    used_in: Mapped[list[Any]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

@@ -172,7 +172,7 @@ async def run_analysis(job: JobContext, container: AppContainer, request: Analys
         for close in ctx.shared.get("closers", []):
             try:
                 await close()
-            except Exception:  # noqa: BLE001 - closing must never fail the analysis
+            except Exception:
                 log.debug("Kunne ikke lukke klient", exc_info=True)
     if failures:
         ctx.limitations.append(f"{failures} element(er) kunne ikke analyseres. Se loggen for detaljer.")

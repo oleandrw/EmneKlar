@@ -67,7 +67,8 @@ def _valid_href(url: str) -> str:
 
 # Keeps æøå and other characters as-is, writes <br> (not <br/>) and keeps alt="" explicit.
 CANVAS_FORMATTER = HTMLFormatter(entity_substitution=EntitySubstitution.substitute_xml,
-                                 void_element_close_prefix=None, empty_attributes_are_booleans=False)
+                                 void_element_close_prefix=None,  # type: ignore[arg-type]  # None = write <br>
+                                 empty_attributes_are_booleans=False)
 
 
 def serialize(soup: BeautifulSoup) -> str:

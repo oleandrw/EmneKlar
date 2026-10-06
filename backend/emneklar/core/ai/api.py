@@ -66,7 +66,8 @@ def _validate_endpoint(provider: ProviderConfig, endpoint: str) -> str:
 
 
 @router.put("/providers/{provider_id}")
-async def update_provider(provider_id: str, body: ProviderUpdate, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
+async def update_provider(provider_id: str, body: ProviderUpdate,
+                          c: AppContainer = Depends(get_container)) -> dict[str, Any]:
     settings = c.settings.get()
     provider = _find(settings, provider_id)
     endpoint = _validate_endpoint(provider, body.endpoint) if body.endpoint else None

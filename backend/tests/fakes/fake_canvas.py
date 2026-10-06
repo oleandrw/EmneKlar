@@ -104,10 +104,7 @@ def seed_state(origin: str = "http://canvas.test") -> FakeCanvasState:
         "show_announcements_on_home_page": False, "home_page_announcement_limit": 3,
         "syllabus_course_summary": True, "default_due_time": "23:59:59", "conditional_release": False,
     }
-    c.permissions = {k: True for k in ("manage", "update", "read_as_admin", "manage_wiki_update", "manage_wiki_create",
-                                       "manage_course_content_edit", "manage_course_content_add",
-                                       "manage_assignments_edit", "manage_assignments_add", "manage_files_edit",
-                                       "update_course_details")}
+    c.permissions = dict.fromkeys(("manage", "update", "read_as_admin", "manage_wiki_update", "manage_wiki_create", "manage_course_content_edit", "manage_course_content_add", "manage_assignments_edit", "manage_assignments_add", "manage_files_edit", "update_course_details"), True)
     pages = [
         _page("velkommen", "Velkommen til emnet",
               "<h1>Velkommen</h1><p>Her finner du alt om emnet. <a href=\"https://www.example.org/plan\">Klikk her</a>"
@@ -536,7 +533,7 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
                     valid = {"must_view", "must_submit", "must_contribute", "min_score", "must_mark_done"}
                     if req.get("type") not in valid:
                         return err(400, "Invalid completion requirement type")
-                    item["completion_requirement"] = {k: v for k, v in req.items()} | {"completed": False}
+                    item["completion_requirement"] = dict(req) | {"completed": False}
             for key in ("title", "indent", "position"):
                 if key in data:
                     item[key] = data[key]
@@ -664,7 +661,7 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
                    "neutral_comments": data.get("neutral_comments", "")}
             c.questions[q["id"]].append(new)
             return JSONResponse(new)
-        return paginate(request, [x for x in c.questions.get(q["id"], [])])
+        return paginate(request, list(c.questions.get(q["id"], [])))
 
     async def question(request: Request) -> Response:
         c = course(request)

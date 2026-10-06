@@ -111,7 +111,7 @@ def check_hygiene(html: str) -> list[HygieneIssue]:
         len(soup.find_all(re.compile(r"^o:p$")))
     if mso:
         issues.append(HygieneIssue("CQ-HTML-WORD", f"{mso} elementer med Word-formatering.", mso))
-    deprecated = [t for t in soup.find_all(list(DEPRECATED))]
+    deprecated = list(soup.find_all(list(DEPRECATED)))
     if deprecated:
         names = sorted({t.name for t in deprecated})
         issues.append(HygieneIssue("CQ-HTML-DEPRECATED", f"{len(deprecated)} utdaterte elementer ({', '.join(names)}).",
@@ -126,7 +126,7 @@ def check_hygiene(html: str) -> list[HygieneIssue]:
     for br in soup.find_all("br"):
         sibling = br.next_sibling
         streak = 1
-        while sibling is not None and (isinstance(sibling, Tag) and sibling.name == "br" or
+        while sibling is not None and ((isinstance(sibling, Tag) and sibling.name == "br") or
                                        (isinstance(sibling, NavigableString) and not str(sibling).strip())):
             if isinstance(sibling, Tag):
                 streak += 1
@@ -170,7 +170,7 @@ def cleanup(html: str, options: set[str]) -> tuple[BeautifulSoup, Counter[str]]:
             if len(classes) != len(tag.get("class") or []):
                 counts["word_artifacts"] += 1
                 if classes:
-                    tag["class"] = classes
+                    tag["class"] = " ".join(classes)
                 else:
                     del tag["class"]
         for tag in soup.find_all(style=True):
@@ -203,7 +203,7 @@ def cleanup(html: str, options: set[str]) -> tuple[BeautifulSoup, Counter[str]]:
                 continue
             following = []
             sibling = br.next_sibling
-            while sibling is not None and (isinstance(sibling, Tag) and sibling.name == "br" or
+            while sibling is not None and ((isinstance(sibling, Tag) and sibling.name == "br") or
                                            (isinstance(sibling, NavigableString) and not str(sibling).strip())):
                 following.append(sibling)
                 sibling = sibling.next_sibling

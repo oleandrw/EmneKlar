@@ -10,14 +10,14 @@ from emneklar.core.security.web import Session
 
 
 def get_container(request: Request) -> AppContainer:
-    return request.app.state.container  # type: ignore[no-any-return]
+    return request.app.state.container
 
 
 def get_session(request: Request) -> Session:
     session = request.scope.get("state", {}).get("emneklar_session")
     if session is None:
         raise AppError("session_required", status=401)
-    return session  # type: ignore[no-any-return]
+    return session
 
 
 def require_course_id(course_id: str) -> str:

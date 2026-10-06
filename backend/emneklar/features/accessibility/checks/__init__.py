@@ -7,7 +7,7 @@ from emneklar.features.accessibility.checks.contrast import check_contrast
 from emneklar.features.accessibility.checks.embeds import check_iframes, check_markup, check_media
 from emneklar.features.accessibility.checks.images import check_images
 from emneklar.features.accessibility.checks.language import check_language
-from emneklar.features.accessibility.checks.structure import check_headings, check_lists, check_links, check_tables
+from emneklar.features.accessibility.checks.structure import check_headings, check_links, check_lists, check_tables
 
 HTML_CHECKS = (check_images, check_headings, check_links, check_tables, check_lists, check_language,
                check_contrast, check_iframes, check_markup)

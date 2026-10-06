@@ -129,7 +129,7 @@ VAGUE = {
     "open", "video", "pdf", "fil", "file",
 }
 STOP = {"og", "i", "på", "til", "av", "for", "med", "er", "en", "et", "den", "det", "de", "som", "kan", "du", "the",
-        "and", "to", "of", "a", "in", "is", "for", "you", "your", "her", "klikk", "trykk", "les", "mer", "se"}
+        "and", "to", "of", "a", "in", "is", "you", "your", "her", "klikk", "trykk", "les", "mer", "se"}
 
 
 def _meaningful_context(link: Tag, name: str) -> int:
@@ -211,7 +211,7 @@ def _span(cell: Tag, attr: str) -> int:
 
 
 def _cells(tr: Tag) -> list[Tag]:
-    return [c for c in tr.find_all(["td", "th"], recursive=False)]
+    return list(tr.find_all(["td", "th"], recursive=False))
 
 
 def check_tables(doc: ContentDoc) -> list[Issue]:

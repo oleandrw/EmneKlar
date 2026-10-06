@@ -18,6 +18,7 @@ ROUTERS = [
     "emneklar.features.course_structure.api",
     "emneklar.core.ai.api",
     "emneklar.features.accessibility.ai_alt",
+    "emneklar.features.quiz_assistant.api",
 ]
 
 
