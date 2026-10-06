@@ -95,9 +95,6 @@ async def stage_suggestion(finding_id: int, body: StageBody, c: AppContainer = D
         item = await api.get_module_item(finding.course_id, str(params["from_module"]), str(params["item_id"]))
         module_items = await api.list_module_items(finding.course_id, target_module)
         position = len(module_items) + 1
-        requirement = item.get("completion_requirement") or None
-        if requirement:
-            requirement = {k: v for k, v in requirement.items() if k in ("type", "min_score")}
         return c.changes.stage(
             course_id=finding.course_id, domain="structure", kind="module_item.update",
             title=f"Flytt «{item.get('title')}»",
