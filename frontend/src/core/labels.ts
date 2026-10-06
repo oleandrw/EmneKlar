@@ -2,7 +2,9 @@
 // screen describes the same concept the same way.
 import type { Tone } from "../design-system";
 
-export type Domain = "accessibility" | "content_quality" | "structure" | "quiz";
+export type Domain = "accessibility" | "content_quality" | "structure" | "quiz" | "quiz_ai";
+/** Areas in the analysis dialog (AI quiz reviews are started from the Quiz Assistant). */
+export type AnalysisDomain = Exclude<Domain, "quiz_ai">;
 export type Classification = "violation" | "likely_violation" | "should_review" | "improvement" | "manual_check";
 export type TestMethod = "deterministic" | "heuristic" | "ai" | "manual";
 export type Severity = "critical" | "serious" | "moderate" | "minor" | "info";
@@ -13,6 +15,7 @@ export const DOMAIN_LABEL: Record<Domain, string> = {
   content_quality: "Innholdskvalitet",
   structure: "Emnestruktur",
   quiz: "Quizkvalitet",
+  quiz_ai: "Quizkvalitet (KI-vurdering)",
 };
 
 export const CLASSIFICATION: Record<Classification, { label: string; tone: Tone; description: string }> = {

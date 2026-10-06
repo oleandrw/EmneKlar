@@ -11,11 +11,31 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy.engine import Dialect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.types import TypeDecorator
 
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+class UTCDateTime(TypeDecorator[datetime]):
+    """Timezone-aware UTC datetimes. SQLite stores no offset, so values are normalised to UTC on the
+    way in and marked as UTC on the way out – the API then always serialises them with an offset."""
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        if value is None:
+            return None
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+    def process_result_value(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        if value is None:
+            return None
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 class Base(DeclarativeBase):
@@ -26,7 +46,7 @@ class Setting(Base):
     __tablename__ = "settings"
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
 
 
 class WebSession(Base):
@@ -50,7 +70,7 @@ class Course(Base):
     default_view: Mapped[str | None] = mapped_column(String(32))
     enrollment_roles: Mapped[list[Any]] = mapped_column(JSON, default=list)
     raw: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    refreshed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    refreshed_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
 
 
 class Snapshot(Base):
@@ -59,7 +79,7 @@ class Snapshot(Base):
     __tablename__ = "snapshots"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     course_id: Mapped[str] = mapped_column(String(32), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     status: Mapped[str] = mapped_column(String(16), default="building")  # building|complete|partial|failed
     scope: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     stats: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
@@ -96,9 +116,9 @@ class Job(Base):
     progress: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     result: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     error: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class AnalysisRun(Base):
@@ -113,8 +133,8 @@ class AnalysisRun(Base):
     profile_id: Mapped[str | None] = mapped_column(String(64))
     profile_version: Mapped[str | None] = mapped_column(String(32))
     status: Mapped[str] = mapped_column(String(16), default="running")  # running|complete|partial|cancelled|failed
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     counts: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     limitations: Mapped[list[Any]] = mapped_column(JSON, default=list)
 
@@ -148,7 +168,7 @@ class Finding(Base):
     fix: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     fingerprint: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(16), default="open")  # open|ignored|staged|fixed
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class FindingDecision(Base):
@@ -159,7 +179,7 @@ class FindingDecision(Base):
     course_id: Mapped[str] = mapped_column(String(32), index=True)
     decision: Mapped[str] = mapped_column(String(16))  # ignored
     note: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class LinkCheck(Base):
@@ -170,7 +190,7 @@ class LinkCheck(Base):
     http_status: Mapped[int | None] = mapped_column(Integer)
     final_url: Mapped[str | None] = mapped_column(String(2000))
     detail: Mapped[str | None] = mapped_column(Text)
-    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    checked_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class StagedChange(Base):
@@ -195,15 +215,15 @@ class StagedChange(Base):
     source: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     result: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     error: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+    applied_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class ChangeLogEntry(Base):
     __tablename__ = "change_log"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    timestamp: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
     course_id: Mapped[str | None] = mapped_column(String(32), index=True)
     change_id: Mapped[int | None] = mapped_column(Integer, index=True)
     kind: Mapped[str] = mapped_column(String(64))
@@ -226,7 +246,7 @@ class ChangeLogEntry(Base):
 class Backup(Base):
     __tablename__ = "backups"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     course_id: Mapped[str | None] = mapped_column(String(32), index=True)
     object_type: Mapped[str] = mapped_column(String(32))
     object_id: Mapped[str] = mapped_column(String(64))
@@ -257,7 +277,7 @@ class AIModel(Base):
     source: Mapped[str] = mapped_column(String(16), default="catalog")  # catalog|discovered|user
     capabilities_known: Mapped[bool] = mapped_column(Boolean, default=True)
     notes: Mapped[str] = mapped_column(Text, default="")
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
 
 
 class AIUsage(Base):
@@ -265,7 +285,7 @@ class AIUsage(Base):
 
     __tablename__ = "ai_usage"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
     course_id: Mapped[str | None] = mapped_column(String(32))
     task_type: Mapped[str] = mapped_column(String(48))
     provider_id: Mapped[str] = mapped_column(String(40))
@@ -300,8 +320,8 @@ class QuestionBankItem(Base):
     grounding: Mapped[str] = mapped_column(String(16), default="verified")  # verified|partial|unverified
     generator: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     batch_id: Mapped[str | None] = mapped_column(String(36), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
 
 
 class QuizPreset(Base):
@@ -311,7 +331,7 @@ class QuizPreset(Base):
     settings: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     builtin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
 
 
 class HomepageDraft(Base):
@@ -325,8 +345,8 @@ class HomepageDraft(Base):
     html: Mapped[str] = mapped_column(Text, default="")
     notes: Mapped[list[Any]] = mapped_column(JSON, default=list)
     ai_used: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
 
 
 class Report(Base):
@@ -339,4 +359,4 @@ class Report(Base):
     filename: Mapped[str] = mapped_column(String(255))
     size: Mapped[int] = mapped_column(Integer, default=0)
     run_ids: Mapped[list[Any]] = mapped_column(JSON, default=list)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

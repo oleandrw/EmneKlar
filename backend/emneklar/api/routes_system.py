@@ -71,6 +71,7 @@ async def session_info(request: Request, c: AppContainer = Depends(get_container
             "providers_enabled": [p.id for p in s.ai.providers if p.enabled],
         },
         "regulatory_profile": s.analysis.regulatory_profile,
+        "analysis": {"default_domains": s.analysis.default_domains},
     }
 
 

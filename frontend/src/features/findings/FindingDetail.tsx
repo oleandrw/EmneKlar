@@ -11,8 +11,31 @@ import {
   KeyValue,
   TextArea,
 } from "../../design-system";
+import { AiBadge } from "../../core/ai";
 import { useFindingActions } from "./api";
 import { FixPanel } from "./FixPanel";
+
+/** «Ignorer» means different things per domain: reject a structure suggestion, keep a quiz question. */
+const DISMISS: Record<string, { heading: string; start: string; confirm: string; reopen: string; hint: string }> = {
+  structure: {
+    heading: "Avvis", start: "Avvis forslaget …", confirm: "Avvis forslaget", reopen: "Gjenåpne forslaget",
+    hint: "Begrunnelsen lagres lokalt. Forslaget vises ikke igjen ved nye analyser.",
+  },
+  quiz: {
+    heading: "Behold", start: "Behold spørsmålet som det er …", confirm: "Behold og skjul funnet", reopen: "Gjenåpne funnet",
+    hint: "Begrunnelsen lagres lokalt. Funnet vises ikke igjen ved nye kontroller.",
+  },
+  default: {
+    heading: "Ignorer", start: "Ignorer …", confirm: "Ignorer funnet", reopen: "Gjenåpne funnet",
+    hint: "Begrunnelsen lagres lokalt og vises i rapporter. Funnet forblir ignorert ved nye analyser.",
+  },
+};
+
+interface SourceQuote {
+  chunk_id?: string;
+  quote: string;
+  title?: string | null;
+}
 
 const EVIDENCE_LABELS: Record<string, string> = {
   ratio: "Målt kontrast",
@@ -51,6 +74,8 @@ export function FindingDetail({ finding, open, onClose }: { finding: Finding | n
   const exemption = typeof evidence.exemption_hint === "string" ? evidence.exemption_hint : null;
   const automatic = Array.isArray(evidence.automatically_checked) ? (evidence.automatically_checked as string[]) : null;
   const manual = Array.isArray(evidence.requires_manual_check) ? (evidence.requires_manual_check as string[]) : null;
+  const sources = Array.isArray(evidence.sources) ? (evidence.sources as SourceQuote[]) : null;
+  const dismiss = DISMISS[finding.domain === "quiz_ai" ? "quiz" : finding.domain] ?? DISMISS.default;
 
   return (
     <Dialog open={open} onClose={onClose} size="lg" title={finding.title} description={finding.message}>
@@ -60,6 +85,7 @@ export function FindingDetail({ finding, open, onClose }: { finding: Finding | n
           <Badge tone={SEVERITY[finding.severity].tone}>Alvorlighet: {SEVERITY[finding.severity].label}</Badge>
           <Badge>{TEST_METHOD[finding.test_method].label} test</Badge>
           <Badge>Sikkerhet: {CONFIDENCE[finding.confidence]}</Badge>
+          {finding.test_method === "ai" ? <AiBadge /> : null}
           {finding.status !== "open" ? <Badge tone="violet">Status: {{ ignored: "Ignorert", staged: "I endringskø", fixed: "Rettet", open: "Åpen" }[finding.status]}</Badge> : null}
         </div>
 
@@ -141,6 +167,25 @@ export function FindingDetail({ finding, open, onClose }: { finding: Finding | n
           </section>
         ) : null}
 
+        {sources ? (
+          <section className="ek-stack" data-gap="2" aria-labelledby="kilder">
+            <h3 id="kilder">Kilder i emnet</h3>
+            {sources.length ? (
+              <ul className="ek-list-reset ek-stack" data-gap="2">
+                {sources.map((s, i) => (
+                  <li key={i}>
+                    <blockquote className="ek-quote">«{s.quote}»</blockquote>
+                    {s.title ? <p className="ek-xs ek-muted">Fra «{s.title}»</p> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="ek-small ek-muted">KI-modellen oppga ingen sitater som kunne bekreftes i emnets innhold.</p>
+            )}
+            <p className="ek-xs ek-muted">Sitatene er kontrollert mot teksten i emnet. Påstander uten bekreftet kilde vises ikke.</p>
+          </section>
+        ) : null}
+
         {exemption ? (
           <Alert tone="info" title="Mulig unntak">
             {exemption}
@@ -174,17 +219,17 @@ export function FindingDetail({ finding, open, onClose }: { finding: Finding | n
         ) : null}
 
         <section className="ek-stack" data-gap="2" aria-labelledby="ignorer">
-          <h3 id="ignorer">Ignorer</h3>
+          <h3 id="ignorer">{dismiss.heading}</h3>
           {finding.status === "ignored" ? (
             <Button onClick={() => actions.reopen.mutate(finding.id, { onSuccess: onClose })} loading={actions.reopen.isPending}>
-              Gjenåpne funnet
+              {dismiss.reopen}
             </Button>
           ) : ignoring ? (
             <div className="ek-stack" data-gap="2">
               <TextArea
                 label="Begrunnelse"
                 optional
-                hint="Begrunnelsen lagres lokalt og vises i rapporter. Funnet forblir ignorert ved nye analyser."
+                hint={dismiss.hint}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 maxLength={1000}
@@ -196,12 +241,12 @@ export function FindingDetail({ finding, open, onClose }: { finding: Finding | n
                   loading={actions.ignore.isPending}
                   onClick={() => actions.ignore.mutate({ id: finding.id, note: note || undefined }, { onSuccess: onClose })}
                 >
-                  Ignorer funnet
+                  {dismiss.confirm}
                 </Button>
               </div>
             </div>
           ) : (
-            <Button onClick={() => setIgnoring(true)}>Ignorer …</Button>
+            <Button onClick={() => setIgnoring(true)}>{dismiss.start}</Button>
           )}
         </section>
       </div>

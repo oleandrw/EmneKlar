@@ -1,5 +1,5 @@
 // Types for API payloads shared across features.
-import type { Classification, Confidence, Domain, Severity, TestMethod } from "../labels";
+import type { AnalysisDomain, Classification, Confidence, Domain, Severity, TestMethod } from "../labels";
 
 export interface SessionData {
   csrf_token: string;
@@ -25,6 +25,7 @@ export interface SessionData {
   flags: Record<string, boolean>;
   ai: { external_allowed: boolean; confirm_before_send: boolean; providers_enabled: string[] };
   regulatory_profile: string;
+  analysis: { default_domains: AnalysisDomain[] };
 }
 
 export interface Course {

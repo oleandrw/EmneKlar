@@ -1,20 +1,23 @@
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 
 import { AppShell } from "./core/layout/AppShell";
 import { usePageTitle } from "./core/usePageTitle";
 import { useSession } from "./core/session";
-import { ButtonLink, EmptyState, PageHeader } from "./design-system";
-import { AccessibilityPage } from "./features/accessibility/AccessibilityPage";
-import { CanvasToolsPage } from "./features/canvas-tools/CanvasToolsPage";
-import { ContentQualityPage } from "./features/content-quality/ContentQualityPage";
-import { CourseStructurePage } from "./features/course-structure/CourseStructurePage";
-import { HelpPage } from "./features/help/HelpPage";
-import { HomepageBuilderPage } from "./features/homepage/HomepageBuilderPage";
+import { ButtonLink, EmptyState, PageHeader, Spinner } from "./design-system";
 import { OverviewPage } from "./features/overview/OverviewPage";
-import { QuizAssistantPage } from "./features/quiz-assistant/QuizAssistantPage";
-import { ReportsPage } from "./features/reports/ReportsPage";
-import { SettingsPage } from "./features/settings/SettingsPage";
 import { SetupWizard } from "./features/setup/SetupWizard";
+
+// Feature pages are loaded on demand, so the first screen appears quickly.
+const AccessibilityPage = lazy(() => import("./features/accessibility/AccessibilityPage").then((m) => ({ default: m.AccessibilityPage })));
+const CanvasToolsPage = lazy(() => import("./features/canvas-tools/CanvasToolsPage").then((m) => ({ default: m.CanvasToolsPage })));
+const ContentQualityPage = lazy(() => import("./features/content-quality/ContentQualityPage").then((m) => ({ default: m.ContentQualityPage })));
+const CourseStructurePage = lazy(() => import("./features/course-structure/CourseStructurePage").then((m) => ({ default: m.CourseStructurePage })));
+const HelpPage = lazy(() => import("./features/help/HelpPage").then((m) => ({ default: m.HelpPage })));
+const HomepageBuilderPage = lazy(() => import("./features/homepage/HomepageBuilderPage").then((m) => ({ default: m.HomepageBuilderPage })));
+const QuizAssistantPage = lazy(() => import("./features/quiz-assistant/QuizAssistantPage").then((m) => ({ default: m.QuizAssistantPage })));
+const ReportsPage = lazy(() => import("./features/reports/ReportsPage").then((m) => ({ default: m.ReportsPage })));
+const SettingsPage = lazy(() => import("./features/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 
 const START_PATHS: Record<string, string> = {
   oversikt: "/oversikt",
@@ -59,6 +62,7 @@ export function AppRoutes() {
         path="*"
         element={
           <AppShell>
+            <Suspense fallback={<Spinner label="Laster siden …" />}>
             <Routes>
               <Route index element={<Navigate to={START_PATHS[session.general.start_page] ?? "/oversikt"} replace />} />
               <Route path="oversikt" element={<OverviewPage />} />
@@ -73,6 +77,7 @@ export function AppRoutes() {
               <Route path="hjelp/:topic?" element={<HelpPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
+            </Suspense>
           </AppShell>
         }
       />

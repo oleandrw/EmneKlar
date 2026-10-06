@@ -93,6 +93,9 @@ export interface FixParams {
   decorative?: boolean;
   level?: number;
   lang?: string;
+  url?: string;
+  unlink?: boolean;
+  options?: string[];
 }
 
 export interface FixPreview {

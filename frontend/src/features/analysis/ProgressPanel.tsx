@@ -19,6 +19,28 @@ const STATUS_TEXT: Record<Job["status"], string> = {
   interrupted: "Avbrutt fordi EmneKlar ble avsluttet",
 };
 
+/** Wording for different kinds of jobs (analysis, quiz check, question generation). */
+export interface JobWording {
+  /** Definite noun, lower case: «analysen», «kontrollen», «genereringen». */
+  noun: string;
+  current: string;
+  findingsTitle: string;
+  findingsEmpty: string;
+  cancelNote: string;
+  /** Show only the total count (e.g. generated questions) instead of counts per domain. */
+  countOnly?: string;
+}
+
+export const ANALYSIS_WORDING: JobWording = {
+  noun: "analysen",
+  current: "Nå analyseres",
+  findingsTitle: "Funn så langt",
+  findingsEmpty: "Ingen funn registrert ennå.",
+  cancelNote: "Funn som allerede er registrert, beholdes og merkes som en avbrutt analyse.",
+};
+
+const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
 export function etaText(job: Job): string | null {
   const eta = job.progress.eta;
   if (FINAL_STATUSES.has(job.status) || !job.progress.determinate) return null;
@@ -42,14 +64,14 @@ function findingsByDomain(findings: Record<string, number>): { domain: Domain; c
 }
 
 /** Announces only coarse milestones, so screen readers are not flooded. */
-function useMilestoneAnnouncement(job: Job): string {
+function useMilestoneAnnouncement(job: Job, noun: string): string {
   const [message, setMessage] = useState("");
   const last = useRef<string>("");
   useEffect(() => {
     const p = job.progress;
     let key = `${job.status}:${p.phase}`;
     let text: string;
-    if (FINAL_STATUSES.has(job.status)) text = `Analysen er ${STATUS_TEXT[job.status].toLowerCase()}.`;
+    if (FINAL_STATUSES.has(job.status)) text = `${capitalize(noun)} er ${STATUS_TEXT[job.status].toLowerCase()}.`;
     else if (p.determinate && p.percent != null) {
       const quarter = Math.floor(p.percent / 25) * 25;
       key += `:${quarter}`;
@@ -59,15 +81,23 @@ function useMilestoneAnnouncement(job: Job): string {
       last.current = key;
       setMessage(text);
     }
-  }, [job]);
+  }, [job, noun]);
   return message;
 }
 
-export function ProgressPanel({ job, onBackground }: { job: Job; onBackground?: () => void }) {
+export function ProgressPanel({
+  job,
+  onBackground,
+  wording = ANALYSIS_WORDING,
+}: {
+  job: Job;
+  onBackground?: () => void;
+  wording?: JobWording;
+}) {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const action = useMutation({ mutationFn: (kind: "pause" | "resume" | "cancel") => jobAction(job.id, kind) });
   const p = job.progress;
-  const announcement = useMilestoneAnnouncement(job);
+  const announcement = useMilestoneAnnouncement(job, wording.noun);
   const final = FINAL_STATUSES.has(job.status);
   const listTotal = p.types.list?.total ?? 0;
   const listDone = p.types.list?.done ?? 0;
@@ -92,7 +122,7 @@ export function ProgressPanel({ job, onBackground }: { job: Job; onBackground?: 
             <p className="ek-stat__value" aria-hidden="true">
               {p.percent} % fullført
             </p>
-            <ProgressBar value={p.percent} label="Fremdrift for analysen" valueText={`${p.percent} prosent fullført`} />
+            <ProgressBar value={p.percent} label={`Fremdrift for ${wording.noun}`} valueText={`${p.percent} prosent fullført`} />
             <p className="ek-small">
               {final
                 ? `${formatNumber(p.done)} av ${formatNumber(p.total)} elementer behandlet`
@@ -121,7 +151,7 @@ export function ProgressPanel({ job, onBackground }: { job: Job; onBackground?: 
             <span className="ek-strong">{eta ?? "Beregner estimert tid …"}</span>
           </div>
           <div className="ek-stack" data-gap="1">
-            <span className="ek-small ek-muted">Nå analyseres</span>
+            <span className="ek-small ek-muted">{wording.current}</span>
             <span className="ek-strong ek-break">{p.current_item ?? "–"}</span>
             {p.current_operation ? <span className="ek-small ek-muted">Aktiv kontroll: {p.current_operation}</span> : null}
           </div>
@@ -156,9 +186,13 @@ export function ProgressPanel({ job, onBackground }: { job: Job; onBackground?: 
       ) : null}
 
       <div className="ek-stack" data-gap="2">
-        <h3>Funn så langt</h3>
-        {findings.length === 0 ? (
-          <p className="ek-small ek-muted">Ingen funn registrert ennå.</p>
+        <h3>{wording.findingsTitle}</h3>
+        {wording.countOnly ? (
+          <p className="ek-small">
+            {formatNumber(findings.reduce((sum, f) => sum + f.count, 0))} {wording.countOnly}
+          </p>
+        ) : findings.length === 0 ? (
+          <p className="ek-small ek-muted">{wording.findingsEmpty}</p>
         ) : (
           <ul className="ek-list-reset ek-cluster" data-gap="2">
             {findings.map((f) => (
@@ -171,7 +205,7 @@ export function ProgressPanel({ job, onBackground }: { job: Job; onBackground?: 
       </div>
 
       {job.status === "failed" ? (
-        <Alert tone="danger" role="alert" title="Analysen feilet">
+        <Alert tone="danger" role="alert" title={`${capitalize(wording.noun)} feilet`}>
           {job.error}
         </Alert>
       ) : null}
@@ -198,8 +232,8 @@ export function ProgressPanel({ job, onBackground }: { job: Job; onBackground?: 
       <Disclosure summary="Vis detaljer">
         <div className="ek-stack" data-gap="2">
           <p className="ek-small">
-            Tid beregnes ut fra hvor lang tid hver type kontroll faktisk har tatt i denne analysen. Når usikkerheten er
-            stor, vises et intervall.
+            Tid beregnes ut fra hvor lang tid hver type oppgave faktisk har tatt så langt. Når usikkerheten er stor,
+            vises et intervall.
           </p>
           {p.messages.length ? (
             <ul className="ek-small">
@@ -220,12 +254,12 @@ export function ProgressPanel({ job, onBackground }: { job: Job; onBackground?: 
           action.mutate("cancel");
           setConfirmCancel(false);
         }}
-        title="Avbryte analysen?"
-        confirmLabel="Avbryt analysen"
-        cancelLabel="Fortsett analysen"
+        title={`Avbryte ${wording.noun}?`}
+        confirmLabel={`Avbryt ${wording.noun}`}
+        cancelLabel={`Fortsett ${wording.noun}`}
         danger
       >
-        <p>Funn som allerede er registrert, beholdes og merkes som en avbrutt analyse.</p>
+        <p>{wording.cancelNote}</p>
       </ConfirmDialog>
     </div>
   );

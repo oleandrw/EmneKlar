@@ -93,3 +93,22 @@ def test_logging_filter_redacts(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.INFO):
         logger.info("Kaller Canvas med Authorization: Bearer 1234~%s", "z" * 30)
     assert "zzzzzzzzzz" not in caplog.text
+
+
+def test_datetimes_come_back_timezone_aware(container: AppContainer) -> None:
+    """SQLite drops UTC offsets; the API must still serialise UTC timestamps with an offset."""
+    from datetime import UTC, datetime
+
+    from emneklar.core.storage.models import Report
+
+    container.migrate()
+    with container.db.session() as session:
+        row = Report(course_id="1", report_type="full", fmt="html", title="x", filename="x.html",
+                     created_at=datetime(2026, 10, 6, 19, 33, tzinfo=UTC))
+        session.add(row)
+        session.flush()
+        report_id = row.id
+    with container.db.session() as session:
+        stored = session.get(Report, report_id)
+        assert stored is not None and stored.created_at.tzinfo is not None
+        assert stored.created_at.isoformat() == "2026-10-06T19:33:00+00:00"

@@ -5,7 +5,7 @@ import { Link } from "react-router";
 import { api } from "../../core/api/client";
 import type { Job } from "../../core/api/types";
 import { useCurrentCourse } from "../../core/course";
-import { DOMAIN_LABEL, type Domain } from "../../core/labels";
+import { DOMAIN_LABEL, type AnalysisDomain } from "../../core/labels";
 import { useSession } from "../../core/session";
 import { useUi } from "../../core/ui";
 import {
@@ -31,13 +31,13 @@ interface ContentIndex {
   partial: boolean;
 }
 
-const DOMAIN_HINTS: Record<Domain, string> = {
+const DOMAIN_HINTS: Record<AnalysisDomain, string> = {
   accessibility: "Bilder, overskrifter, lenker, tabeller, kontrast, video og dokumenter.",
   content_quality: "Døde lenker, medier som ikke virker og unødvendig kode.",
   structure: "Moduler, rekkefølge, navngiving og studentreisen.",
   quiz: "Klassiske quizer: fasit, svaralternativer og duplikater.",
 };
-const RESULT_PATHS: Record<Domain, string> = {
+const RESULT_PATHS: Record<AnalysisDomain, string> = {
   accessibility: "/universell-utforming",
   content_quality: "/innholdskvalitet",
   structure: "/emnestruktur",
@@ -80,15 +80,15 @@ export function AnalysisDialog({ open, onClose }: { open: boolean; onClose: () =
   useNotifyOnCompletion(job.data);
 
   const [scope, setScope] = useState<Scope>("course");
-  const [domains, setDomains] = useState<Domain[]>(["accessibility", "content_quality", "structure"]);
+  const [domains, setDomains] = useState<AnalysisDomain[]>(session.analysis.default_domains);
   const [modules, setModules] = useState<string[]>([]);
   const [items, setItems] = useState<string[]>([]);
   const [filter, setFilter] = useState("");
   const client = useQueryClient();
 
   useEffect(() => {
-    if (open && ui.analysisPreset?.domains) setDomains(ui.analysisPreset.domains);
-  }, [open, ui.analysisPreset]);
+    if (open) setDomains(ui.analysisPreset?.domains ?? session.analysis.default_domains);
+  }, [open, ui.analysisPreset, session.analysis.default_domains]);
 
   const index = useQuery({
     queryKey: ["content-index", courseId],
@@ -112,7 +112,9 @@ export function AnalysisDialog({ open, onClose }: { open: boolean; onClose: () =
   }, [index.data, filter]);
 
   const quizEnabled = session.flags.quiz_assistant !== false;
-  const availableDomains: Domain[] = ["accessibility", "content_quality", "structure", ...(quizEnabled ? (["quiz"] as Domain[]) : [])];
+  const availableDomains: AnalysisDomain[] = [
+    "accessibility", "content_quality", "structure", ...(quizEnabled ? (["quiz"] as AnalysisDomain[]) : []),
+  ];
   const canStart =
     Boolean(courseId) &&
     domains.length > 0 &&
@@ -146,7 +148,7 @@ export function AnalysisDialog({ open, onClose }: { open: boolean; onClose: () =
 
   const showProgress = Boolean(jobId && job.data);
   const done = job.data && FINAL_STATUSES.has(job.data.status);
-  const ranDomains = ((job.data?.params?.domains ?? []) as Domain[]).filter((d) => d in RESULT_PATHS);
+  const ranDomains = ((job.data?.params?.domains ?? []) as AnalysisDomain[]).filter((d) => d in RESULT_PATHS);
 
   return (
     <Dialog
