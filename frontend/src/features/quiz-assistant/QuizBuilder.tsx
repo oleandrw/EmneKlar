@@ -40,7 +40,7 @@ const DEFAULT_SETTINGS: QuizSettings = {
 };
 
 /** ISO (UTC) → value for <input type="datetime-local"> in local time. */
-function toLocalInput(iso: string | null): string {
+export function toLocalInput(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
@@ -48,7 +48,7 @@ function toLocalInput(iso: string | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function fromLocalInput(value: string): string | null {
+export function fromLocalInput(value: string): string | null {
   if (!value) return null;
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();

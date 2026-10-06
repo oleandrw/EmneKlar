@@ -151,6 +151,12 @@
     flex-wrap: wrap;
     padding: var(--space-2) var(--space-4);
     min-height: var(--header-height);
+    row-gap: var(--space-2);
+  }
+  .ek-header__group {
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
   }
   .ek-shell__main {
     padding: var(--space-5) var(--space-4) var(--space-10);
@@ -602,6 +608,8 @@ button.ek-card--link:hover {
 
 /* ==================================================================== tables */
 .ek-table-wrap {
+  /* Positioned, so visually hidden (absolutely positioned) labels in cells stay inside the scroll area. */
+  position: relative;
   width: 100%;
   overflow-x: auto;
   border: 1px solid var(--color-border);
