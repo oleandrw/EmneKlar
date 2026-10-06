@@ -312,9 +312,9 @@ class ModuleItemUpdate(Applier):
             # Already moved? Look in the proposed module.
             item = await api.get_module_item(change.course_id, str(change.proposed["module_id"]),
                                              change.target["object_id"])
-        requirement = item.get("completion_requirement") or None
-        if requirement:
-            requirement = {k: v for k, v in requirement.items() if k in ("type", "min_score")}
+        from emneklar.core.canvas.requirements import normalize
+
+        requirement = normalize(item.get("completion_requirement"))
         return {"module_id": str(item.get("module_id") or module_id), "position": item.get("position"),
                 "title": item.get("title"), "indent": item.get("indent"), "completion_requirement": requirement}
 

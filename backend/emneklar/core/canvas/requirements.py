@@ -45,6 +45,16 @@ def validate_requirement(item_type: str, requirement: dict[str, Any]) -> None:
             raise AppError("validation_error", detail="Minstepoeng må være et tall ≥ 0") from exc
 
 
+def normalize(requirement: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Canvas returns extra keys (e.g. ``completed``) – compare ``type`` and, for min_score, ``min_score``."""
+    if not requirement or not requirement.get("type"):
+        return None
+    result: dict[str, Any] = {"type": requirement["type"]}
+    if requirement.get("type") == "min_score" and requirement.get("min_score") is not None:
+        result["min_score"] = float(requirement["min_score"])
+    return result
+
+
 def describe(requirement: dict[str, Any] | None) -> str:
     if not requirement:
         return "Ingen krav"

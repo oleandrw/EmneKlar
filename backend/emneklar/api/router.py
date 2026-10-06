@@ -19,6 +19,10 @@ ROUTERS = [
     "emneklar.core.ai.api",
     "emneklar.features.accessibility.ai_alt",
     "emneklar.features.quiz_assistant.api",
+    "emneklar.features.module_requirements.api",
+    "emneklar.features.blueprint.api",
+    "emneklar.features.canvas_settings.api",
+    "emneklar.features.homepage_builder.api",
 ]
 
 

@@ -263,9 +263,22 @@ def seed_state(origin: str = "http://canvas.test") -> FakeCanvasState:
         "default_view": "wiki", "blueprint": True, "term": {"id": "1", "name": "Standardsemester"},
         "enrollments": [{"type": "teacher", "role": "TeacherEnrollment", "enrollment_state": "active"}]})
     bp.permissions = dict(c.permissions)
-    bp.pages = {"mal-forside": _page("mal-forside", "Malforside", "<h2>Mal</h2>", front=True)}
+    bp.pages = {"mal-forside": _page("mal-forside", "Malforside", "<h2>Mal</h2>", front=True),
+                "mal-ressurser": _page("mal-ressurser", "Malressurser", "<h2>Ressurser</h2>")}
     bp.assignments = {"391": {"id": "391", "name": "Malinnlevering", "description": "", "published": False,
-                              "html_url": "/courses/102/assignments/391", "points_possible": 5}}
+                              "html_url": "/courses/102/assignments/391", "points_possible": 5,
+                              "submission_types": ["online_upload"]}}
+    bp.discussions = {"591": {"id": "591", "title": "Maldiskusjon", "message": "<p>Diskuter.</p>",
+                              "html_url": "/courses/102/discussion_topics/591", "published": True, "assignment_id": None}}
+    bp.modules = [{"id": "291", "name": "Malmodul", "position": 1, "require_sequential_progress": False,
+                   "requirement_type": "all", "prerequisite_module_ids": [], "published": True, "unlock_at": None,
+                   "items": [{"id": "2901", "title": "Malforside", "type": "Page", "page_url": "mal-forside",
+                              "position": 1, "indent": 0, "published": True, "completion_requirement": None,
+                              "html_url": "/courses/102/modules/items/2901"},
+                             {"id": "2902", "title": "Malinnlevering", "type": "Assignment", "content_id": "391",
+                              "position": 2, "indent": 0, "published": False, "completion_requirement": None,
+                              "html_url": "/courses/102/modules/items/2902"}]}]
+    bp.restrictions = {("assignment", "391"): {"restricted": True, "restrictions": {"content": True, "points": True}}}
     bp.blueprint_template = {"id": "1", "course_id": BLUEPRINT_COURSE_ID, "associated_course_count": 3,
                              "last_export_completed_at": "2026-08-01T10:00:00Z", "latest_migration": None}
     state.courses[BLUEPRINT_COURSE_ID] = bp
@@ -369,6 +382,18 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
                 return p
         raise _Http(404, "page not found")
 
+    def with_locks(c: CourseData, content_type: str, items: list[dict[str, Any]], key: str = "id") -> list[dict[str, Any]]:
+        """Blueprint courses report lock status on list calls (like Canvas)."""
+        if c.blueprint_template is None:
+            return items
+        result = []
+        for item in items:
+            lock = c.restrictions.get((content_type, str(item.get(key))))
+            result.append({**item, "is_master_course_master_content": True,
+                           "restricted_by_master_course": bool(lock and lock["restricted"]),
+                           "master_course_restrictions": lock["restrictions"] if lock and lock["restricted"] else None})
+        return result
+
     def page_json(p: dict[str, Any], with_body: bool) -> dict[str, Any]:
         data = copy.deepcopy(p)
         if p.get("editor") == "block_editor":
@@ -398,7 +423,7 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
             return JSONResponse(page_json(p, True))
         include_body = "body" in request.query_params.getlist("include[]")
         items = [page_json(p, include_body) for p in sorted(c.pages.values(), key=lambda p: p["title"])]
-        return paginate(request, items)
+        return paginate(request, with_locks(c, "wiki_page", items, key="page_id"))
 
     async def page(request: Request) -> Response:
         c = course(request)
@@ -549,7 +574,8 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
     # -- assignments / discussions / files ------------------------------------------------------
 
     async def assignments(request: Request) -> Response:
-        return paginate(request, list(course(request).assignments.values()))
+        c = course(request)
+        return paginate(request, with_locks(c, "assignment", list(c.assignments.values())))
 
     async def assignment(request: Request) -> Response:
         c = course(request)
@@ -562,7 +588,8 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
         return JSONResponse(a)
 
     async def discussions(request: Request) -> Response:
-        return paginate(request, list(course(request).discussions.values()))
+        c = course(request)
+        return paginate(request, with_locks(c, "discussion_topic", list(c.discussions.values())))
 
     async def discussion(request: Request) -> Response:
         c = course(request)
@@ -622,7 +649,7 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
             c.questions[qid] = []
             c.groups[qid] = []
             return JSONResponse(quiz)
-        return paginate(request, list(c.quizzes.values()))
+        return paginate(request, with_locks(c, "quiz", list(c.quizzes.values())))
 
     async def quiz(request: Request) -> Response:
         c = course(request)

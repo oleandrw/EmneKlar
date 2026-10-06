@@ -14,9 +14,16 @@ from emneklar.core.storage.models import Backup
 
 router = APIRouter(prefix="/api")
 
-DOMAIN_LABELS = {"accessibility": "UU-rettinger", "content_quality": "Innholdsrettinger",
-                 "structure": "Strukturendringer", "quiz": "Quizendringer", "homepage": "Forsideendringer",
-                 "canvas": "Canvas-endringer"}
+#: domain -> (singular, plural) for «1 UU-retting» / «4 UU-rettinger».
+DOMAIN_LABELS = {"accessibility": ("UU-retting", "UU-rettinger"),
+                 "content_quality": ("innholdsretting", "innholdsrettinger"),
+                 "structure": ("strukturendring", "strukturendringer"), "quiz": ("quizendring", "quizendringer"),
+                 "homepage": ("forsideendring", "forsideendringer"), "canvas": ("Canvas-endring", "Canvas-endringer")}
+
+
+def group_label(domain: str, count: int) -> str:
+    singular, plural = DOMAIN_LABELS.get(domain, (domain, domain))
+    return singular if count == 1 else plural
 
 
 class Ids(BaseModel):
@@ -43,7 +50,7 @@ async def list_changes(course_id: str | None = None, include_done: bool = False,
         groups[item["domain"]].append(item)
     return {
         "items": items,
-        "groups": [{"domain": d, "label": DOMAIN_LABELS.get(d, d), "count": len(v)} for d, v in groups.items()],
+        "groups": [{"domain": d, "label": group_label(d, len(v)), "count": len(v)} for d, v in groups.items()],
         "dry_run": c.is_dry_run(),
     }
 
