@@ -122,8 +122,10 @@ class NotificationSettings(_Section):
 
 class AdvancedSettings(_Section):
     feature_flags: dict[str, bool] = Field(default_factory=dict)
-    update_repository: str = "oleandrw/EmneKlar"
+    # GitHub "owner/repo" for update checks. None = use the install's own git remote (if any).
+    update_repository: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$")
     update_channel: Literal["stable", "prerelease"] = "stable"
+    check_updates: bool = True
     debug_logging: bool = False
 
 

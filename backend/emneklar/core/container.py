@@ -32,6 +32,7 @@ from emneklar.core.storage.settings import AppSettings, SettingsStore
 if TYPE_CHECKING:
     from emneklar.core.ai.service import AIService
     from emneklar.core.changes.engine import ChangeEngine
+    from emneklar.core.updates.service import UpdateService
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +67,7 @@ class AppContainer:
         canvas_transport: httpx.AsyncBaseTransport | None = None,
         link_transport: httpx.AsyncBaseTransport | None = None,
         ai_transport: httpx.AsyncBaseTransport | None = None,
+        update_transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         config.ensure_dirs()
         self.config = config
@@ -78,12 +80,14 @@ class AppContainer:
         self.canvas_transport = canvas_transport
         self.link_transport = link_transport
         self.ai_transport = ai_transport
+        self.update_transport = update_transport
         self._sessions: SessionStore | None = None
         self._canvas: CanvasClient | None = None
         self._canvas_key: tuple[str, int] | None = None
         self._changes: ChangeEngine | None = None
         self._ai: AIService | None = None
         self._parsers: Any = None
+        self._updates: UpdateService | None = None
         self.started_at = datetime.now(UTC)
 
     # -- lifecycle ---------------------------------------------------------------------
@@ -98,11 +102,23 @@ class AppContainer:
         return self._sessions
 
     def startup(self) -> None:
+        from emneklar.core.storage.maintenance import prune_snapshots
+
         self.migrate()
         interrupted = self.jobs.recover_after_restart()
         if interrupted:
             log.info("%s jobb(er) ble avbrutt ved forrige avslutning", interrupted)
+        settings = self.settings.get()
+        pruned = prune_snapshots(self.db, settings.privacy.snapshot_retention_days)
+        if pruned:
+            log.info("%s gamle øyeblikksbilder av emner ble slettet (oppbevaringstid)", pruned)
+        self.apply_log_level(settings)
+        self.settings.on_change(self.apply_log_level)
         self._write_instance_file()
+
+    @staticmethod
+    def apply_log_level(settings: AppSettings) -> None:
+        logging.getLogger("emneklar").setLevel(logging.DEBUG if settings.advanced.debug_logging else logging.INFO)
 
     async def aclose(self) -> None:
         await self.jobs.shutdown()
@@ -201,3 +217,11 @@ class AppContainer:
 
             self._ai = AIService(self)
         return self._ai
+
+    @property
+    def updates(self) -> UpdateService:
+        if self._updates is None:
+            from emneklar.core.updates.service import UpdateService
+
+            self._updates = UpdateService(self)
+        return self._updates

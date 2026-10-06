@@ -9,6 +9,7 @@ from fastapi import APIRouter
 ROUTERS = [
     "emneklar.api.routes_system",
     "emneklar.api.routes_canvas",
+    "emneklar.api.routes_settings",
     "emneklar.features.analysis.api",
     "emneklar.features.findings.api",
     "emneklar.core.changes.api",
@@ -23,6 +24,7 @@ ROUTERS = [
     "emneklar.features.blueprint.api",
     "emneklar.features.canvas_settings.api",
     "emneklar.features.homepage_builder.api",
+    "emneklar.features.reporting.api",
 ]
 
 

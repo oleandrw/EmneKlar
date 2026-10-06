@@ -95,6 +95,8 @@ class AnalysisContext:
         return self._scope_refs
 
     def in_scope(self, obj: SnapObj) -> bool:
+        if obj.meta.get("published") is False and not self.settings.analysis.include_unpublished:
+            return False  # Innstillinger → Analyse: «Ta med upublisert innhold» is off
         refs = self.scope_refs()
         return refs is None or obj.ref in refs
 
