@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +14,12 @@ from fastapi.testclient import TestClient
 
 from emneklar.core.container import AppContainer
 from emneklar.core.updates import service as update_service
-from emneklar.core.updates.service import UpdateService, git_remote_repository
+from emneklar.core.updates.service import (
+    UpdateService,
+    git_remote_repository,
+    install_json_repository,
+    update_command,
+)
 from emneklar.core.updates.version import Version, changelog_sections
 from tests.conftest import wait_for_job
 from tests.fakes.fake_canvas import COURSE_ID
@@ -105,6 +112,32 @@ def test_repository_from_git_remote(tmp_path: Path, url: str) -> None:
     assert git_remote_repository(tmp_path) == "acme/EmneKlar"
 
 
+def test_repository_from_a_release_package(container: AppContainer, tmp_path: Path) -> None:
+    (tmp_path / "install.json").write_text('{"type": "release", "version": "0.1.0", "repository": "acme/EmneKlar"}',
+                                           encoding="utf-8")
+    assert install_json_repository(tmp_path) == "acme/EmneKlar"
+    container.migrate()
+    assert UpdateService(container, repo_dir=tmp_path).repository() == "acme/EmneKlar"
+    (tmp_path / "install.json").write_text('{"repository": "https://evil.example/x"}', encoding="utf-8")
+    assert install_json_repository(tmp_path) is None
+
+
+def test_update_command_survives_spaces_in_the_install_path() -> None:
+    bat = Path(r"C:\Users\Ola Nordmann\EmneKlar\update.bat")
+    command = update_command(bat, allow_major=False, comspec=r"C:\Windows\system32\cmd.exe")
+    assert command == r'"C:\Windows\system32\cmd.exe" /d /s /c ""C:\Users\Ola Nordmann\EmneKlar\update.bat" --from-app"'
+    assert update_command(bat, allow_major=True, comspec="cmd.exe").endswith('--from-app --allow-major"')
+
+
+@pytest.mark.skipif(os.name != "nt", reason="needs cmd.exe")
+def test_update_command_really_starts_a_bat_file_in_a_folder_with_spaces(tmp_path: Path) -> None:
+    folder = tmp_path / "Ola Nordmann" / "EmneKlar"
+    folder.mkdir(parents=True)
+    (folder / "update.bat").write_text('@echo off\r\necho %*> "%~dp0args.txt"\r\n', encoding="ascii")
+    subprocess.run(update_command(folder / "update.bat", allow_major=True), check=True, timeout=60)
+    assert (folder / "args.txt").read_text(encoding="ascii").strip() == "--from-app --allow-major"
+
+
 def github(release: dict[str, Any] | None, status: int = 200) -> tuple[list[httpx.Request], httpx.MockTransport]:
     seen: list[httpx.Request] = []
 
@@ -145,7 +178,7 @@ async def test_update_check_failures_are_stored(container: AppContainer, tmp_pat
 
 def test_start_refuses_major_without_confirmation(canvas_client: TestClient, canvas_container: AppContainer,
                                                  monkeypatch: pytest.MonkeyPatch) -> None:
-    launched: list[list[str]] = []
+    launched: list[str] = []
     monkeypatch.setattr(update_service.subprocess, "Popen", lambda args, **_: launched.append(args))
     monkeypatch.setattr(UpdateService, "install_info", lambda self: {"type": "release", "can_start_from_app": True})
     canvas_client.patch("/api/settings/advanced", json={"update_repository": "acme/EmneKlar"})
@@ -156,3 +189,20 @@ def test_start_refuses_major_without_confirmation(canvas_client: TestClient, can
     assert launched == [], "nothing is started without confirmation"
     started = canvas_client.post("/api/updates/start", json={"confirm_major": True}).json()
     assert started["started"] is True and launched and "--allow-major" in launched[0]
+
+
+def test_only_the_newest_database_copies_are_kept(tmp_path: Path) -> None:
+    from emneklar.core.storage.maintenance import prune_database_copies
+
+    folder = tmp_path / "database"
+    folder.mkdir()
+    for n in range(8):
+        for prefix in ("for-oppdatering-0.1.0", "for-migrering-abc"):
+            path = folder / f"{prefix}-{n}.db"
+            path.write_bytes(b"x")
+            os.utime(path, (1_700_000_000 + n, 1_700_000_000 + n))
+    (folder / "min-egen-kopi.db").write_bytes(b"x")
+    assert prune_database_copies(tmp_path, keep=5) == 6
+    left = sorted(p.name for p in folder.iterdir())
+    assert "min-egen-kopi.db" in left, "files EmneKlar did not make are never touched"
+    assert [n for n in left if n.startswith("for-oppdatering")] == [f"for-oppdatering-0.1.0-{n}.db" for n in range(3, 8)]

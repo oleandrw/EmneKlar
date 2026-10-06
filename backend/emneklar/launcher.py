@@ -13,16 +13,12 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
-import json
 import logging
 import socket
 import sys
 import threading
 import time
-import urllib.error
-import urllib.request
 import webbrowser
-from pathlib import Path
 
 import uvicorn
 
@@ -31,6 +27,7 @@ from emneklar.config import ConfigError, RuntimeConfig
 from emneklar.core.container import AppContainer
 from emneklar.core.logging_setup import configure_logging
 from emneklar.main import create_app
+from emneklar.manage import fetch_health, request_launch_url, running_instance
 
 log = logging.getLogger("emneklar.launcher")
 
@@ -42,37 +39,6 @@ def _port_free(host: str, port: int) -> bool:
         except OSError:
             return False
     return True
-
-
-def _http_json(url: str, *, method: str = "GET", headers: dict[str, str] | None = None, timeout: float = 2.0) -> dict:
-    # Only ever called with http://127.0.0.1:<port>/control/... built by this module.
-    request = urllib.request.Request(  # noqa: S310
-        url, method=method, headers=headers or {}, data=b"" if method == "POST" else None)
-    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
-        return json.loads(response.read().decode("utf-8"))
-
-
-def running_instance(config: RuntimeConfig) -> dict | None:
-    """Return the running instance's info (incl. control secret) if one answers."""
-    path: Path = config.run_dir / "instance.json"
-    try:
-        info = json.loads(path.read_text(encoding="utf-8"))
-        health = _http_json(f"{info['origin']}/api/health")
-    except (OSError, ValueError, KeyError, urllib.error.URLError):
-        return None
-    if health.get("app") != APP_NAME:
-        return None
-    return info
-
-
-def request_launch_url(info: dict) -> str | None:
-    try:
-        data = _http_json(f"{info['origin']}/control/launch-url", method="POST",
-                          headers={"X-EmneKlar-Control": info["control_secret"]})
-    except (OSError, ValueError, urllib.error.URLError):
-        return None
-    url = data.get("url")
-    return url if isinstance(url, str) else None
 
 
 def _announce(url: str, open_browser: bool) -> None:
@@ -88,14 +54,11 @@ def _announce(url: str, open_browser: bool) -> None:
         webbrowser.open(url)
 
 
-def _wait_and_open(url: str, health: str, open_browser: bool) -> None:
+def _wait_and_open(url: str, origin: str, open_browser: bool) -> None:
     for _ in range(150):
-        try:
-            with urllib.request.urlopen(health, timeout=1) as response:  # noqa: S310 - fixed local URL
-                if response.status == 200:
-                    break
-        except OSError:
-            time.sleep(0.2)
+        if fetch_health(origin, timeout=1) is not None:
+            break
+        time.sleep(0.2)
     _announce(url, open_browser)
 
 
@@ -115,7 +78,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     config.ensure_dirs()
 
-    existing = running_instance(config)
+    existing = running_instance(config.run_dir)
     if existing is not None:
         url = request_launch_url(existing)
         if url:
@@ -144,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
     app.state.request_shutdown = lambda: setattr(server, "should_exit", True)
     token = config.dev_launch_token or container.sessions.new_launch_token()
     url = f"{config.origin}/auth/launch?token={token}"
-    threading.Thread(target=_wait_and_open, args=(url, f"{config.origin}/api/health", not args.no_browser),
+    threading.Thread(target=_wait_and_open, args=(url, config.origin, not args.no_browser),
                      daemon=True).start()
     server.run()
     return 0

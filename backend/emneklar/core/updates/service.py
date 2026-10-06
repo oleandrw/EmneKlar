@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import os
 import re
@@ -48,6 +49,28 @@ def git_remote_repository(repo_dir: Path) -> str | None:
     return match.group(1) if match else None
 
 
+def install_json_repository(repo_dir: Path) -> str | None:
+    """owner/repo from the ``install.json`` of a release package (written by scripts/package_release.py)."""
+    try:
+        data = json.loads((repo_dir / "install.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    repo = data.get("repository") if isinstance(data, dict) else None
+    return repo if isinstance(repo, str) and REPO_RE.match(repo) else None
+
+
+def update_command(bat: Path, *, allow_major: bool, comspec: str | None = None) -> str:
+    r"""The cmd.exe command line that starts update.bat – also when the folder name contains spaces.
+
+    With ``/s``, cmd.exe removes exactly the outer pair of quotes after ``/c`` and keeps the quoted path:
+    ``"C:\Windows\system32\cmd.exe" /d /s /c ""C:\Users\Ola Nordmann\EmneKlar\update.bat" --from-app"``.
+    (An argument list would be quoted by Python in a way cmd.exe splits at the first space.)
+    """
+    shell = comspec or os.environ.get("COMSPEC") or "cmd.exe"
+    extra = " --allow-major" if allow_major else ""
+    return f'"{shell}" /d /s /c ""{bat}" --from-app{extra}"'
+
+
 def git_branch(repo_dir: Path) -> str | None:
     try:
         head = (repo_dir / ".git" / "HEAD").read_text(encoding="utf-8").strip()
@@ -76,10 +99,11 @@ class UpdateService:
                 "can_start_from_app": os.name == "nt" and (self.repo_dir / "update.bat").exists()}
 
     def repository(self) -> str | None:
+        """Same order as update.bat (scripts/update.py): app settings → Git remote → install.json."""
         configured = self.c.settings.get().advanced.update_repository
         if configured and REPO_RE.match(configured):
             return configured
-        return git_remote_repository(self.repo_dir)
+        return git_remote_repository(self.repo_dir) or install_json_repository(self.repo_dir)
 
     # -- status ---------------------------------------------------------------------------------
 
@@ -179,11 +203,9 @@ class UpdateService:
         if status["is_major"] and not confirm_major:
             raise AppError("confirmation_required", status=409, message="Dette er en større oppdatering. Les "
                            "endringene og bekreft før du oppdaterer.")
-        args = ["cmd.exe", "/c", str(self.repo_dir / "update.bat"), "--from-app"]
-        if confirm_major:
-            args.append("--allow-major")
+        command = update_command(self.repo_dir / "update.bat", allow_major=confirm_major)
         flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
-        subprocess.Popen(args, cwd=self.repo_dir, creationflags=flags, close_fds=True)
+        subprocess.Popen(command, cwd=self.repo_dir, creationflags=flags, close_fds=True)
         log.info("Oppdatering startet fra appen (til %s)", status["latest"]["version"])
         return {"started": True, "message": "Oppdateringen kjører i et eget vindu. EmneKlar starter på nytt når den er "
                                             "ferdig."}
