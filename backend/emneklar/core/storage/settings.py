@@ -54,7 +54,7 @@ class AnalysisSettings(_Section):
     default_domains: list[Literal["accessibility", "content_quality", "structure", "quiz"]] = Field(
         default_factory=lambda: ["accessibility", "content_quality", "structure"]
     )
-    regulatory_profile: str = "no-lovkrav"
+    regulatory_profile: str = "no-offentlig-2023"
     check_external_links: bool = True
     link_timeout_seconds: int = Field(10, ge=3, le=60)
     link_concurrency: int = Field(6, ge=1, le=16)
@@ -62,7 +62,7 @@ class AnalysisSettings(_Section):
     link_cache_hours: int = Field(24, ge=0, le=336)
     check_documents: bool = True
     max_document_mb: int = Field(25, ge=1, le=200)
-    canvas_concurrency: int = Field(4, ge=1, le=8)
+    canvas_concurrency: int = Field(3, ge=1, le=6)
     include_unpublished: bool = True
 
 

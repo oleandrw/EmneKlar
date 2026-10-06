@@ -1,0 +1,199 @@
+{
+  "id": "wcag22-aa",
+  "version": "2026.10.1",
+  "title": "WCAG 2.2 AA – anbefalt beste praksis",
+  "short_title": "WCAG 2.2 AA (anbefalt)",
+  "description": "Alle suksesskriterier på nivå A og AA i WCAG 2.2 (55 kriterier, tilsvarer EN 301 549 V4.1.1 kapittel 9). Dette er ikke lovkrav i Norge per oktober 2026, men anbefalt praksis og sannsynlig framtidig krav.",
+  "jurisdiction": null,
+  "sector": "best_practice",
+  "is_legal_requirement": false,
+  "wcag_version": "2.2",
+  "standard": "WCAG 2.2 (W3C-anbefaling, utgave 12. desember 2024) / EN 301 549 V4.1.1 (2026-09)",
+  "verified_at": "2026-10-06",
+  "legal_basis": [
+    {
+      "title": "W3C: Web Content Accessibility Guidelines (WCAG) 2.2",
+      "url": "https://www.w3.org/TR/WCAG22/"
+    },
+    {
+      "title": "Uutilsynet: Status for nyere versjoner av WCAG",
+      "url": "https://www.uutilsynet.no/fremtidig-regelverk/status-nyere-versjoner-av-wcag/1868"
+    }
+  ],
+  "criteria": {
+    "1.1.1": {
+      "status": "best_practice"
+    },
+    "1.2.1": {
+      "status": "best_practice"
+    },
+    "1.2.2": {
+      "status": "best_practice"
+    },
+    "1.2.3": {
+      "status": "best_practice"
+    },
+    "1.2.4": {
+      "status": "best_practice"
+    },
+    "1.2.5": {
+      "status": "best_practice"
+    },
+    "1.3.1": {
+      "status": "best_practice"
+    },
+    "1.3.2": {
+      "status": "best_practice"
+    },
+    "1.3.3": {
+      "status": "best_practice"
+    },
+    "1.3.4": {
+      "status": "best_practice"
+    },
+    "1.3.5": {
+      "status": "best_practice"
+    },
+    "1.4.1": {
+      "status": "best_practice"
+    },
+    "1.4.2": {
+      "status": "best_practice"
+    },
+    "1.4.3": {
+      "status": "best_practice"
+    },
+    "1.4.4": {
+      "status": "best_practice"
+    },
+    "1.4.5": {
+      "status": "best_practice"
+    },
+    "1.4.10": {
+      "status": "best_practice"
+    },
+    "1.4.11": {
+      "status": "best_practice"
+    },
+    "1.4.12": {
+      "status": "best_practice"
+    },
+    "1.4.13": {
+      "status": "best_practice"
+    },
+    "2.1.1": {
+      "status": "best_practice"
+    },
+    "2.1.2": {
+      "status": "best_practice"
+    },
+    "2.1.4": {
+      "status": "best_practice"
+    },
+    "2.2.1": {
+      "status": "best_practice"
+    },
+    "2.2.2": {
+      "status": "best_practice"
+    },
+    "2.3.1": {
+      "status": "best_practice"
+    },
+    "2.4.1": {
+      "status": "best_practice"
+    },
+    "2.4.2": {
+      "status": "best_practice"
+    },
+    "2.4.3": {
+      "status": "best_practice"
+    },
+    "2.4.4": {
+      "status": "best_practice"
+    },
+    "2.4.5": {
+      "status": "best_practice"
+    },
+    "2.4.6": {
+      "status": "best_practice"
+    },
+    "2.4.7": {
+      "status": "best_practice"
+    },
+    "2.4.11": {
+      "status": "best_practice"
+    },
+    "2.5.1": {
+      "status": "best_practice"
+    },
+    "2.5.2": {
+      "status": "best_practice"
+    },
+    "2.5.3": {
+      "status": "best_practice"
+    },
+    "2.5.4": {
+      "status": "best_practice"
+    },
+    "2.5.7": {
+      "status": "best_practice"
+    },
+    "2.5.8": {
+      "status": "best_practice"
+    },
+    "3.1.1": {
+      "status": "best_practice"
+    },
+    "3.1.2": {
+      "status": "best_practice"
+    },
+    "3.2.1": {
+      "status": "best_practice"
+    },
+    "3.2.2": {
+      "status": "best_practice"
+    },
+    "3.2.3": {
+      "status": "best_practice"
+    },
+    "3.2.4": {
+      "status": "best_practice"
+    },
+    "3.2.6": {
+      "status": "best_practice"
+    },
+    "3.3.1": {
+      "status": "best_practice"
+    },
+    "3.3.2": {
+      "status": "best_practice"
+    },
+    "3.3.3": {
+      "status": "best_practice"
+    },
+    "3.3.4": {
+      "status": "best_practice"
+    },
+    "3.3.7": {
+      "status": "best_practice"
+    },
+    "3.3.8": {
+      "status": "best_practice"
+    },
+    "4.1.2": {
+      "status": "best_practice"
+    },
+    "4.1.3": {
+      "status": "best_practice"
+    },
+    "4.1.1": {
+      "status": "not_required",
+      "note": "Utgått i WCAG 2.2."
+    }
+  },
+  "document_exclusions": [],
+  "exemptions": [],
+  "notes": [
+    "Profilen gir ikke juridisk status. Bruk en norsk profil for å se hva som er lovkrav."
+  ]
+}

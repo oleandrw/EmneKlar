@@ -143,7 +143,9 @@ class CanvasClient:
         token = self._token_provider()
         if not token:
             raise CanvasError("canvas_token_missing", status=400)
-        return {"Authorization": f"Bearer {token}", "Accept": "application/json+canvas-string-ids"}
+        # Canvas rejects requests without a User-Agent (403 since 2026-06-20).
+        return {"Authorization": f"Bearer {token}", "Accept": "application/json+canvas-string-ids",
+                "User-Agent": USER_AGENT}
 
     @staticmethod
     def is_rate_limited(response: httpx.Response) -> bool:
@@ -312,7 +314,7 @@ class CanvasClient:
             on_canvas = self.is_canvas_origin(current)
             if parts.scheme == "http" and not on_canvas:
                 raise CanvasError("canvas_error", detail="Nedlasting over ukryptert http avvist")
-            headers = self._auth_headers() if on_canvas else {}
+            headers = self._auth_headers() if on_canvas else {"User-Agent": USER_AGENT}
             headers.pop("Accept", None)
             try:
                 async with self._semaphore, self._http.stream("GET", current, headers=headers) as response:

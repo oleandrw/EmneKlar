@@ -1,0 +1,582 @@
+{
+  "version": "2026.10.1",
+  "verified_at": "2026-10-06",
+  "comment": "EmneKlar accessibility rule registry. Classification and legal status are data: legal status is computed per finding from the selected regulatory profile. Change rules by adding a new ruleset version.",
+  "rules": [
+    {
+      "id": "UU-IMG-MISSING-ALT", "category": "images", "title": "Bilde mangler alternativ tekst",
+      "wcag": ["1.1.1"], "testability": "deterministic", "severity": "serious", "classification": "violation",
+      "explanation": "Bildet har ikke noe alt-attributt. Skjermlesere leser da ofte opp filnavnet eller ingenting, og informasjonen i bildet går tapt.",
+      "affected_users": "Blinde og svaksynte som bruker skjermleser, og brukere som har slått av bilder.",
+      "remediation": "Legg inn en kort alternativ tekst som formidler det bildet viser i denne sammenhengen. Er bildet bare pynt, merk det som dekorativt (tomt alt).",
+      "sources": [
+        {"title": "W3C: Understanding 1.1.1 Non-text Content", "url": "https://www.w3.org/WAI/WCAG22/Understanding/non-text-content.html"},
+        {"title": "W3C: F65 – bilde uten alt-attributt", "url": "https://www.w3.org/WAI/WCAG22/Techniques/failures/F65"}
+      ],
+      "fix_policy": "user_input"
+    },
+    {
+      "id": "UU-IMG-FILENAME-ALT", "category": "images", "title": "Alt-teksten er et filnavn",
+      "wcag": ["1.1.1"], "testability": "heuristic", "severity": "serious", "classification": "likely_violation",
+      "explanation": "Alt-teksten ser ut som et filnavn (for eksempel «IMG_1234.jpg»). Det beskriver ikke innholdet i bildet.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Erstatt filnavnet med en beskrivelse av hva bildet formidler, eller merk bildet som dekorativt.",
+      "sources": [
+        {"title": "W3C: F30 – alt-tekst som ikke er et alternativ (f.eks. filnavn)", "url": "https://www.w3.org/WAI/WCAG22/Techniques/failures/F30"}
+      ],
+      "fix_policy": "user_input"
+    },
+    {
+      "id": "UU-IMG-GENERIC-ALT", "category": "images", "title": "Alt-teksten er for generell",
+      "wcag": ["1.1.1"], "testability": "heuristic", "severity": "serious", "classification": "likely_violation",
+      "explanation": "Alt-teksten er et generelt ord som «bilde» eller «illustrasjon» og forteller ikke hva bildet viser.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Beskriv det bildet formidler i denne sammenhengen, eller merk det som dekorativt hvis det bare er pynt.",
+      "sources": [
+        {"title": "W3C: F39 – fylltekst som alt-tekst", "url": "https://www.w3.org/WAI/WCAG22/Techniques/failures/F39"},
+        {"title": "W3C: Images tutorial – tips", "url": "https://www.w3.org/WAI/tutorials/images/tips/"}
+      ],
+      "fix_policy": "user_input"
+    },
+    {
+      "id": "UU-IMG-EMPTY-ALT-LINK", "category": "images", "title": "Lenket bilde har tomt alt",
+      "wcag": ["1.1.1", "2.4.4"], "testability": "deterministic", "severity": "critical", "classification": "violation",
+      "explanation": "Bildet er eneste innhold i en lenke, men har tom alt-tekst. Lenken får da ikke noe navn, og skjermleserbrukere får ikke vite hvor den går.",
+      "affected_users": "Skjermleserbrukere og brukere av talestyring.",
+      "remediation": "Gi bildet en alt-tekst som beskriver lenkemålet (ikke utseendet), eller legg til synlig lenketekst.",
+      "sources": [
+        {"title": "W3C: F89 – lenke med bilde uten tilgjengelig navn", "url": "https://www.w3.org/WAI/WCAG22/Techniques/failures/F89"}
+      ],
+      "fix_policy": "user_input"
+    },
+    {
+      "id": "UU-IMG-EMPTY-ALT-REVIEW", "category": "images", "title": "Bilde merket som dekorativt – kontroller",
+      "wcag": ["1.1.1"], "testability": "heuristic", "severity": "moderate", "classification": "should_review",
+      "explanation": "Bildet har tom alt-tekst (dekorativt), men ser ut til å kunne bære informasjon (for eksempel et diagram, et stort bilde eller et bilde med bildetekst). Tom alt-tekst er riktig for rene pyntebilder, men ikke for informative bilder. En bildetekst erstatter ikke alt-tekst.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Behold tomt alt hvis bildet bare er pynt. Hvis bildet formidler noe, skriv en alt-tekst.",
+      "sources": [
+        {"title": "W3C: H67 – tomt alt for dekorative bilder", "url": "https://www.w3.org/WAI/WCAG22/Techniques/html/H67"},
+        {"title": "WHATWG HTML: krav til alternativ tekst", "url": "https://html.spec.whatwg.org/multipage/images.html"}
+      ],
+      "fix_policy": "user_input"
+    },
+    {
+      "id": "UU-IMG-DUPLICATE-ALT", "category": "images", "title": "Samme alt-tekst på ulike bilder",
+      "wcag": ["1.1.1"], "testability": "heuristic", "severity": "minor", "classification": "should_review",
+      "explanation": "Flere ulike bilder på siden har nøyaktig samme alt-tekst. Det kan bety at teksten er kopiert og ikke beskriver hvert bilde.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Kontroller at hver alt-tekst beskriver det bestemte bildet.",
+      "sources": [{"title": "W3C: Understanding 1.1.1", "url": "https://www.w3.org/WAI/WCAG22/Understanding/non-text-content.html"}],
+      "fix_policy": "user_input"
+    },
+    {
+      "id": "UU-IMG-LONG-ALT", "category": "images", "title": "Svært lang alt-tekst",
+      "wcag": ["1.1.1"], "testability": "heuristic", "severity": "minor", "classification": "improvement",
+      "explanation": "Alt-teksten er svært lang. Lange alt-tekster kan ikke navigeres i og er tunge å lytte til.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Gjør alt-teksten kort, og flytt detaljert beskrivelse til teksten på siden eller en lang beskrivelse.",
+      "sources": [{"title": "W3C: Complex images tutorial", "url": "https://www.w3.org/WAI/tutorials/images/complex/"}],
+      "fix_policy": "user_input"
+    },
+    {
+      "id": "UU-IMG-COMPLEX", "category": "images", "title": "Komplekst bilde – trenger trolig lang beskrivelse",
+      "wcag": ["1.1.1"], "testability": "heuristic", "severity": "moderate", "classification": "manual_check",
+      "explanation": "Filnavn eller alt-tekst tyder på et diagram, en graf, et kart eller en infografikk. Slike bilder trenger ofte en utfyllende beskrivelse i tillegg til en kort alt-tekst.",
+      "affected_users": "Skjermleserbrukere og brukere med kognitive utfordringer.",
+      "remediation": "Kontroller at informasjonen i bildet også finnes som tekst (for eksempel i en tabell eller et avsnitt under bildet).",
+      "sources": [{"title": "W3C: Complex images tutorial", "url": "https://www.w3.org/WAI/tutorials/images/complex/"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-IMG-TEXT", "category": "images", "title": "Mulig bilde av tekst",
+      "wcag": ["1.4.5"], "testability": "heuristic", "severity": "moderate", "classification": "manual_check",
+      "explanation": "Filnavnet tyder på et skjermbilde, en plakat eller et lysbilde. Tekst i bilder kan ikke forstørres, leses opp eller tilpasses.",
+      "affected_users": "Svaksynte, skjermleserbrukere og brukere med lese- og skrivevansker.",
+      "remediation": "Bruk ekte tekst der det er mulig. Hvis bildet må inneholde tekst, gjengi teksten i alt-teksten eller på siden.",
+      "sources": [{"title": "W3C: Understanding 1.4.5 Images of Text", "url": "https://www.w3.org/WAI/WCAG22/Understanding/images-of-text.html"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-HEAD-EMPTY", "category": "headings", "title": "Tom overskrift",
+      "wcag": ["1.3.1"], "testability": "deterministic", "severity": "moderate", "classification": "likely_violation",
+      "explanation": "Overskriftselementet har ikke tekst. Skjermlesere annonserer en overskrift uten innhold, noe som forvirrer navigasjonen. Dette oppstår ofte når man trykker linjeskift i en overskrift i redigeringsverktøyet.",
+      "affected_users": "Skjermleserbrukere som navigerer etter overskrifter.",
+      "remediation": "Fjern den tomme overskriften eller gi den tekst.",
+      "sources": [{"title": "W3C: Understanding 1.3.1 Info and Relationships", "url": "https://www.w3.org/WAI/WCAG22/Understanding/info-and-relationships.html"}],
+      "fix_policy": "auto_suggest"
+    },
+    {
+      "id": "UU-HEAD-H1", "category": "headings", "title": "Overskrift nivå 1 i innholdet",
+      "wcag": ["1.3.1", "2.4.6"], "testability": "deterministic", "severity": "moderate", "classification": "should_review",
+      "explanation": "Canvas viser allerede tittelen på siden som overskrift nivå 1. Overskrifter i innholdet bør derfor starte på nivå 2, ellers blir hierarkiet uklart.",
+      "affected_users": "Skjermleserbrukere som navigerer etter overskrifter.",
+      "remediation": "Endre overskriften til nivå 2 (og senk eventuelle underoverskrifter tilsvarende).",
+      "sources": [
+        {"title": "Canvas: Rich Content Editor bruker overskrift 2–5", "url": "https://community.canvaslms.com/t5/Canvas-Basics-Guide/What-is-the-Rich-Content-Editor/ta-p/12"},
+        {"title": "W3C: Headings tutorial", "url": "https://www.w3.org/WAI/tutorials/page-structure/headings/"}
+      ],
+      "fix_policy": "auto_suggest"
+    },
+    {
+      "id": "UU-HEAD-SKIP", "category": "headings", "title": "Hopp i overskriftsnivå",
+      "wcag": ["1.3.1"], "testability": "deterministic", "severity": "minor", "classification": "should_review",
+      "explanation": "Overskriftsnivået hopper over et nivå (for eksempel fra nivå 2 til nivå 4). Det er ikke i seg selv et brudd på WCAG, men Uutilsynet krever at overskrifter er kodet med riktig nivå i et visuelt hierarki, og hopp gjør strukturen vanskeligere å forstå.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Bruk overskriftsnivåer i rekkefølge, slik at de speiler innholdets struktur.",
+      "sources": [
+        {"title": "W3C: G141 – riktig organisering av overskrifter (rådgivende)", "url": "https://www.w3.org/WAI/WCAG22/Techniques/general/G141"},
+        {"title": "Uutilsynet: 1.3.1 Informasjon og relasjoner", "url": "https://www.uutilsynet.no/wcag-standarden/131-informasjon-og-relasjoner-niva/90"}
+      ],
+      "fix_policy": "auto_suggest"
+    },
+    {
+      "id": "UU-HEAD-FAKE", "category": "headings", "title": "Tekst ser ut som overskrift, men er ikke kodet som det",
+      "wcag": ["1.3.1"], "testability": "heuristic", "severity": "serious", "classification": "likely_violation",
+      "explanation": "Et kort avsnitt er formatert med fet skrift eller stor skrift slik at det ser ut som en overskrift, men er ikke kodet som overskrift. Skjermlesere kan ikke bruke det til navigasjon.",
+      "affected_users": "Skjermleserbrukere og brukere som navigerer etter overskrifter.",
+      "remediation": "Bruk en ekte overskrift (nivå 2, 3 …) i stedet for fet eller stor tekst.",
+      "sources": [
+        {"title": "W3C: F2 – visuell formatering uten semantisk markering", "url": "https://www.w3.org/WAI/WCAG22/Techniques/failures/F2"}
+      ],
+      "fix_policy": "user_input"
+    },
+    {
+      "id": "UU-HEAD-LONG", "category": "headings", "title": "Svært lang overskrift",
+      "wcag": ["2.4.6"], "testability": "heuristic", "severity": "minor", "classification": "improvement",
+      "explanation": "Overskriften er svært lang. Korte, beskrivende overskrifter er lettere å skumme og å navigere etter.",
+      "affected_users": "Alle, særlig skjermleserbrukere og brukere med kognitive utfordringer.",
+      "remediation": "Gjør overskriften kortere og flytt detaljer til brødteksten.",
+      "sources": [{"title": "W3C: Understanding 2.4.6 Headings and Labels", "url": "https://www.w3.org/WAI/WCAG22/Understanding/headings-and-labels.html"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-HEAD-NONE", "category": "headings", "title": "Lang side uten overskrifter",
+      "wcag": ["2.4.10"], "testability": "heuristic", "severity": "minor", "classification": "improvement",
+      "explanation": "Siden har mye tekst, men ingen overskrifter. Overskrifter gjør det lettere å få oversikt og å hoppe til riktig del.",
+      "affected_users": "Skjermleserbrukere og brukere med kognitive utfordringer.",
+      "remediation": "Del opp innholdet med beskrivende overskrifter.",
+      "sources": [{"title": "W3C: Understanding 2.4.10 Section Headings (AAA)", "url": "https://www.w3.org/WAI/WCAG22/Understanding/section-headings.html"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-LINK-EMPTY", "category": "links", "title": "Lenke uten tekst",
+      "wcag": ["2.4.4", "4.1.2"], "testability": "deterministic", "severity": "critical", "classification": "violation",
+      "explanation": "Lenken har ikke noe tilgjengelig navn (ingen tekst, alt-tekst eller aria-label). Skjermlesere leser bare «lenke», og brukeren vet ikke hvor den går. Tomme lenker oppstår ofte som rester i redigeringsverktøyet.",
+      "affected_users": "Skjermleserbrukere, brukere av talestyring og tastaturbrukere.",
+      "remediation": "Gi lenken en beskrivende tekst, eller fjern den hvis den er en usynlig rest.",
+      "sources": [
+        {"title": "W3C: Understanding 2.4.4 Link Purpose (In Context)", "url": "https://www.w3.org/WAI/WCAG22/Understanding/link-purpose-in-context.html"},
+        {"title": "W3C: F89", "url": "https://www.w3.org/WAI/WCAG22/Techniques/failures/F89"}
+      ],
+      "fix_policy": "user_input"
+    },
+    {
+      "id": "UU-LINK-VAGUE", "category": "links", "title": "Lenketekst som ikke forklarer målet",
+      "wcag": ["2.4.4"], "testability": "heuristic", "severity": "serious", "classification": "likely_violation",
+      "explanation": "Lenketeksten (for eksempel «klikk her» eller «les mer») forklarer ikke hvor lenken går, og teksten rundt gir ikke nok sammenheng. WCAG 2.4.4 godtar vag lenketekst bare når formålet går fram av setningen, avsnittet, listepunktet eller tabellcellen.",
+      "affected_users": "Skjermleserbrukere som lister opp lenker, og brukere med kognitive utfordringer.",
+      "remediation": "Skriv lenketekst som beskriver målet, for eksempel «Les pensumlisten for uke 3».",
+      "sources": [
+        {"title": "W3C: Understanding 2.4.4 Link Purpose (In Context)", "url": "https://www.w3.org/WAI/WCAG22/Understanding/link-purpose-in-context.html"},
+        {"title": "Uutilsynet: 2.4.4 Formål med lenke (i kontekst)", "url": "https://www.uutilsynet.no/wcag-standarden/244-formal-med-lenke-i-kontekst-niva/106"}
+      ],
+      "fix_policy": "user_input"
+    },
+    {
+      "id": "UU-LINK-VAGUE-CONTEXT", "category": "links", "title": "Vag lenketekst (forklart av sammenhengen)",
+      "wcag": ["2.4.9"], "testability": "heuristic", "severity": "minor", "classification": "improvement",
+      "explanation": "Lenketeksten er vag (for eksempel «her»), men teksten rundt ser ut til å forklare målet. Det oppfyller trolig 2.4.4, men beskrivende lenketekst er bedre for alle.",
+      "affected_users": "Skjermleserbrukere som lister opp lenker.",
+      "remediation": "Vurder å gjøre selve lenketeksten beskrivende.",
+      "sources": [{"title": "W3C: Understanding 2.4.9 Link Purpose (Link Only, AAA)", "url": "https://www.w3.org/WAI/WCAG22/Understanding/link-purpose-link-only.html"}],
+      "fix_policy": "user_input"
+    },
+    {
+      "id": "UU-LINK-RAWURL", "category": "links", "title": "Nettadresse brukt som lenketekst",
+      "wcag": [], "testability": "heuristic", "severity": "minor", "classification": "improvement",
+      "explanation": "Lenketeksten er en lang nettadresse. Skjermlesere leser hele adressen tegn for tegn eller ord for ord, og det er vanskelig å forstå hva lenken gjelder.",
+      "affected_users": "Skjermleserbrukere og brukere med lese- og skrivevansker.",
+      "remediation": "Bruk en beskrivende lenketekst. Adressen kan eventuelt stå i tillegg hvis den skal kunne skrives av.",
+      "sources": [{"title": "W3C: Understanding 2.4.4", "url": "https://www.w3.org/WAI/WCAG22/Understanding/link-purpose-in-context.html"}],
+      "fix_policy": "user_input"
+    },
+    {
+      "id": "UU-LINK-SAME-TEXT", "category": "links", "title": "Samme lenketekst går til ulike steder",
+      "wcag": ["2.4.4"], "testability": "heuristic", "severity": "moderate", "classification": "should_review",
+      "explanation": "Flere lenker på samme side har identisk tekst, men går til ulike mål. Når lenkene listes opp av en skjermleser, kan de ikke skilles fra hverandre.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Gjør lenketekstene unike, eller sørg for at sammenhengen tydelig skiller dem.",
+      "sources": [{"title": "W3C: Understanding 2.4.4", "url": "https://www.w3.org/WAI/WCAG22/Understanding/link-purpose-in-context.html"}],
+      "fix_policy": "user_input"
+    },
+    {
+      "id": "UU-TABLE-NO-HEADERS", "category": "tables", "title": "Datatabell uten overskriftsceller",
+      "wcag": ["1.3.1"], "testability": "heuristic", "severity": "serious", "classification": "likely_violation",
+      "explanation": "Tabellen ser ut til å inneholde data, men har ingen overskriftsceller (th). Skjermlesere kan da ikke knytte cellene til kolonne- eller radoverskriftene.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Merk første rad (og eventuelt første kolonne) som overskriftsceller med riktig scope.",
+      "sources": [
+        {"title": "W3C: F91 – manglende markering av tabelloverskrifter", "url": "https://www.w3.org/WAI/WCAG22/Techniques/failures/F91"},
+        {"title": "W3C: Tables tutorial", "url": "https://www.w3.org/WAI/tutorials/tables/"}
+      ],
+      "fix_policy": "auto_suggest"
+    },
+    {
+      "id": "UU-TABLE-EMPTY-HEADER", "category": "tables", "title": "Tom overskriftscelle",
+      "wcag": ["1.3.1"], "testability": "deterministic", "severity": "moderate", "classification": "should_review",
+      "explanation": "En overskriftscelle (th) er tom. Celler i den kolonnen eller raden får da ingen overskrift.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Gi overskriftscellen tekst, eller gjør den til en vanlig celle hvis den bevisst er tom (for eksempel øverste venstre hjørne).",
+      "sources": [{"title": "W3C: Tables tutorial", "url": "https://www.w3.org/WAI/tutorials/tables/"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-TABLE-LAYOUT", "category": "tables", "title": "Tabell brukt til layout",
+      "wcag": ["1.3.1", "1.3.2"], "testability": "heuristic", "severity": "moderate", "classification": "should_review",
+      "explanation": "Tabellen ser ut til å brukes til å plassere innhold (én rad eller kolonne, eller blokker av tekst og bilder) heller enn til data. Layouttabeller gir uklar struktur og dårlig visning på mobil.",
+      "affected_users": "Skjermleserbrukere og mobilbrukere.",
+      "remediation": "Bruk vanlige avsnitt, lister eller Canvas' egne layoutmuligheter. Hvis tabellen må beholdes til layout, merk den med role=\"presentation\".",
+      "sources": [{"title": "W3C: F46 – tabellelementer i layouttabeller", "url": "https://www.w3.org/WAI/WCAG22/Techniques/failures/F46"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-TABLE-EMPTY", "category": "tables", "title": "Tom tabell",
+      "wcag": ["1.3.1"], "testability": "deterministic", "severity": "minor", "classification": "should_review",
+      "explanation": "Tabellen har ikke noe innhold. Skjermlesere annonserer likevel en tabell, noe som er forvirrende.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Fjern den tomme tabellen eller fyll den med innhold.",
+      "sources": [{"title": "W3C: Tables tutorial", "url": "https://www.w3.org/WAI/tutorials/tables/"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-TABLE-COMPLEX", "category": "tables", "title": "Kompleks tabell – kontroller overskriftsrelasjoner",
+      "wcag": ["1.3.1"], "testability": "manual", "severity": "moderate", "classification": "manual_check",
+      "explanation": "Tabellen har sammenslåtte celler eller flere nivåer av overskrifter. Da må overskriftene ofte kobles til cellene med id/headers eller scope, og det kan ikke kontrolleres helt automatisk.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Forenkle tabellen hvis mulig (del den opp), eller kontroller med skjermleser at alle celler får riktige overskrifter.",
+      "sources": [{"title": "W3C: Tables with multi-level headers", "url": "https://www.w3.org/WAI/tutorials/tables/multi-level/"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-TABLE-SCOPE", "category": "tables", "title": "Rad- og kolonneoverskrifter uten scope",
+      "wcag": ["1.3.1"], "testability": "heuristic", "severity": "minor", "classification": "should_review",
+      "explanation": "Tabellen har overskrifter både i første rad og første kolonne, men overskriftscellene mangler scope. Det kan gjøre det uklart hvilke celler overskriftene gjelder.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Sett scope=\"col\" på kolonneoverskrifter og scope=\"row\" på radoverskrifter.",
+      "sources": [{"title": "W3C: H63 – scope på overskriftsceller", "url": "https://www.w3.org/WAI/WCAG22/Techniques/html/H63"}],
+      "fix_policy": "auto_suggest"
+    },
+    {
+      "id": "UU-TABLE-CAPTION", "category": "tables", "title": "Datatabell uten tabelltittel",
+      "wcag": [], "testability": "heuristic", "severity": "minor", "classification": "improvement",
+      "explanation": "Tabellen har ingen tabelltittel (caption). Det er ikke et krav, men en tittel gjør det lettere å finne og forstå tabellen.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Legg til en kort tabelltittel som beskriver innholdet.",
+      "sources": [{"title": "W3C: Caption & Summary", "url": "https://www.w3.org/WAI/tutorials/tables/caption-summary/"}],
+      "fix_policy": "user_input"
+    },
+    {
+      "id": "UU-LIST-FAKE", "category": "lists", "title": "Liste laget med tegn i stedet for listeformat",
+      "wcag": ["1.3.1"], "testability": "heuristic", "severity": "serious", "classification": "likely_violation",
+      "explanation": "Flere linjer starter med bindestrek, punkt eller nummer, men er ikke kodet som en liste. Skjermlesere kan da ikke fortelle at det er en liste eller hvor mange punkter den har.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Bruk punktliste eller nummerert liste i redigeringsverktøyet.",
+      "sources": [{"title": "W3C: H48 – lister med ol, ul og dl", "url": "https://www.w3.org/WAI/WCAG22/Techniques/html/H48"}],
+      "fix_policy": "auto_suggest"
+    },
+    {
+      "id": "UU-LIST-EMPTY-ITEM", "category": "lists", "title": "Tomt listepunkt",
+      "wcag": ["1.3.1"], "testability": "deterministic", "severity": "minor", "classification": "should_review",
+      "explanation": "Listen har et punkt uten innhold. Skjermlesere teller og annonserer det likevel.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Fjern det tomme listepunktet.",
+      "sources": [{"title": "W3C: H48", "url": "https://www.w3.org/WAI/WCAG22/Techniques/html/H48"}],
+      "fix_policy": "auto_suggest"
+    },
+    {
+      "id": "UU-LIST-NESTING", "category": "lists", "title": "Feil nøsting av liste",
+      "wcag": ["1.3.1", "4.1.1"], "testability": "deterministic", "severity": "minor", "classification": "should_review",
+      "explanation": "En liste inneholder andre elementer enn listepunkter direkte (for eksempel en underliste som ikke ligger i et listepunkt). Det er ugyldig HTML og kan gi feil opplesing av listestrukturen.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Plasser underlisten inne i listepunktet den hører til.",
+      "sources": [
+        {"title": "W3C: H48", "url": "https://www.w3.org/WAI/WCAG22/Techniques/html/H48"},
+        {"title": "Uutilsynet: 4.1.1 Parsing", "url": "https://www.uutilsynet.no/wcag-standarden/411-parsing-oppdeling-niva/120"}
+      ],
+      "fix_policy": "auto_suggest"
+    },
+    {
+      "id": "UU-LANG-INVALID", "category": "language", "title": "Ugyldig språkkode",
+      "wcag": ["3.1.2"], "testability": "deterministic", "severity": "moderate", "classification": "violation",
+      "explanation": "Et lang-attributt har en verdi som ikke er en gyldig språkkode. Skjermlesere kan da ikke bytte til riktig uttale.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Bruk en gyldig kode, for eksempel lang=\"en\", lang=\"nb\" eller lang=\"nn\".",
+      "sources": [{"title": "W3C: H58 – språkendringer", "url": "https://www.w3.org/WAI/WCAG22/Techniques/html/H58"}],
+      "fix_policy": "user_input"
+    },
+    {
+      "id": "UU-LANG-PARTS", "category": "language", "title": "Mulig tekst på annet språk uten språkmarkering",
+      "wcag": ["3.1.2"], "testability": "heuristic", "severity": "moderate", "classification": "should_review",
+      "explanation": "Et avsnitt ser ut til å være på et annet språk enn resten av innholdet, men er ikke markert med lang-attributt. Skjermlesere leser det da med feil uttale. Egennavn og faguttrykk er unntatt.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Marker avsnittet med riktig språk (for eksempel lang=\"en\").",
+      "sources": [{"title": "W3C: Understanding 3.1.2 Language of Parts", "url": "https://www.w3.org/WAI/WCAG22/Understanding/language-of-parts.html"}],
+      "fix_policy": "auto_suggest"
+    },
+    {
+      "id": "UU-SENSORY", "category": "language", "title": "Instruksjon som kan avhenge av farge, form eller plassering",
+      "wcag": ["1.3.3", "1.4.1"], "testability": "heuristic", "severity": "moderate", "classification": "should_review",
+      "explanation": "Teksten ser ut til å gi en instruksjon som bare bygger på farge, form eller plassering (for eksempel «klikk på den grønne knappen» eller «se boksen til høyre»). Det fungerer ikke for alle.",
+      "affected_users": "Blinde, svaksynte, fargeblinde og mobilbrukere (der plassering endres).",
+      "remediation": "Legg til en beskrivelse som ikke avhenger av sansene, for eksempel navnet på knappen eller overskriften.",
+      "sources": [
+        {"title": "W3C: Understanding 1.3.3 Sensory Characteristics", "url": "https://www.w3.org/WAI/WCAG22/Understanding/sensory-characteristics.html"},
+        {"title": "W3C: Understanding 1.4.1 Use of Color", "url": "https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html"}
+      ],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-CAPS", "category": "language", "title": "Mye tekst med store bokstaver",
+      "wcag": [], "testability": "heuristic", "severity": "minor", "classification": "improvement",
+      "explanation": "Lengre tekst skrevet med bare store bokstaver er vanskeligere å lese, og enkelte skjermlesere staver ordene.",
+      "affected_users": "Brukere med lese- og skrivevansker og skjermleserbrukere.",
+      "remediation": "Skriv med vanlige bokstaver og bruk fet skrift eller overskrift for å framheve.",
+      "sources": [{"title": "W3C: Cognitive accessibility guidance", "url": "https://www.w3.org/TR/coga-usable/"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-READABILITY", "category": "language", "title": "Krevende tekst (lesbarhetsindeks)",
+      "wcag": ["3.1.5"], "testability": "heuristic", "severity": "info", "classification": "improvement",
+      "explanation": "Teksten har høy lesbarhetsindeks (LIX), det vil si lange setninger og mange lange ord. Dette er veiledning, ikke et lovkrav – fagtekster kan være krevende av gode grunner.",
+      "affected_users": "Brukere med lese- og skrivevansker, kognitive utfordringer eller annet morsmål.",
+      "remediation": "Vurder kortere setninger, forklaring av fagord og et innledende sammendrag.",
+      "sources": [{"title": "W3C: Understanding 3.1.5 Reading Level (AAA)", "url": "https://www.w3.org/WAI/WCAG22/Understanding/reading-level.html"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-UNDERLINE", "category": "language", "title": "Understreket tekst som ikke er lenke",
+      "wcag": [], "testability": "deterministic", "severity": "minor", "classification": "improvement",
+      "explanation": "Understreking forbindes med lenker. Understreket tekst som ikke er en lenke kan forveksles med en lenke.",
+      "affected_users": "Alle, særlig brukere med kognitive utfordringer.",
+      "remediation": "Bruk fet eller kursiv skrift til framheving i stedet for understreking.",
+      "sources": [{"title": "W3C: Understanding 1.4.1 Use of Color", "url": "https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html"}],
+      "fix_policy": "auto_suggest"
+    },
+    {
+      "id": "UU-CONTRAST", "category": "contrast", "title": "For lav fargekontrast",
+      "wcag": ["1.4.3"], "testability": "deterministic", "severity": "serious", "classification": "violation",
+      "explanation": "Tekst- og bakgrunnsfarge er begge angitt i koden, og kontrasten mellom dem er under kravet (4,5:1 for vanlig tekst, 3:1 for stor tekst). Terskelen rundes ikke opp.",
+      "affected_users": "Svaksynte, eldre, fargeblinde og alle som leser i sterkt lys.",
+      "remediation": "Velg farger med høyere kontrast, for eksempel mørkere tekst eller lysere bakgrunn.",
+      "sources": [
+        {"title": "W3C: Understanding 1.4.3 Contrast (Minimum)", "url": "https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html"}
+      ],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-CONTRAST-UNKNOWN", "category": "contrast", "title": "Kontrast må kontrolleres manuelt",
+      "wcag": ["1.4.3"], "testability": "manual", "severity": "moderate", "classification": "manual_check",
+      "explanation": "Teksten har en egen farge, men bakgrunnen kan ikke fastslås sikkert fra koden (den kommer fra Canvas eller et tema). Mot standard hvit bakgrunn ville kontrasten vært under kravet.",
+      "affected_users": "Svaksynte, eldre og fargeblinde.",
+      "remediation": "Kontroller kontrasten der innholdet vises, eller bruk standard tekstfarge.",
+      "sources": [{"title": "W3C: Understanding 1.4.3", "url": "https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-IFRAME-NO-TITLE", "category": "iframes", "title": "Innebygd innhold (iframe) mangler tittel",
+      "wcag": ["4.1.2"], "testability": "deterministic", "severity": "serious", "classification": "violation",
+      "explanation": "Iframen har ingen tittel. Skjermlesere kan da ikke fortelle hva det innebygde innholdet er (for eksempel en video eller et skjema).",
+      "affected_users": "Skjermleserbrukere og tastaturbrukere.",
+      "remediation": "Gi iframen en kort, beskrivende tittel, for eksempel «Video: Introduksjon til emnet».",
+      "sources": [
+        {"title": "W3C: H64 – title på iframe", "url": "https://www.w3.org/WAI/WCAG22/Techniques/html/H64"},
+        {"title": "W3C ACT-regel cae760", "url": "https://www.w3.org/WAI/standards-guidelines/act/rules/cae760/"}
+      ],
+      "fix_policy": "user_input"
+    },
+    {
+      "id": "UU-IFRAME-GENERIC-TITLE", "category": "iframes", "title": "Iframe har en lite beskrivende tittel",
+      "wcag": ["4.1.2"], "testability": "heuristic", "severity": "moderate", "classification": "should_review",
+      "explanation": "Iframen har en tittel, men den er generell (for eksempel «iframe» eller «video») og forteller ikke hva innholdet er.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Bruk en tittel som beskriver innholdet.",
+      "sources": [{"title": "W3C: H64", "url": "https://www.w3.org/WAI/WCAG22/Techniques/html/H64"}],
+      "fix_policy": "user_input"
+    },
+    {
+      "id": "UU-IFRAME-EXTERNAL", "category": "iframes", "title": "Eksternt innhold kan ikke kontrolleres automatisk",
+      "wcag": [], "testability": "manual", "severity": "info", "classification": "manual_check",
+      "explanation": "Innholdet kommer fra en ekstern tjeneste eller et LTI-verktøy. EmneKlar kan bare kontrollere innbyggingskoden, ikke selve tjenesten. At iframen har tittel, betyr ikke at tjenesten er universelt utformet. Uutilsynet regner innebygde og valgte tjenester som en del av virksomhetens ansvar.",
+      "affected_users": "Alle brukere av hjelpemidler.",
+      "remediation": "Kontroller tjenesten manuelt (tastatur, skjermleser, teksting) eller be leverandøren om en tilgjengelighetserklæring.",
+      "sources": [{"title": "Uutilsynet: Unntakene fra universell utforming av IKT", "url": "https://www.uutilsynet.no/regelverk/unntakene-fra-universell-utforming-av-ikt/2248"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-MEDIA-CANVAS-CAPTIONS", "category": "media", "title": "Video i Canvas uten tekstspor",
+      "wcag": ["1.2.2"], "testability": "heuristic", "severity": "serious", "classification": "likely_violation",
+      "explanation": "Canvas oppgir ingen teksting (tekstspor) for denne videoen eller lydfilen. Forhåndsinnspilt video med tale skal teksttes, også når bare én klasse har tilgang. (Er opptaket uten tale, gjelder ikke kravet.)",
+      "affected_users": "Døve og hørselshemmede, brukere med annet morsmål og alle som ser video uten lyd.",
+      "remediation": "Last opp eller lag teksting i Canvas (Studio/medieopplasting), og kontroller at automatisk teksting er korrekturlest.",
+      "sources": [
+        {"title": "Uutilsynet: Spørsmål og svar om video", "url": "https://www.uutilsynet.no/wcag-standarden/sporsmal-og-svar-om-video/895"},
+        {"title": "W3C: Understanding 1.2.2 Captions (Prerecorded)", "url": "https://www.w3.org/WAI/WCAG22/Understanding/captions-prerecorded.html"}
+      ],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-MEDIA-EXTERNAL-CAPTIONS", "category": "media", "title": "Teksting kan ikke verifiseres automatisk",
+      "wcag": ["1.2.2"], "testability": "manual", "severity": "moderate", "classification": "manual_check",
+      "explanation": "Videoen er innebygd fra en ekstern tjeneste (for eksempel YouTube eller Vimeo). Teksting kan ikke verifiseres automatisk. Video som er sentral i undervisningen, skal ha korrekt teksting.",
+      "affected_users": "Døve og hørselshemmede.",
+      "remediation": "Kontroller at videoen har riktig teksting (ikke bare ukorrigert automatisk teksting).",
+      "sources": [{"title": "Uutilsynet: Spørsmål og svar om video", "url": "https://www.uutilsynet.no/wcag-standarden/sporsmal-og-svar-om-video/895"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-MEDIA-HTML5-TRACK", "category": "media", "title": "Video uten tekstspor (track)",
+      "wcag": ["1.2.2"], "testability": "heuristic", "severity": "serious", "classification": "likely_violation",
+      "explanation": "Video-elementet har ikke noe tekstspor (track kind=\"captions\" eller \"subtitles\"). Hvis videoen har tale, mangler teksting.",
+      "affected_users": "Døve og hørselshemmede.",
+      "remediation": "Legg til teksting.",
+      "sources": [{"title": "W3C: Understanding 1.2.2", "url": "https://www.w3.org/WAI/WCAG22/Understanding/captions-prerecorded.html"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-MEDIA-AUTOPLAY", "category": "media", "title": "Video eller lyd starter automatisk",
+      "wcag": ["1.4.2", "2.2.2"], "testability": "deterministic", "severity": "serious", "classification": "should_review",
+      "explanation": "Innholdet er satt til å starte automatisk. Lyd som spilles automatisk i mer enn tre sekunder uten at den kan stoppes, forstyrrer skjermlesere og mange brukere.",
+      "affected_users": "Skjermleserbrukere og brukere med konsentrasjonsvansker.",
+      "remediation": "Fjern autoavspilling.",
+      "sources": [{"title": "W3C: Understanding 1.4.2 Audio Control", "url": "https://www.w3.org/WAI/WCAG22/Understanding/audio-control.html"}],
+      "fix_policy": "auto_suggest"
+    },
+    {
+      "id": "UU-MEDIA-AUDIO-ALT", "category": "media", "title": "Lydopptak uten tekstalternativ",
+      "wcag": ["1.2.1"], "testability": "heuristic", "severity": "moderate", "classification": "should_review",
+      "explanation": "Det er et lydopptak på siden, men ingen synlig lenke til transkripsjon i nærheten. Forhåndsinnspilt lyd skal ha et tekstalternativ.",
+      "affected_users": "Døve og hørselshemmede.",
+      "remediation": "Legg ved en transkripsjon av opptaket.",
+      "sources": [{"title": "W3C: Understanding 1.2.1", "url": "https://www.w3.org/WAI/WCAG22/Understanding/audio-only-and-video-only-prerecorded.html"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-MOVING", "category": "media", "title": "Rullende eller blinkende innhold",
+      "wcag": ["2.2.2"], "testability": "deterministic", "severity": "serious", "classification": "violation",
+      "explanation": "Siden bruker marquee eller blink, som beveger seg automatisk uten at brukeren kan stoppe det.",
+      "affected_users": "Brukere med konsentrasjonsvansker, svaksynte og skjermleserbrukere.",
+      "remediation": "Fjern effekten og vis teksten statisk.",
+      "sources": [{"title": "W3C: Understanding 2.2.2 Pause, Stop, Hide", "url": "https://www.w3.org/WAI/WCAG22/Understanding/pause-stop-hide.html"}],
+      "fix_policy": "auto_suggest"
+    },
+    {
+      "id": "UU-ARIA-HIDDEN-FOCUS", "category": "markup", "title": "Skjult for skjermleser, men kan få fokus",
+      "wcag": ["4.1.2"], "testability": "deterministic", "severity": "serious", "classification": "violation",
+      "explanation": "Et område er skjult for skjermlesere (aria-hidden=\"true\"), men inneholder lenker eller andre elementer som kan få tastaturfokus. Brukeren lander da på noe som ikke leses opp.",
+      "affected_users": "Skjermleserbrukere og tastaturbrukere.",
+      "remediation": "Fjern aria-hidden, eller gjør elementene inne i området ikke-fokuserbare.",
+      "sources": [{"title": "W3C ACT-regel 6cfa84", "url": "https://www.w3.org/WAI/standards-guidelines/act/rules/6cfa84/"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-DUPLICATE-ID", "category": "markup", "title": "Duplisert id i koden",
+      "wcag": ["4.1.1"], "testability": "deterministic", "severity": "minor", "classification": "should_review",
+      "explanation": "Samme id brukes på flere elementer. Det er ugyldig HTML og kan ødelegge koblinger som skjermlesere bruker (for eksempel tabelloverskrifter). Uutilsynet tester fortsatt 4.1.1 i norsk regelverk; kriteriet er fjernet i WCAG 2.2.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Gi elementene unike id-er.",
+      "sources": [{"title": "Uutilsynet: 4.1.1 Parsing", "url": "https://www.uutilsynet.no/wcag-standarden/411-parsing-oppdeling-niva/120"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-DOC-PDF-UNTAGGED", "category": "documents", "title": "PDF uten struktur (ikke tagget)",
+      "wcag": ["1.3.1"], "testability": "deterministic", "severity": "serious", "classification": "likely_violation",
+      "explanation": "PDF-filen har ingen struktur (tagger). Skjermlesere kan da ikke gjenkjenne overskrifter, lister, tabeller eller leserekkefølge.",
+      "affected_users": "Skjermleserbrukere og brukere som forstørrer eller tilpasser tekst.",
+      "remediation": "Eksporter dokumentet på nytt fra Word/PowerPoint med tilgjengelighetsvalg slått på, eller publiser innholdet som en Canvas-side.",
+      "sources": [{"title": "Uutilsynet: Dokumenter", "url": "https://www.uutilsynet.no/veiledning/dokumenter/741"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-DOC-PDF-NO-TEXT", "category": "documents", "title": "PDF ser ut til å være skannet (ingen tekst)",
+      "wcag": ["1.1.1", "1.4.5"], "testability": "heuristic", "severity": "critical", "classification": "likely_violation",
+      "explanation": "Det finnes ingen lesbar tekst i PDF-en. Den er trolig et skannet bilde, som ikke kan leses opp eller søkes i.",
+      "affected_users": "Skjermleserbrukere, brukere av opplesing og alle som vil søke i teksten.",
+      "remediation": "Bruk originaldokumentet, eller kjør tekstgjenkjenning (OCR) og kontroller resultatet.",
+      "sources": [{"title": "Uutilsynet: Til deg som underviser digitalt", "url": "https://www.uutilsynet.no/uubloggen/til-deg-som-underviser-digitalt/178"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-DOC-NO-TITLE", "category": "documents", "title": "Dokumentet mangler tittel i egenskapene",
+      "wcag": ["2.4.2"], "testability": "deterministic", "severity": "minor", "classification": "should_review",
+      "explanation": "Dokumentet har ingen tittel i dokumentegenskapene. Skjermlesere og nettlesere viser da filnavnet.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Fyll inn tittel under Fil → Egenskaper før eksport.",
+      "sources": [{"title": "W3C: Understanding 2.4.2 Page Titled", "url": "https://www.w3.org/WAI/WCAG22/Understanding/page-titled.html"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-DOC-NO-LANG", "category": "documents", "title": "Dokumentet mangler språk",
+      "wcag": ["3.1.1"], "testability": "deterministic", "severity": "moderate", "classification": "should_review",
+      "explanation": "Dokumentet oppgir ikke hvilket språk det er skrevet på. Skjermlesere kan da lese med feil uttale.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Angi dokumentspråk (for eksempel norsk bokmål) før eksport.",
+      "sources": [{"title": "W3C: Understanding 3.1.1 Language of Page", "url": "https://www.w3.org/WAI/WCAG22/Understanding/language-of-page.html"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-DOC-IMG-ALT", "category": "documents", "title": "Bilder i dokumentet mangler alternativ tekst",
+      "wcag": ["1.1.1"], "testability": "deterministic", "severity": "serious", "classification": "likely_violation",
+      "explanation": "Ett eller flere bilder i dokumentet har ingen alternativ tekst og er ikke merket som dekorative.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Legg inn alternativ tekst (høyreklikk på bildet → Rediger alternativ tekst) eller merk bildet som dekorativt.",
+      "sources": [{"title": "Uutilsynet: Dokumenter", "url": "https://www.uutilsynet.no/veiledning/dokumenter/741"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-DOC-NO-HEADINGS", "category": "documents", "title": "Langt dokument uten overskriftsstiler",
+      "wcag": ["1.3.1"], "testability": "heuristic", "severity": "moderate", "classification": "should_review",
+      "explanation": "Dokumentet har mye tekst, men bruker ikke innebygde overskriftsstiler. Struktur som bare vises med fet eller stor tekst, kan ikke brukes til navigasjon.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Bruk stilene Overskrift 1, 2, 3 i Word.",
+      "sources": [{"title": "Uutilsynet: Lærerens ansvar", "url": "https://www.uutilsynet.no/veiledning/laererens-ansvar-universell-utforming/2675"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-DOC-TABLE-HEADER", "category": "documents", "title": "Tabell i dokumentet uten overskriftsrad",
+      "wcag": ["1.3.1"], "testability": "heuristic", "severity": "moderate", "classification": "should_review",
+      "explanation": "En tabell i dokumentet har ingen markert overskriftsrad.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Marker første rad som overskriftsrad (Tabellegenskaper → Gjenta som overskriftsrad).",
+      "sources": [{"title": "Uutilsynet: Dokumenter", "url": "https://www.uutilsynet.no/veiledning/dokumenter/741"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-DOC-SLIDE-TITLES", "category": "documents", "title": "Lysbilder uten tittel",
+      "wcag": ["2.4.6", "1.3.1"], "testability": "deterministic", "severity": "moderate", "classification": "should_review",
+      "explanation": "Ett eller flere lysbilder mangler tittel. Titler brukes til navigasjon og oversikt.",
+      "affected_users": "Skjermleserbrukere.",
+      "remediation": "Gi hvert lysbilde en unik tittel (kan skjules visuelt om nødvendig).",
+      "sources": [{"title": "Uutilsynet: Dokumenter", "url": "https://www.uutilsynet.no/veiledning/dokumenter/741"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-DOC-MANUAL", "category": "documents", "title": "Dokumentet krever manuell kontroll",
+      "wcag": [], "testability": "manual", "severity": "info", "classification": "manual_check",
+      "explanation": "Automatiske kontroller dekker bare deler av dokumentets tilgjengelighet. Leserekkefølge, kvaliteten på alternativ tekst, kontrast og tabellstruktur må kontrolleres manuelt. En tagget PDF er ikke automatisk universelt utformet.",
+      "affected_users": "Alle brukere av hjelpemidler.",
+      "remediation": "Kontroller dokumentet med tilgjengelighetskontrollen i Office/Acrobat og med skjermleser, eller publiser innholdet som Canvas-side.",
+      "sources": [{"title": "W3C: Evaluation tools – limitations", "url": "https://www.w3.org/WAI/test-evaluate/tools/selecting/"}],
+      "fix_policy": "manual"
+    },
+    {
+      "id": "UU-DOC-UNREADABLE", "category": "documents", "title": "Dokumentet kunne ikke kontrolleres",
+      "wcag": [], "testability": "manual", "severity": "moderate", "classification": "manual_check",
+      "explanation": "Dokumentet kunne ikke åpnes for automatisk kontroll (for eksempel fordi det er passordbeskyttet, for stort, i et eldre format eller ødelagt).",
+      "affected_users": "Alle brukere av hjelpemidler.",
+      "remediation": "Kontroller dokumentet manuelt, eller lagre det i et moderne, tilgjengelig format.",
+      "sources": [{"title": "Uutilsynet: Dokumenter", "url": "https://www.uutilsynet.no/veiledning/dokumenter/741"}],
+      "fix_policy": "manual"
+    }
+  ]
+}

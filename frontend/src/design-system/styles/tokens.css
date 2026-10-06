@@ -1,0 +1,188 @@
+/*
+ * EmneKlar design tokens.
+ *
+ * All colours used for text meet WCAG 2.2 AA (≥ 4.5:1) against the surface they
+ * are documented for; borders that identify form controls meet 1.4.11 (≥ 3:1).
+ * Never use colour alone to convey meaning – pair it with text or an icon.
+ */
+:root {
+  /* Typography */
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Cascadia Mono", "Consolas", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --text-xs: 0.8125rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-md: 1.125rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 1.875rem;
+  --leading: 1.5;
+  --leading-tight: 1.25;
+  --weight-normal: 400;
+  --weight-medium: 550;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* Spacing (4 px grid); --density scales component padding */
+  --density: 1;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* Shape and depth */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+  --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.06);
+  --shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 2px 6px rgb(16 24 40 / 0.06);
+  --shadow-pop: 0 12px 32px rgb(16 24 40 / 0.18), 0 2px 6px rgb(16 24 40 / 0.08);
+
+  /* Layout */
+  --nav-width: 15.5rem;
+  --header-height: 4rem;
+  --content-max: 82rem;
+
+  /* Motion */
+  --duration: 160ms;
+  --easing: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ---------------------------------------------------------------- light */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-bg: #f3f5f9;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f7f9fc;
+  --color-surface-sunken: #edf1f6;
+  --color-border: #dde3ec;
+  --color-border-strong: #c5cdd9;
+  --color-border-input: #737d8f; /* 3.9:1 on white */
+  --color-text: #172033; /* 15.8:1 */
+  --color-text-muted: #45526a; /* 7.9:1 */
+  --color-text-subtle: #5a6478; /* 5.9:1 */
+  --color-link: #1d4ed8;
+  --color-primary: #1d4ed8; /* white text 6.7:1 */
+  --color-primary-hover: #1e40af;
+  --color-primary-contrast: #ffffff;
+  --color-focus: #1d4ed8;
+  --color-focus-inner: #ffffff;
+  --color-overlay: rgb(15 23 42 / 0.45);
+
+  --nav-bg: #0f1f3d;
+  --nav-bg-elevated: #152a52;
+  --nav-text: #e6ecf7; /* 14.6:1 */
+  --nav-text-muted: #aab7d1; /* 8.1:1 */
+  --nav-active-bg: #1d3768;
+  --nav-indicator: #8db4ff;
+  --nav-focus: #9ec1ff;
+
+  /* Tones: background / border / text (text ≥ 7:1 on its background) */
+  --tone-neutral-bg: #eef2f7;
+  --tone-neutral-border: #d3dae5;
+  --tone-neutral-text: #334155;
+  --tone-info-bg: #eaf1ff;
+  --tone-info-border: #c6d6fd;
+  --tone-info-text: #1e3a8a;
+  --tone-success-bg: #e7f6ec;
+  --tone-success-border: #b5dfc2;
+  --tone-success-text: #14532d;
+  --tone-warning-bg: #fff3dc;
+  --tone-warning-border: #f2d18a;
+  --tone-warning-text: #713700;
+  --tone-danger-bg: #fdecec;
+  --tone-danger-border: #f3c0bd;
+  --tone-danger-text: #8f1d1d;
+  --tone-violet-bg: #f1ecfe;
+  --tone-violet-border: #d5c8fa;
+  --tone-violet-text: #4c1d95;
+  --tone-teal-bg: #e3f5f4;
+  --tone-teal-border: #afdedb;
+  --tone-teal-text: #0f4f4b;
+
+  --diff-add-bg: #e3f6e9;
+  --diff-del-bg: #fde9e8;
+}
+
+/* ----------------------------------------------------------------- dark */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #0b1322;
+  --color-surface: #131d31;
+  --color-surface-muted: #17233a;
+  --color-surface-sunken: #0f1829;
+  --color-border: #263451;
+  --color-border-strong: #34446a;
+  --color-border-input: #6f7f9e; /* 3.9:1 on surface */
+  --color-text: #e7ecf5;
+  --color-text-muted: #b6c2d6;
+  --color-text-subtle: #9eabc2;
+  --color-link: #8fb0ff;
+  --color-primary: #2f62e0; /* white text 5.3:1 */
+  --color-primary-hover: #2552c4;
+  --color-primary-contrast: #ffffff;
+  --color-focus: #9ec1ff;
+  --color-focus-inner: #0b1322;
+  --color-overlay: rgb(2 6 15 / 0.65);
+
+  --nav-bg: #08101f;
+  --nav-bg-elevated: #0f1a30;
+  --nav-text: #e6ecf7;
+  --nav-text-muted: #a4b2cc;
+  --nav-active-bg: #182a4d;
+  --nav-indicator: #8db4ff;
+  --nav-focus: #9ec1ff;
+
+  --tone-neutral-bg: #1b2740;
+  --tone-neutral-border: #2d3b5c;
+  --tone-neutral-text: #d2dae8;
+  --tone-info-bg: #15264a;
+  --tone-info-border: #2a4583;
+  --tone-info-text: #bcd0ff;
+  --tone-success-bg: #11291e;
+  --tone-success-border: #1f5a3c;
+  --tone-success-text: #a9e3bf;
+  --tone-warning-bg: #2c2110;
+  --tone-warning-border: #6b4d12;
+  --tone-warning-text: #f7d38f;
+  --tone-danger-bg: #301417;
+  --tone-danger-border: #6e2a2e;
+  --tone-danger-text: #f8b7b3;
+  --tone-violet-bg: #231a3d;
+  --tone-violet-border: #47357a;
+  --tone-violet-text: #d6c8ff;
+  --tone-teal-bg: #0f2a2a;
+  --tone-teal-border: #1e5654;
+  --tone-teal-text: #a4e2dd;
+
+  --diff-add-bg: #12301f;
+  --diff-del-bg: #3a1619;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 2px 6px rgb(0 0 0 / 0.35);
+  --shadow-pop: 0 12px 32px rgb(0 0 0 / 0.55);
+}
+
+/* --------------------------------------------------- user preferences */
+:root[data-text-size="large"] {
+  font-size: 112.5%;
+}
+:root[data-text-size="larger"] {
+  font-size: 125%;
+}
+:root[data-density="compact"] {
+  --density: 0.75;
+}
+:root[data-reduce-motion="always"] {
+  --duration: 0ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration: 0ms;
+  }
+}

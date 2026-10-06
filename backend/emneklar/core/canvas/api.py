@@ -1,0 +1,323 @@
+"""Typed access to the Canvas REST API endpoints EmneKlar uses.
+
+All endpoint knowledge lives here (see docs/CANVAS_API.md for the verified
+parameters). Read methods are free to call; every write method requires a
+:class:`WritePermit` and is therefore only reachable through the change engine.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Any
+from urllib.parse import quote
+
+from emneklar.core.canvas.client import CanvasClient, CanvasError, WritePermit
+
+log = logging.getLogger(__name__)
+
+TEACHING_ENROLLMENTS = {"teacher", "ta", "designer", "teacherenrollment", "taenrollment", "designerenrollment"}
+
+# Permission keys checked during setup and before feature use (granular Canvas permissions).
+PERMISSION_KEYS = [
+    "manage",
+    "update",
+    "read_as_admin",
+    "manage_wiki_update",
+    "manage_wiki_create",
+    "manage_course_content_edit",
+    "manage_course_content_add",
+    "manage_assignments_edit",
+    "manage_assignments_add",
+    "manage_files_edit",
+    "update_course_details",
+]
+
+
+def _page_ref(url_or_id: str) -> str:
+    return quote(str(url_or_id), safe="")
+
+
+class CanvasAPI:
+    def __init__(self, client: CanvasClient) -> None:
+        self.client = client
+
+    # -- identity, courses, permissions ----------------------------------------------------
+
+    async def users_self(self) -> dict[str, Any]:
+        return await self.client.get_json("/api/v1/users/self")
+
+    async def list_courses(self, *, include_completed: bool = False) -> list[dict[str, Any]]:
+        params: list[tuple[str, Any]] = [("include[]", "term"), ("state[]", "available"), ("state[]", "unpublished")]
+        if include_completed:
+            params.append(("state[]", "completed"))
+        courses = await self.client.get_paginated("/api/v1/courses", params)
+        result = []
+        for course in courses:
+            if not isinstance(course, dict) or course.get("access_restricted_by_date"):
+                continue
+            roles = {str(e.get("type") or e.get("role") or "").lower() for e in course.get("enrollments") or []}
+            course["_teaching_roles"] = sorted(r for r in roles if r in TEACHING_ENROLLMENTS)
+            if course["_teaching_roles"]:
+                result.append(course)
+        return result
+
+    async def get_course(self, course_id: str, *, include: tuple[str, ...] = ("term",)) -> dict[str, Any]:
+        params = [("include[]", i) for i in include]
+        return await self.client.get_json(f"/api/v1/courses/{course_id}", params)
+
+    async def course_settings(self, course_id: str) -> dict[str, Any]:
+        return await self.client.get_json(f"/api/v1/courses/{course_id}/settings")
+
+    async def course_permissions(self, course_id: str, keys: list[str] | None = None) -> dict[str, bool]:
+        params = [("permissions[]", k) for k in (keys or PERMISSION_KEYS)]
+        data = await self.client.get_json(f"/api/v1/courses/{course_id}/permissions", params)
+        return {str(k): bool(v) for k, v in (data or {}).items()}
+
+    async def course_tabs(self, course_id: str) -> list[dict[str, Any]]:
+        return await self.client.get_paginated(f"/api/v1/courses/{course_id}/tabs")
+
+    # -- content ---------------------------------------------------------------------------
+
+    async def list_pages(self, course_id: str, *, include_body: bool = True) -> list[dict[str, Any]]:
+        params: list[tuple[str, Any]] = [("sort", "title")]
+        if include_body:
+            params.append(("include[]", "body"))
+        return await self.client.get_paginated(f"/api/v1/courses/{course_id}/pages", params)
+
+    async def get_page(self, course_id: str, url_or_id: str) -> dict[str, Any]:
+        return await self.client.get_json(f"/api/v1/courses/{course_id}/pages/{_page_ref(url_or_id)}")
+
+    async def get_front_page(self, course_id: str) -> dict[str, Any] | None:
+        try:
+            return await self.client.get_json(f"/api/v1/courses/{course_id}/front_page")
+        except CanvasError as exc:
+            if exc.code == "canvas_not_found":
+                return None
+            raise
+
+    async def page_revisions(self, course_id: str, url_or_id: str) -> list[dict[str, Any]]:
+        return await self.client.get_paginated(f"/api/v1/courses/{course_id}/pages/{_page_ref(url_or_id)}/revisions")
+
+    async def list_modules(self, course_id: str) -> list[dict[str, Any]]:
+        modules = await self.client.get_paginated(
+            f"/api/v1/courses/{course_id}/modules", [("include[]", "items"), ("include[]", "content_details")]
+        )
+        # Canvas only inlines items for modules with ≤ 100 items.
+        missing = [m for m in modules if m.get("items") is None and int(m.get("items_count") or 0) > 0]
+        if missing:
+            results = await asyncio.gather(*(self.list_module_items(course_id, str(m["id"])) for m in missing))
+            for module, items in zip(missing, results, strict=True):
+                module["items"] = items
+        for module in modules:
+            module.setdefault("items", [])
+        return modules
+
+    async def list_module_items(self, course_id: str, module_id: str) -> list[dict[str, Any]]:
+        return await self.client.get_paginated(
+            f"/api/v1/courses/{course_id}/modules/{module_id}/items", [("include[]", "content_details")]
+        )
+
+    async def get_module_item(self, course_id: str, module_id: str, item_id: str) -> dict[str, Any]:
+        return await self.client.get_json(f"/api/v1/courses/{course_id}/modules/{module_id}/items/{item_id}")
+
+    async def get_module(self, course_id: str, module_id: str) -> dict[str, Any]:
+        return await self.client.get_json(f"/api/v1/courses/{course_id}/modules/{module_id}")
+
+    async def list_assignments(self, course_id: str) -> list[dict[str, Any]]:
+        return await self.client.get_paginated(f"/api/v1/courses/{course_id}/assignments", [("order_by", "position")])
+
+    async def get_assignment(self, course_id: str, assignment_id: str) -> dict[str, Any]:
+        return await self.client.get_json(f"/api/v1/courses/{course_id}/assignments/{assignment_id}")
+
+    async def list_discussions(self, course_id: str) -> list[dict[str, Any]]:
+        return await self.client.get_paginated(f"/api/v1/courses/{course_id}/discussion_topics",
+                                               [("order_by", "position")])
+
+    async def get_discussion(self, course_id: str, topic_id: str) -> dict[str, Any]:
+        return await self.client.get_json(f"/api/v1/courses/{course_id}/discussion_topics/{topic_id}")
+
+    async def list_files(self, course_id: str) -> list[dict[str, Any]]:
+        return await self.client.get_paginated(f"/api/v1/courses/{course_id}/files", [("sort", "name")])
+
+    async def get_file(self, file_id: str) -> dict[str, Any]:
+        return await self.client.get_json(f"/api/v1/files/{file_id}")
+
+    async def list_media_objects(self, course_id: str) -> list[dict[str, Any]]:
+        return await self.client.get_paginated(f"/api/v1/courses/{course_id}/media_objects", [("exclude[]", "sources")])
+
+    async def media_attachment_tracks(self, attachment_id: str) -> list[dict[str, Any]]:
+        data = await self.client.get_json(f"/api/v1/media_attachments/{attachment_id}/media_tracks")
+        return data if isinstance(data, list) else []
+
+    # -- classic quizzes -----------------------------------------------------------------------
+
+    async def list_quizzes(self, course_id: str) -> list[dict[str, Any]]:
+        return await self.client.get_paginated(f"/api/v1/courses/{course_id}/quizzes")
+
+    async def get_quiz(self, course_id: str, quiz_id: str) -> dict[str, Any]:
+        return await self.client.get_json(f"/api/v1/courses/{course_id}/quizzes/{quiz_id}")
+
+    async def list_quiz_questions(self, course_id: str, quiz_id: str) -> list[dict[str, Any]]:
+        return await self.client.get_paginated(f"/api/v1/courses/{course_id}/quizzes/{quiz_id}/questions")
+
+    async def list_quiz_groups(self, course_id: str, quiz_id: str) -> list[dict[str, Any]]:
+        try:
+            data = await self.client.get_json(f"/api/v1/courses/{course_id}/quizzes/{quiz_id}/groups")
+        except CanvasError as exc:
+            if exc.code == "canvas_not_found":
+                return []
+            raise
+        if isinstance(data, dict):
+            groups = data.get("quiz_groups") or []
+            return groups if isinstance(groups, list) else []
+        return data if isinstance(data, list) else []
+
+    # -- blueprint ---------------------------------------------------------------------------
+
+    async def blueprint_template(self, course_id: str) -> dict[str, Any] | None:
+        try:
+            return await self.client.get_json(f"/api/v1/courses/{course_id}/blueprint_templates/default")
+        except CanvasError as exc:
+            if exc.code in ("canvas_not_found", "canvas_forbidden"):
+                return None
+            raise
+
+    async def blueprint_subscriptions(self, course_id: str) -> list[dict[str, Any]]:
+        try:
+            data = await self.client.get_json(f"/api/v1/courses/{course_id}/blueprint_subscriptions")
+        except CanvasError as exc:
+            if exc.code in ("canvas_not_found", "canvas_forbidden"):
+                return []
+            raise
+        return data if isinstance(data, list) else []
+
+    async def blueprint_unsynced_changes(self, course_id: str) -> list[dict[str, Any]]:
+        return await self.client.get_paginated(
+            f"/api/v1/courses/{course_id}/blueprint_templates/default/unsynced_changes")
+
+    # -- writes (WritePermit required) ----------------------------------------------------------
+
+    async def update_page(self, course_id: str, url_or_id: str, fields: dict[str, Any], *,
+                          permit: WritePermit) -> dict[str, Any]:
+        return await self.client.write_json("PUT", f"/api/v1/courses/{course_id}/pages/{_page_ref(url_or_id)}",
+                                            json={"wiki_page": fields}, permit=permit)
+
+    async def create_page(self, course_id: str, fields: dict[str, Any], *, permit: WritePermit) -> dict[str, Any]:
+        return await self.client.write_json("POST", f"/api/v1/courses/{course_id}/pages",
+                                            json={"wiki_page": fields}, permit=permit)
+
+    async def delete_page(self, course_id: str, url_or_id: str, *, permit: WritePermit) -> Any:
+        return await self.client.write_json("DELETE", f"/api/v1/courses/{course_id}/pages/{_page_ref(url_or_id)}",
+                                            permit=permit)
+
+    async def update_assignment(self, course_id: str, assignment_id: str, fields: dict[str, Any], *,
+                                permit: WritePermit) -> dict[str, Any]:
+        return await self.client.write_json("PUT", f"/api/v1/courses/{course_id}/assignments/{assignment_id}",
+                                            json={"assignment": fields}, permit=permit)
+
+    async def update_discussion(self, course_id: str, topic_id: str, fields: dict[str, Any], *,
+                                permit: WritePermit) -> dict[str, Any]:
+        return await self.client.write_json("PUT", f"/api/v1/courses/{course_id}/discussion_topics/{topic_id}",
+                                            json=fields, permit=permit)
+
+    async def update_course(self, course_id: str, fields: dict[str, Any], *, permit: WritePermit) -> dict[str, Any]:
+        return await self.client.write_json("PUT", f"/api/v1/courses/{course_id}", json={"course": fields},
+                                            permit=permit)
+
+    async def update_course_settings(self, course_id: str, fields: dict[str, Any], *,
+                                     permit: WritePermit) -> dict[str, Any]:
+        return await self.client.write_json("PUT", f"/api/v1/courses/{course_id}/settings", json=fields,
+                                            permit=permit)
+
+    async def update_module(self, course_id: str, module_id: str, fields: dict[str, Any], *,
+                            permit: WritePermit) -> dict[str, Any]:
+        if "published" in fields:
+            # Publishing a module publishes every item in it – EmneKlar never does that implicitly.
+            raise CanvasError("unsupported", status=500, detail="Modulens publiseringsstatus endres ikke av EmneKlar")
+        return await self.client.write_json("PUT", f"/api/v1/courses/{course_id}/modules/{module_id}",
+                                            json={"module": fields}, permit=permit)
+
+    async def update_module_item(self, course_id: str, module_id: str, item_id: str, fields: dict[str, Any], *,
+                                 permit: WritePermit) -> dict[str, Any]:
+        if "published" in fields:
+            raise CanvasError("unsupported", status=500, detail="Publiseringsstatus endres ikke via modulelementer")
+        return await self.client.write_json(
+            "PUT", f"/api/v1/courses/{course_id}/modules/{module_id}/items/{item_id}",
+            json={"module_item": fields}, permit=permit)
+
+    async def create_module_item(self, course_id: str, module_id: str, fields: dict[str, Any], *,
+                                 permit: WritePermit) -> dict[str, Any]:
+        return await self.client.write_json("POST", f"/api/v1/courses/{course_id}/modules/{module_id}/items",
+                                            json={"module_item": fields}, permit=permit)
+
+    async def delete_module_item(self, course_id: str, module_id: str, item_id: str, *,
+                                 permit: WritePermit) -> Any:
+        return await self.client.write_json(
+            "DELETE", f"/api/v1/courses/{course_id}/modules/{module_id}/items/{item_id}", permit=permit)
+
+    async def create_quiz(self, course_id: str, fields: dict[str, Any], *, permit: WritePermit) -> dict[str, Any]:
+        return await self.client.write_json("POST", f"/api/v1/courses/{course_id}/quizzes", json={"quiz": fields},
+                                            permit=permit)
+
+    async def update_quiz(self, course_id: str, quiz_id: str, fields: dict[str, Any], *,
+                          permit: WritePermit) -> dict[str, Any]:
+        return await self.client.write_json("PUT", f"/api/v1/courses/{course_id}/quizzes/{quiz_id}",
+                                            json={"quiz": fields}, permit=permit)
+
+    async def delete_quiz(self, course_id: str, quiz_id: str, *, permit: WritePermit) -> Any:
+        return await self.client.write_json("DELETE", f"/api/v1/courses/{course_id}/quizzes/{quiz_id}", permit=permit)
+
+    async def create_quiz_group(self, course_id: str, quiz_id: str, group: dict[str, Any], *,
+                                permit: WritePermit) -> dict[str, Any]:
+        data = await self.client.write_json("POST", f"/api/v1/courses/{course_id}/quizzes/{quiz_id}/groups",
+                                            json={"quiz_groups": [group]}, permit=permit)
+        if isinstance(data, dict) and isinstance(data.get("quiz_groups"), list) and data["quiz_groups"]:
+            return dict(data["quiz_groups"][0])
+        return data if isinstance(data, dict) else {}
+
+    async def create_quiz_question(self, course_id: str, quiz_id: str, question: dict[str, Any], *,
+                                   permit: WritePermit) -> dict[str, Any]:
+        return await self.client.write_json("POST", f"/api/v1/courses/{course_id}/quizzes/{quiz_id}/questions",
+                                            json={"question": question}, permit=permit)
+
+    async def update_quiz_question(self, course_id: str, quiz_id: str, question_id: str, question: dict[str, Any],
+                                   *, permit: WritePermit) -> dict[str, Any]:
+        return await self.client.write_json(
+            "PUT", f"/api/v1/courses/{course_id}/quizzes/{quiz_id}/questions/{question_id}",
+            json={"question": question}, permit=permit)
+
+    async def restrict_blueprint_item(self, course_id: str, content_type: str, content_id: str, restricted: bool,
+                                      restrictions: dict[str, bool] | None, *, permit: WritePermit) -> Any:
+        body: dict[str, Any] = {"content_type": content_type, "content_id": content_id, "restricted": restricted}
+        if restrictions is not None:
+            body["restrictions"] = restrictions
+        return await self.client.write_json(
+            "PUT", f"/api/v1/courses/{course_id}/blueprint_templates/default/restrict_item", json=body, permit=permit)
+
+
+# -- helpers shared by features ------------------------------------------------------------------
+
+
+def answer_is_correct(answer: dict[str, Any]) -> bool:
+    """Classic Quiz answer key: weight 100 = correct (read shape uses `weight`, write shape `answer_weight`)."""
+    weight = answer.get("weight", answer.get("answer_weight"))
+    try:
+        return float(weight or 0) >= 100
+    except (TypeError, ValueError):
+        return False
+
+
+def answer_text(answer: dict[str, Any]) -> str:
+    from emneklar.core.canvas.html import norm_text, parse_html
+
+    html = answer.get("html") or answer.get("answer_html")
+    if html:
+        return norm_text(parse_html(str(html)).get_text(" "))
+    return norm_text(str(answer.get("text") or answer.get("answer_text") or ""))
+
+
+def is_block_editor_page(page: dict[str, Any]) -> bool:
+    return str(page.get("editor") or "").lower() == "block_editor" or (
+        page.get("body") is None and page.get("block_editor_attributes") is not None
+    )
