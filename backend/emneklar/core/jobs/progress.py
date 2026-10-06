@@ -32,6 +32,7 @@ TYPE_LABELS: dict[str, str] = {
     "structure": "Emnestruktur",
     "question": "Quizspørsmål",
     "ai": "KI-forespørsler",
+    "change": "Endringer",
 }
 
 

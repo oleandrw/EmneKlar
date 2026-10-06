@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -248,6 +251,24 @@ async def capability_summary(c: AppContainer = Depends(get_container)) -> dict[s
         "checked_courses": len(sample) - errors,
         "capabilities": [{"key": key, "label": label, **summary[key]} for key, label, _ in CAPABILITIES],
     }
+
+
+@router.get("/canvas/image")
+async def image_proxy(url: str, c: AppContainer = Depends(get_container)) -> Response:
+    """Authenticated proxy for Canvas images in previews (Canvas origin only, images only, size-limited)."""
+    client = c.canvas()
+    parts = urlsplit(url)
+    if not client.is_canvas_origin(url) or not re.match(r"^/(courses/\d+/)?files/\d+(/preview|/download)?$",
+                                                        parts.path or ""):
+        raise AppError("url_blocked", status=400)
+    try:
+        data, content_type = await client.fetch_bytes(url, max_bytes=8 * 1024 * 1024)
+    except CanvasError as exc:
+        raise AppError("not_found", status=404, detail=exc.code) from exc
+    content_type = (content_type or "").split(";")[0].strip().lower()
+    if not content_type.startswith("image/") or content_type == "image/svg+xml":
+        raise AppError("file_unsupported", status=415)
+    return Response(data, media_type=content_type, headers={"Cache-Control": "private, max-age=300"})
 
 
 class SetupComplete(BaseModel):

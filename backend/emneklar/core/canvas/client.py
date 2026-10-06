@@ -300,6 +300,15 @@ class CanvasClient:
             url = next_url
         return items
 
+    async def fetch_bytes(self, url: str, *, max_bytes: int) -> tuple[bytes, str | None]:
+        """Small authenticated download into memory (e.g. images for previews)."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "blob"
+            _, content_type = await self.download(url, path, max_bytes=max_bytes)
+            return path.read_bytes(), content_type
+
     async def download(self, url: str, dest: Path, *, max_bytes: int, max_redirects: int = 5) -> tuple[int, str | None]:
         """Stream a Canvas file to ``dest``.
 

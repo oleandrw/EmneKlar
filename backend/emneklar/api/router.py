@@ -11,6 +11,8 @@ ROUTERS = [
     "emneklar.api.routes_canvas",
     "emneklar.features.analysis.api",
     "emneklar.features.findings.api",
+    "emneklar.core.changes.api",
+    "emneklar.features.accessibility.fixes",
 ]
 
 

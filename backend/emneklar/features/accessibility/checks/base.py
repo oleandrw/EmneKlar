@@ -54,6 +54,7 @@ class Issue:
         if self.element is not None:
             data["selector"] = element_path(self.element)
             data["snippet"] = self.snippet or snippet(self.element)
+            data["sig"] = element_signature(self.element)
         elif self.snippet:
             data["snippet"] = self.snippet
         if self.context:
@@ -69,6 +70,13 @@ class Issue:
 
 
 Check = Callable[[ContentDoc], list[Issue]]
+
+
+def element_signature(el: Tag) -> str:
+    """Identifies an element by its markup, so a fix can find it again even if positions shifted."""
+    import hashlib
+
+    return hashlib.sha1(str(el).encode("utf-8")).hexdigest()[:16]  # noqa: S324 - identity, not security
 
 
 def fix(fix_type: str, label: str, **params: Any) -> dict[str, Any]:
