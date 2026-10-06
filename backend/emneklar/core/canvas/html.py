@@ -203,9 +203,10 @@ DOCUMENT_EXT = {".pdf": "pdf", ".docx": "docx", ".pptx": "pptx", ".xlsx": "xlsx"
 @dataclass(frozen=True)
 class MediaRef:
     kind: str  # canvas_media|canvas_attachment|youtube|vimeo|html5_video|html5_audio|other_embed
-    ident: str | None
+    ident: str | None  # attachment id (canvas_attachment), media id (canvas_media) or video id
     src: str
     element: str  # tag name
+    media_id: str | None = None  # Canvas media id (data-media-id), when present
 
 
 def find_media(soup: BeautifulSoup) -> list[tuple[Tag, MediaRef]]:
@@ -219,12 +220,14 @@ def find_media(soup: BeautifulSoup) -> list[tuple[Tag, MediaRef]]:
             continue
         attachment = ATTACHMENT_IFRAME_RE.search(src)
         if attachment:
-            found.append((el, MediaRef(kind="canvas_attachment", ident=attachment.group(1), src=src, element=el.name)))
+            found.append((el, MediaRef(kind="canvas_attachment", ident=attachment.group(1), src=src, element=el.name,
+                                       media_id=media_id or None)))
             continue
         match = MEDIA_ID_RE.search(src) or MEDIA_ID_RE.search(classes)
-        if media_id or match or "instructure_inline_media_comment" in classes:
-            ident = media_id or (next((g for g in match.groups() if g), None) if match else None)
-            found.append((el, MediaRef(kind="canvas_media", ident=ident, src=src, element=el.name)))
+        legacy_id = str(el.get("data-media_comment_id") or "")
+        if media_id or legacy_id or match or "instructure_inline_media_comment" in classes:
+            ident = media_id or legacy_id or (next((g for g in match.groups() if g), None) if match else None)
+            found.append((el, MediaRef(kind="canvas_media", ident=ident, src=src, element=el.name, media_id=ident)))
             continue
         if el.name == "a":
             continue  # ordinary links are handled by the link checks

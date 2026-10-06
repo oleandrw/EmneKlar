@@ -489,6 +489,15 @@
       "fix_policy": "manual"
     },
     {
+      "id": "UU-BLOCK-EDITOR", "category": "markup", "title": "Side laget med blokkredigering – krever manuell kontroll",
+      "wcag": [], "testability": "manual", "severity": "info", "classification": "manual_check",
+      "explanation": "Siden er laget med Canvas' nye blokkredigering. Canvas-API-et gir da ikke sidens HTML, så EmneKlar kan ikke analysere eller rette innholdet automatisk.",
+      "affected_users": "Alle brukere av hjelpemidler.",
+      "remediation": "Kontroller siden manuelt med Canvas' egen tilgjengelighetskontroll og med tastatur/skjermleser.",
+      "sources": [{"title": "Canvas API: Pages (block_editor_attributes)", "url": "https://developerdocs.instructure.com/services/canvas/resources/pages"}],
+      "fix_policy": "manual"
+    },
+    {
       "id": "UU-DOC-PDF-UNTAGGED", "category": "documents", "title": "PDF uten struktur (ikke tagget)",
       "wcag": ["1.3.1"], "testability": "deterministic", "severity": "serious", "classification": "likely_violation",
       "explanation": "PDF-filen har ingen struktur (tagger). Skjermlesere kan da ikke gjenkjenne overskrifter, lister, tabeller eller leserekkefølge.",

@@ -249,7 +249,8 @@ def seed_state(origin: str = "http://canvas.test") -> FakeCanvasState:
          "items": [item("1020", "Video og medier", "Page", page_url="video-og-medier", position=1),
                    item("1021", "Pensumliste", "File", content_id="9001", position=2),
                    item("1022", "Forelesningsnotater", "File", content_id="9002", position=3),
-                   item("1023", "Ekstern ressurs", "ExternalUrl", external_url="https://www.example.org/ressurs", position=4)]},
+                   item("1023", "Ekstern ressurs", "ExternalUrl", external_url="https://www.example.org/ressurs", position=4),
+                   item("1024", "Lysbilder fra 2021", "File", content_id="9005", position=5)]},
     ]
     c.tabs = [{"id": "home", "label": "Startside", "hidden": False, "position": 1, "visibility": "public", "type": "internal"},
               {"id": "announcements", "label": "Kunngjøringer", "hidden": False, "position": 2, "visibility": "public", "type": "internal"},

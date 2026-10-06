@@ -83,6 +83,7 @@ class AppContainer:
         self._canvas_key: tuple[str, int] | None = None
         self._changes: ChangeEngine | None = None
         self._ai: AIService | None = None
+        self._parsers: Any = None
         self.started_at = datetime.now(UTC)
 
     # -- lifecycle ---------------------------------------------------------------------
@@ -110,6 +111,8 @@ class AppContainer:
             self._canvas = None
         if self._ai is not None:
             await self._ai.aclose()
+        if self._parsers is not None:
+            await self._parsers.close()
         self._remove_instance_file()
         self.db.dispose()
 
@@ -173,6 +176,15 @@ class AppContainer:
         self._canvas_key = None
 
     # -- shared engines (created lazily to keep start-up fast) ----------------------------
+
+    @property
+    def parsers(self) -> Any:
+        """Document parser runner: isolated worker processes, or inline in tests."""
+        if self._parsers is None:
+            from emneklar.core.security.isolation import InlineRunner, IsolatedWorkerPool
+
+            self._parsers = IsolatedWorkerPool(size=2) if self.config.parser_isolation else InlineRunner()
+        return self._parsers
 
     @property
     def changes(self) -> ChangeEngine:

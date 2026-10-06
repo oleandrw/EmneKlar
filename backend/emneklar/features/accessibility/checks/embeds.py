@@ -88,7 +88,11 @@ def check_media(doc: ContentDoc, media_captions: dict[str, bool | None] | None =
                                 key=f"autoplay:{path}",
                                 fix=fix("remove_autoplay", "Slå av autoavspilling", path=path)))
         if ref.kind in ("canvas_media", "canvas_attachment"):
-            status = media_captions.get(ref.ident or "") if ref.ident else None
+            status = None
+            for key in (ref.media_id, ref.ident):
+                if key and media_captions.get(key) is not None:
+                    status = media_captions[key]
+                    break
             media_type = str(el.get("data-media-type") or "video")
             if status is False:
                 issues.append(Issue(
