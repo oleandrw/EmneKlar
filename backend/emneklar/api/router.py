@@ -15,6 +15,7 @@ ROUTERS = [
     "emneklar.features.accessibility.fixes",
     "emneklar.features.overview.api",
     "emneklar.features.content_quality.api",
+    "emneklar.features.course_structure.api",
 ]
 
 
