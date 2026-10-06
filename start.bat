@@ -14,7 +14,7 @@ cd /d "%~dp0backend"
 set "EMNEKLAR_EXIT=%ERRORLEVEL%"
 if "%EMNEKLAR_EXIT%"=="0" exit /b 0
 
-set "EMNEKLAR_LOGS=%LOCALAPPDATA%\EmneKlar\logs"
+set "EMNEKLAR_LOGS=%LOCALAPPDATA%\EmneKlar-Claude\logs"
 if defined EMNEKLAR_DATA_DIR set "EMNEKLAR_LOGS=%EMNEKLAR_DATA_DIR%\logs"
 echo.
 echo EmneKlar stoppet på grunn av en feil (kode %EMNEKLAR_EXIT%). Se meldingene over.

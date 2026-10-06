@@ -1,6 +1,6 @@
 """Start EmneKlar and open the browser with a one-time login link.
 
-    python -m emneklar.launcher [--port 8765] [--no-browser]
+    python -m emneklar.launcher [--port 8770] [--no-browser]
 
 * If EmneKlar is already running for this Windows user, a new login link is
   requested from the running instance (local control channel) and the
@@ -26,6 +26,7 @@ from emneklar import APP_NAME, __version__
 from emneklar.config import ConfigError, RuntimeConfig
 from emneklar.core.container import AppContainer
 from emneklar.core.logging_setup import configure_logging
+from emneklar.core.storage.db import ForeignDatabaseError, database_owner
 from emneklar.main import create_app
 from emneklar.manage import fetch_health, request_launch_url, running_instance
 
@@ -73,6 +74,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.port:
             config = dataclasses.replace(config, port=args.port)
             config.validate()
+        # Before anything is created in the data folder: never move into another program's folder.
+        if database_owner(config.db_path) == "foreign":
+            raise ForeignDatabaseError(config.db_path)
     except ConfigError as exc:
         print(f"Feil i oppsettet: {exc}", file=sys.stderr)
         return 2

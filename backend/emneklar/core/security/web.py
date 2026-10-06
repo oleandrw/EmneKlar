@@ -4,7 +4,9 @@
 * **Session**: the launcher opens the browser with a one-time launch token
   which is exchanged for an HttpOnly, SameSite=Strict session cookie. Other
   web sites and other local users cannot use the API without it. Sessions are
-  persisted (hashed) so a bookmark keeps working after a restart.
+  persisted (hashed) so a bookmark keeps working after a restart. Browsers do
+  not separate cookies by port, so the cookie name includes the port: other
+  local apps on 127.0.0.1 (or another EmneKlar instance) never overwrite it.
 * **CSRF / localhost CSRF**: state-changing requests need an allowed
   ``Origin`` *and* the per-session ``X-CSRF-Token`` header (a custom header
   also forces a CORS preflight, which is never approved).
@@ -34,7 +36,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from emneklar.config import RuntimeConfig
 from emneklar.core.errors import MESSAGES
 
-SESSION_COOKIE = "emneklar_session"
+SESSION_COOKIE_PREFIX = "emneklar_session"
 CSRF_HEADER = "x-csrf-token"
 CONTROL_HEADER = "x-emneklar-control"
 LAUNCH_TOKEN_TTL = 300  # seconds
@@ -81,10 +83,16 @@ def _hash(session_id: str) -> str:
     return hashlib.sha256(session_id.encode("utf-8")).hexdigest()
 
 
+def session_cookie_name(port: int) -> str:
+    return f"{SESSION_COOKIE_PREFIX}_{port}"
+
+
 class SessionStore:
     """In-memory sessions keyed by the SHA-256 of the cookie value, optionally persisted."""
 
-    def __init__(self, dev_launch_token: str | None = None, persistence: SessionPersistence | None = None) -> None:
+    def __init__(self, dev_launch_token: str | None = None, persistence: SessionPersistence | None = None,
+                 cookie_name: str = SESSION_COOKIE_PREFIX) -> None:
+        self.cookie_name = cookie_name
         self._launch: dict[str, float] = {}
         self._sessions: dict[str, Session] = {}
         self._lock = threading.Lock()
@@ -180,7 +188,7 @@ def header(scope: Scope, name: bytes) -> str | None:
     return None
 
 
-def session_cookie_from_scope(scope: Scope) -> str | None:
+def session_cookie_from_scope(scope: Scope, name: str) -> str | None:
     raw = header(scope, b"cookie")
     if not raw:
         return None
@@ -189,12 +197,12 @@ def session_cookie_from_scope(scope: Scope) -> str | None:
         cookie.load(raw)
     except Exception:  # noqa: BLE001
         return None
-    morsel = cookie.get(SESSION_COOKIE)
+    morsel = cookie.get(name)
     return morsel.value if morsel else None
 
 
-def session_cookie_header(cookie_value: str) -> tuple[bytes, bytes]:
-    value = f"{SESSION_COOKIE}={cookie_value}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_IDLE_TTL}"
+def session_cookie_header(name: str, cookie_value: str) -> tuple[bytes, bytes]:
+    value = f"{name}={cookie_value}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_IDLE_TTL}"
     return (b"set-cookie", value.encode())
 
 
@@ -235,7 +243,7 @@ class SecurityMiddleware:
             if method == "OPTIONS":
                 await self._reject(send, 403, "origin_rejected")  # never approve CORS preflights
                 return
-            session = self.sessions.get(session_cookie_from_scope(scope))
+            session = self.sessions.get(session_cookie_from_scope(scope, self.sessions.cookie_name))
             if session is None:
                 await self._reject(send, 401, "session_required")
                 return

@@ -10,8 +10,13 @@ This is *not* where user settings or secrets live:
 Only what must be known before the app starts is read here, from environment
 variables prefixed with ``EMNEKLAR_``. Program code and user data are kept
 apart: everything persistent lives under :attr:`RuntimeConfig.data_dir`
-(``%LOCALAPPDATA%\\EmneKlar`` on Windows), so replacing or updating the
+(``%LOCALAPPDATA%\\EmneKlar-Claude`` on Windows), so replacing or updating the
 program folder never touches user data.
+
+Why not ``%LOCALAPPDATA%\\EmneKlar`` and port 8765: another, independent
+implementation of the same specification uses exactly that folder (with the
+same file and folder names) and that port. The two programs must never share
+files, and both must be able to run at the same time.
 """
 
 from __future__ import annotations
@@ -22,7 +27,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-DEFAULT_PORT = 8765
+DEFAULT_PORT = 8770
+DATA_FOLDER = "EmneKlar-Claude"
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 REPO_DIR = BACKEND_DIR.parent
 
@@ -34,11 +40,11 @@ class ConfigError(RuntimeError):
 def default_data_dir() -> Path:
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-        return Path(base) / "EmneKlar"
+        return Path(base) / DATA_FOLDER
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "EmneKlar"
+        return Path.home() / "Library" / "Application Support" / DATA_FOLDER
     base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    return Path(base) / "emneklar"
+    return Path(base) / DATA_FOLDER.lower()
 
 
 def is_loopback_host(host: str) -> bool:

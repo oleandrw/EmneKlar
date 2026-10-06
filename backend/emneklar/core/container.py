@@ -24,7 +24,7 @@ from emneklar.core.auth.secrets import CANVAS_TOKEN, SecretStore, create_secret_
 from emneklar.core.canvas.client import CanvasClient
 from emneklar.core.errors import AppError
 from emneklar.core.jobs.manager import JobManager
-from emneklar.core.security.web import SessionStore
+from emneklar.core.security.web import SessionStore, session_cookie_name
 from emneklar.core.storage.db import Database
 from emneklar.core.storage.models import WebSession
 from emneklar.core.storage.settings import AppSettings, SettingsStore
@@ -69,9 +69,9 @@ class AppContainer:
         ai_transport: httpx.AsyncBaseTransport | None = None,
         update_transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
+        self.db = Database(config.db_path)  # refuses a database that belongs to another program
         config.ensure_dirs()
         self.config = config
-        self.db = Database(config.db_path)
         self.secrets = secret_store or create_secret_store(config.secret_backend)
         self.settings = SettingsStore(self.db)
         self.jobs = JobManager(self.db)
@@ -98,7 +98,8 @@ class AppContainer:
     @property
     def sessions(self) -> SessionStore:
         if self._sessions is None:
-            self._sessions = SessionStore(self.config.dev_launch_token, persistence=DbSessionPersistence(self.db))
+            self._sessions = SessionStore(self.config.dev_launch_token, persistence=DbSessionPersistence(self.db),
+                                          cookie_name=session_cookie_name(self.config.port))
         return self._sessions
 
     def startup(self) -> None:

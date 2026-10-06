@@ -1,6 +1,6 @@
 # Domene- og datamodell
 
-All persistent data ligger i `%LOCALAPPDATA%\EmneKlar\database.db` (SQLite, WAL) og filer under samme mappe.
+All persistent data ligger i `%LOCALAPPDATA%\EmneKlar-Claude\database.db` (SQLite, WAL) og filer under samme mappe.
 Skjemaet endres bare med Alembic-migreringer (`backend/migrations`). Hemmeligheter ligger aldri her.
 
 ## Kjerneobjekter
@@ -47,7 +47,7 @@ Leverandøroppsett (endepunkt, API-versjon, aktivert) ligger i innstillingene; n
 ## Filer i datamappen
 
 ```
-%LOCALAPPDATA%\EmneKlar\
+%LOCALAPPDATA%\EmneKlar-Claude\
   database.db           SQLite-databasen
   backups\objects\      sikkerhetskopier av Canvas-objekter før endring (JSON)
   backups\database\     kopi av databasen før migrering/oppdatering

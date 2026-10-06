@@ -9,7 +9,7 @@ The update runs in ten steps, each announced as "Steg N av 10 – …":
      5  fetch the new version                     10  start EmneKlar again
 
 If anything in steps 5–9 fails, the program files, the dependencies and the database are rolled back and the
-previous version is started again. User data (``%LOCALAPPDATA%\\EmneKlar``) is never deleted; the database is
+previous version is started again. User data (``%LOCALAPPDATA%\\EmneKlar-Claude``) is never deleted; the database is
 backed up before anything changes.
 
 Installation types (same rule as ``emneklar.core.updates.service``): ``git`` if ``.git`` exists (updated with

@@ -22,7 +22,9 @@ from emneklar.core.security.redaction import register_secret, unregister_secret
 
 log = logging.getLogger(__name__)
 
-KEYRING_SERVICE = "EmneKlar"
+# Not plain "EmneKlar": another implementation of the same specification stores its secrets under that name,
+# and the Windows keyring backend re-saves an existing entry when a new one is added under the same service.
+KEYRING_SERVICE = "EmneKlar-Claude"
 CANVAS_TOKEN = "canvas_token"
 MAX_SECRET_LENGTH = 2000  # Windows Credential Manager caps blobs at 2560 bytes
 _NAME_RE = re.compile(r"^(canvas_token|ai_key:[a-z0-9_-]{1,40})$")

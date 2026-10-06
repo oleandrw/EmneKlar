@@ -237,7 +237,7 @@ function About() {
       <h2>Prinsipper</h2>
       <ul>
         <li>Analyser – forklar – foreslå – forhåndsvis – godkjenn – endre – logg.</li>
-        <li>Kjører bare på denne maskinen. Data lagres i %LOCALAPPDATA%\EmneKlar, adskilt fra programmet.</li>
+        <li>Kjører bare på denne maskinen. Data lagres i %LOCALAPPDATA%\EmneKlar-Claude, adskilt fra programmet.</li>
         <li>Alle endringer i Canvas går via endringskøen, med sikkerhetskopi og logg.</li>
         <li>KI er valgfritt, og ingenting sendes til ekstern KI uten at du har slått det på.</li>
         <li>Juridisk status for universell utforming kommer fra versjonerte regelsett og profiler, ikke fra automatisk testing alene.</li>

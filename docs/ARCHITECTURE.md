@@ -17,7 +17,7 @@ ferdigbygde grensesnittet og lytter bare på `127.0.0.1`.
 │  OS-nøkkelring ◄── token/nøkler ────────────│ core/ai (leverandører, ruter)   │──┼─► Valgt KI-leverandør
 │  (Windows Credential Manager)               │ core/jobs (jobber, fremdrift)   │  │   (bare etter samtykke)
 │                                             │ core/security/ssrf (lenkesjekk) │──┼─► Eksterne lenker
-│  %LOCALAPPDATA%\EmneKlar\                   │ core/storage (SQLite, Alembic)  │  │   (SSRF-beskyttet)
+│  %LOCALAPPDATA%\EmneKlar-Claude\            │ core/storage (SQLite, Alembic)  │  │   (SSRF-beskyttet)
 │   database.db, backups\, reports\,          └─────────────────────────────────┘  │
 │   logs\, cache\, run\                                                            │
 └──────────────────────────────────────────────────────────────────────────────────┘

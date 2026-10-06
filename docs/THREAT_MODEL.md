@@ -30,6 +30,7 @@ KI-leverandører (dataminimering), utilsiktede feil fra brukeren eller fra EmneK
 | 19 | **Rapporter og lokale mapper** | Rapporter genereres med escaping, uten skript, og vises under appens CSP. Filer hentes via database-id og sti kontrolleres mot rapportmappen. «Åpne mappen» åpner bare faste mapper i datamappen. | `test_reports` |
 | 20 | **Fjerning av innhold i quizspørsmål** | Canvas erstatter et spørsmål i sin helhet ved oppdatering. EmneKlar sender tilbake tilbakemeldingstekster og formatering, beholder original HTML når teksten er uendret og nekter å erstatte rik spørsmålstekst (bilder, tabeller) med ren tekst. | `test_quiz_assistant` |
 | 21 | **Personvern ved oppdateringssjekk** | Bare én forespørsel om siste versjon til GitHub (ingen emnedata), høyst én gang i døgnet, og kan slås av. | `test_settings_updates` |
+| 22 | **Andre programmer med samme navn eller mappe** | Et annet EmneKlar-program bruker `%LOCALAPPDATA%\EmneKlar`, `database.db`, Alembic-revisjon «0001», nøkkelringtjenesten «EmneKlar», informasjonskapselen `emneklar_session` og port 8765. EmneKlar har egen datamappe, egen nøkkelringtjeneste, en informasjonskapsel per port og standardport 8770. Databasen merkes med `PRAGMA application_id`; før noe åpnes for skriving, leses filhodet direkte, og en database som tilhører et annet program, blir verken migrert eller endret (heller ikke med -wal/-shm-filer). | `test_coexistence` |
 
 ## Restrisiko
 

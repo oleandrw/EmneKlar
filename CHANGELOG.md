@@ -10,7 +10,7 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
 
 ### Lagt til
 - Én lokal applikasjon (FastAPI + React) for Windows med `setup.bat`, `start.bat` og `update.bat`. Tjenesten
-  lytter bare på 127.0.0.1; innlogging skjer med engangslenke, og data lagres i `%LOCALAPPDATA%\EmneKlar`.
+  lytter bare på 127.0.0.1; innlogging skjer med engangslenke, og data lagres i `%LOCALAPPDATA%\EmneKlar-Claude`.
 - Oppsettveiviser i ni steg med test av Canvas-tilkobling, identitet, tilganger, standardemne og regulatorisk
   profil. Canvas-token og KI-nøkler lagres bare i Windows Legitimasjonsbehandling.
 - Global emnevelger, global analyse med normalisert øyeblikksbilde av emnet, ekte fremdrift (prosent, X av Y,
@@ -37,3 +37,9 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   tilbakerulling ved feil. Nye hovedversjoner installeres bare etter bekreftelse. Utgivelsespakker (zip med
   SHA-256) bygges av GitHub Actions. Se `docs/UPDATING.md`.
 - Automatiske tester: backend (pytest), frontend (Vitest + axe) og ende-til-ende (Playwright + axe).
+
+### Rettet
+- EmneKlar startet ikke når et annet program med samme navn brukte `%LOCALAPPDATA%\EmneKlar` («no such table:
+  jobs»). EmneKlar har nå egen datamappe (`%LOCALAPPDATA%\EmneKlar-Claude`), egen oppføring i Windows
+  Legitimasjonsbehandling, en innloggingskapsel per port og standardport 8770. En database som tilhører et annet
+  program, blir aldri åpnet for skriving – EmneKlar forklarer i stedet hva som er galt.

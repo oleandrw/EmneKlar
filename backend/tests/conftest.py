@@ -10,14 +10,14 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from emneklar.config import RuntimeConfig
+from emneklar.config import DEFAULT_PORT, RuntimeConfig
 from emneklar.core.auth.secrets import MemorySecretStore
 from emneklar.core.container import AppContainer
 from emneklar.main import create_app
 from tests.fakes.fake_canvas import TOKEN as FAKE_TOKEN
 from tests.fakes.fake_canvas import FakeCanvasState, create_fake_canvas, seed_state
 
-ORIGIN = "http://127.0.0.1:8765"
+ORIGIN = f"http://127.0.0.1:{DEFAULT_PORT}"
 LAUNCH_TOKEN = "test-launch-token"
 
 

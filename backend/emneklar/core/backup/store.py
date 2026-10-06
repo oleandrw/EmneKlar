@@ -1,6 +1,6 @@
 """Backups of Canvas objects taken immediately before EmneKlar changes them.
 
-Stored as JSON files under ``%LOCALAPPDATA%\\EmneKlar\\backups\\objects`` with
+Stored as JSON files under ``%LOCALAPPDATA%\\EmneKlar-Claude\\backups\\objects`` with
 random file names (never derived from user/Canvas input) and a SHA-256 in the
 database. Backups are read back only by database id.
 """

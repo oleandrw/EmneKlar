@@ -3,7 +3,7 @@
     python -m emneklar.manage version
     python -m emneklar.manage migrate
     python -m emneklar.manage backup-db <fil eller mappe>
-    python -m emneklar.manage health [--origin http://127.0.0.1:8765] [--wait SEKUNDER]
+    python -m emneklar.manage health [--origin http://127.0.0.1:8770] [--wait SEKUNDER]
     python -m emneklar.manage stop [--timeout SEKUNDER]
 
 Exit code 0 means success, 1 means failure. The control secret from ``run/instance.json`` and one-time
@@ -371,6 +371,10 @@ def cmd_migrate(_args: argparse.Namespace) -> int:
     if running_instance(config.run_dir) is not None:
         return _fail("EmneKlar kjører. Avslutt EmneKlar før databasen oppdateres "
                      "(lukk EmneKlar-vinduet eller kjør «python -m emneklar.manage stop»).")
+    from emneklar.core.storage.db import ForeignDatabaseError, database_owner
+
+    if database_owner(config.db_path) == "foreign":
+        return _fail(str(ForeignDatabaseError(config.db_path)))
     config.ensure_dirs()
     file_logging = _FileLogging(config.logs_dir)
     try:
@@ -470,7 +474,7 @@ def build_parser() -> argparse.ArgumentParser:
     backup.add_argument("dest", help="målfil, eller en mappe (filnavn lages automatisk)")
     backup.set_defaults(func=cmd_backup_db)
     health = commands.add_parser("health", help="sjekk at EmneKlar svarer")
-    health.add_argument("--origin", help="adresse, f.eks. http://127.0.0.1:8765 (standard: kjørende instans)")
+    health.add_argument("--origin", help="adresse, f.eks. http://127.0.0.1:8770 (standard: kjørende instans)")
     health.add_argument("--wait", type=float, default=0.0, metavar="SEKUNDER",
                         help="vent opptil så lenge på at EmneKlar svarer")
     health.set_defaults(func=cmd_health)

@@ -1,4 +1,4 @@
-"""Rapporter: create, list, view, download and delete reports (stored under %LOCALAPPDATA%\\EmneKlar\\reports)."""
+"""Rapporter: create, list, view, download and delete reports (stored under %LOCALAPPDATA%\\EmneKlar-Claude\\reports)."""
 
 from __future__ import annotations
 

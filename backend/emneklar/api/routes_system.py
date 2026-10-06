@@ -36,12 +36,12 @@ async def health() -> dict[str, str]:
 async def launch(request: Request, token: str = "", c: AppContainer = Depends(get_container)) -> object:
     redeemed = c.sessions.redeem(token)
     if redeemed is None:
-        if c.sessions.get(session_cookie_from_scope(request.scope)):
+        if c.sessions.get(session_cookie_from_scope(request.scope, c.sessions.cookie_name)):
             return RedirectResponse("/", status_code=303)
         return HTMLResponse(EXPIRED_PAGE, status_code=401)
     cookie_value, _session = redeemed
     response = RedirectResponse("/", status_code=303)
-    key, value = session_cookie_header(cookie_value)
+    key, value = session_cookie_header(c.sessions.cookie_name, cookie_value)
     response.raw_headers.append((key, value))
     return response
 
@@ -77,7 +77,7 @@ async def session_info(request: Request, c: AppContainer = Depends(get_container
 
 @router.post("/api/session/logout")
 async def logout(request: Request, c: AppContainer = Depends(get_container)) -> dict[str, bool]:
-    c.sessions.drop(session_cookie_from_scope(request.scope))
+    c.sessions.drop(session_cookie_from_scope(request.scope, c.sessions.cookie_name))
     return {"ok": True}
 
 

@@ -5,7 +5,7 @@
 * httpx/httpcore request logging is silenced: it logs full URLs, which for
   Canvas file downloads contain signed verifiers.
 * The uvicorn access log is disabled: URLs can carry the one-time launch token.
-* Logs are local only (``%LOCALAPPDATA%\\EmneKlar\\logs``). No telemetry.
+* Logs are local only (``%LOCALAPPDATA%\\EmneKlar-Claude\\logs``). No telemetry.
 """
 
 from __future__ import annotations

@@ -37,8 +37,10 @@ tilbake hvis noe går galt. Større versjoner installeres aldri uten at du bekre
 * EmneKlar lytter bare på `127.0.0.1` og kan ikke nås fra nettverket.
 * Canvas-token og API-nøkler lagres bare i Windows Legitimasjonsbehandling – aldri i filer, databasen, nettleseren
   eller logger.
-* Dine data ligger i `%LOCALAPPDATA%\EmneKlar` (database, sikkerhetskopier, rapporter, logger), adskilt fra
-  programmet. Oppdatering eller ny installasjon sletter dem ikke.
+* Dine data ligger i `%LOCALAPPDATA%\EmneKlar-Claude` (database, sikkerhetskopier, rapporter, logger), adskilt fra
+  programmet. Oppdatering eller ny installasjon sletter dem ikke. Mappen heter ikke bare «EmneKlar» fordi et annet
+  program med samme navn bruker `%LOCALAPPDATA%\EmneKlar`. De to programmene deler ingen filer og kan kjøre samtidig.
+  EmneKlar åpner bare sin egen database og endrer aldri en database som tilhører et annet program.
 * KI er valgfritt. Sending av emneinnhold til eksterne KI-tjenester er **av** til du slår det på, og du ser hva som
   sendes før det sendes. Studentenes innleveringer, karakterer og meldinger sendes aldri.
 

@@ -30,7 +30,11 @@ Internal identifiers: English. See `docs/ARCHITECTURE.md` for the full picture.
    something, show it as unavailable with a truthful explanation.
 8. **Local only.** The server binds to 127.0.0.1. Keep the Host/Origin/CSRF/session checks in
    `core/security/web.py`. Link checking goes through the SSRF guard (`core/security/ssrf.py`).
-9. **User data is separate from code**: `%LOCALAPPDATA%\EmneKlar` (database, backups, reports, logs, cache).
+9. **User data is separate from code**: `%LOCALAPPDATA%\EmneKlar-Claude` (database, backups, reports, logs, cache).
+   Never share files, the database, the Credential Manager service, the session cookie or the default port with
+   another program: an independent EmneKlar implementation uses `%LOCALAPPDATA%\EmneKlar`, `database.db`, the
+   keyring service "EmneKlar", the cookie `emneklar_session` and port 8765. EmneKlar only opens a database marked
+   with its own `PRAGMA application_id` (or an empty one) – see `core/storage/db.py`.
 10. **Database schema changes require an Alembic migration** (`backend/migrations`). Before v0.1.0 is
     released the initial migration may be regenerated; after that migrations are append-only.
 

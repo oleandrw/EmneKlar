@@ -9,7 +9,7 @@ Steps ("Steg N av 5 – …"):
   5  verify: import emneklar in the venv and check frontend\\dist\\index.html
 
 No administrator rights are needed and nothing outside this folder is changed, except the log file
-``<data folder>\\logs\\setup.log`` (normally ``%LOCALAPPDATA%\\EmneKlar\\logs\\setup.log``).
+``<data folder>\\logs\\setup.log`` (normally ``%LOCALAPPDATA%\\EmneKlar-Claude\\logs\\setup.log``).
 Exit codes: 0 = ready (next step: start.bat), 1 = setup failed (see the message and the log).
 """
 

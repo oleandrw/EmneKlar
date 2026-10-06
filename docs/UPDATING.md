@@ -35,9 +35,9 @@ Vinduet viser «Steg N av 10» underveis:
 
 Feiler et av stegene 5–9, settes programfilene, avhengighetene og databasen tilbake, og forrige versjon startes
 igjen. Vinduet forteller hvilket steg som feilet og hvorfor. Hele forløpet logges i
-`%LOCALAPPDATA%\EmneKlar\logs\update.log`.
+`%LOCALAPPDATA%\EmneKlar-Claude\logs\update.log`.
 
-Dataene dine i `%LOCALAPPDATA%\EmneKlar` (database, sikkerhetskopier, rapporter, logger) slettes aldri av en
+Dataene dine i `%LOCALAPPDATA%\EmneKlar-Claude` (database, sikkerhetskopier, rapporter, logger) slettes aldri av en
 oppdatering.
 
 ### Større versjoner
@@ -74,7 +74,7 @@ se etter oppdateringer automatisk. Den automatiske sjekken skjer høyst én gang
 ### Sikkerhetskopier
 
 * **Databasen** kopieres før hver oppdatering (`backups\database\for-oppdatering-<versjon>-<tid>.db`) og før hver
-  migrering (`backups\database\for-migrering-<revisjon>-<tid>.db`), under `%LOCALAPPDATA%\EmneKlar`. EmneKlar
+  migrering (`backups\database\for-migrering-<revisjon>-<tid>.db`), under `%LOCALAPPDATA%\EmneKlar-Claude`. EmneKlar
   beholder de fem nyeste kopiene av hver type og sletter eldre kopier ved oppstart. Andre filer i mappen røres ikke.
 * **Programfilene** som ble erstattet, legges i `.update\previous-*` i EmneKlar-mappen. De tre nyeste beholdes.
 * Sikkerhetskopiene av innhold EmneKlar har endret i Canvas (brukes til angring) slettes aldri automatisk.
