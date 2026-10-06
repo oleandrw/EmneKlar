@@ -5,6 +5,7 @@ import { Link, Route, Routes } from "react-router";
 
 import { api } from "../../core/api/client";
 import { useCurrentCourse } from "../../core/course";
+import { HelpLink } from "../../core/HelpLink";
 import { usePageTitle } from "../../core/usePageTitle";
 import { Badge, IconCircle, PageHeader } from "../../design-system";
 import { BlueprintLocking } from "./BlueprintLocking";
@@ -45,7 +46,8 @@ function Overview() {
   const blueprint = caps.data?.blueprint;
   return (
     <>
-      <PageHeader title="Canvas-verktøy" description="Utvalgte administrative verktøy for emnet. Alt forhåndsvises og går via endringskøen." />
+      <PageHeader title="Canvas-verktøy" description="Utvalgte administrative verktøy for emnet. Alt forhåndsvises og går via endringskøen."
+        actions={<HelpLink topic="canvas-verktoy" />} />
       <div className="ek-grid" data-cols="2">
         <ToolCard to="modulkrav" icon={<ListChecks />} title="Automatiske modulkrav" status={missing("modules")}>
           Foreslå fullføringskrav ut fra elementtype, og velg om modulene skal fullføres i rekkefølge.

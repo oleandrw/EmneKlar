@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen, Copy, Info, LifeBuoy, Lightbulb, MessageSquare, MessagesSquare, Rocket, type LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
-import { Link, Navigate, useParams } from "react-router";
+import { useEffect, type ReactNode } from "react";
+import { Link, Navigate, useLocation, useParams } from "react-router";
 
 import { api } from "../../core/api/client";
 import { useSession } from "../../core/session";
@@ -256,6 +256,16 @@ function About() {
 
 export function HelpPage() {
   const { topic = "kom-i-gang" } = useParams();
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (!hash) return;
+    const target = document.getElementById(decodeURIComponent(hash.slice(1)));
+    if (target) {
+      target.scrollIntoView({ block: "start" });
+      target.setAttribute("tabindex", "-1");
+      target.focus({ preventScroll: true });
+    }
+  }, [hash, topic]);
   const current = TOPICS.find((t) => t.slug === topic);
   usePageTitle(current ? `${current.label} – Hjelp` : "Hjelp");
   if (!current) return <Navigate to="/hjelp" replace />;

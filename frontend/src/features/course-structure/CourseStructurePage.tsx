@@ -6,6 +6,7 @@ import { api } from "../../core/api/client";
 import { useCurrentCourse } from "../../core/course";
 import { formatDate, formatDateTime } from "../../core/format";
 import { useSession } from "../../core/session";
+import { HelpLink } from "../../core/HelpLink";
 import { usePageTitle } from "../../core/usePageTitle";
 import { useUi } from "../../core/ui";
 import {
@@ -151,9 +152,12 @@ export function CourseStructurePage() {
         title="Emnestruktur"
         description="Råd om moduler, rekkefølge, navngiving og plassering. Forslagene er veiledende – ingenting flyttes uten at du godkjenner det."
         actions={
-          <Button variant="primary" icon={<Play aria-hidden="true" />} onClick={() => ui.openAnalysis({ domains: ["structure"] })}>
-            Analyser emnestruktur
-          </Button>
+          <>
+            <HelpLink topic="emnestruktur" />
+            <Button variant="primary" icon={<Play aria-hidden="true" />} onClick={() => ui.openAnalysis({ domains: ["structure"] })}>
+              Analyser emnestruktur
+            </Button>
+          </>
         }
       />
       <Tabs

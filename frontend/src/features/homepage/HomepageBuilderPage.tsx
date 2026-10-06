@@ -7,6 +7,7 @@ import { api } from "../../core/api/client";
 import { useCurrentCourse } from "../../core/course";
 import { formatDateTime } from "../../core/format";
 import { useSession } from "../../core/session";
+import { HelpLink } from "../../core/HelpLink";
 import { usePageTitle } from "../../core/usePageTitle";
 import { useUi } from "../../core/ui";
 import {
@@ -308,6 +309,7 @@ export function HomepageBuilderPage() {
       <PageHeader
         title="Emneforside"
         description="Lag en ny forside eller gi den nåværende et løft. Alt forhåndsvises, og ingenting endres i Canvas før du godkjenner det."
+        actions={<HelpLink topic="emneforside" />}
       />
       <div className="ek-stack" data-gap="6">
         <Card title="1. Utgangspunkt" headingLevel={2}>

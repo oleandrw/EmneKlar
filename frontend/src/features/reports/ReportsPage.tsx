@@ -5,6 +5,7 @@ import { useState } from "react";
 import { api } from "../../core/api/client";
 import { useCurrentCourse } from "../../core/course";
 import { formatDateTime } from "../../core/format";
+import { HelpLink } from "../../core/HelpLink";
 import { usePageTitle } from "../../core/usePageTitle";
 import { useUi } from "../../core/ui";
 import {
@@ -119,7 +120,8 @@ export function ReportsPage() {
 
   return (
     <>
-      <PageHeader title="Rapporter" description="Rapporter bygger på de siste analysene som er lagret i EmneKlar. De inneholder ingen studentdata." />
+      <PageHeader title="Rapporter" description="Rapporter bygger på de siste analysene som er lagret i EmneKlar. De inneholder ingen studentdata."
+        actions={<HelpLink topic="rapporter" />} />
       <div className="ek-stack" data-gap="6">
         <Card title="Lag rapport" headingLevel={2}>
           <div className="ek-stack" data-gap="6">

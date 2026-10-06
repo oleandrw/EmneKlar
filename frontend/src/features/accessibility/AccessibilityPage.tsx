@@ -3,6 +3,7 @@ import { Play } from "lucide-react";
 import { Link } from "react-router";
 
 import { api } from "../../core/api/client";
+import { HelpLink } from "../../core/HelpLink";
 import { usePageTitle } from "../../core/usePageTitle";
 import { useUi } from "../../core/ui";
 import { Alert, Button, PageHeader } from "../../design-system";
@@ -25,9 +26,12 @@ export function AccessibilityPage() {
         title="Universell utforming"
         description="Kontroll av bilder, overskrifter, lenker, tabeller, lister, språk, kontrast, innebygd innhold, video og dokumenter."
         actions={
-          <Button variant="primary" icon={<Play aria-hidden="true" />} onClick={() => ui.openAnalysis({ domains: ["accessibility"] })}>
-            Analyser universell utforming
-          </Button>
+          <>
+            <HelpLink topic="universell-utforming" />
+            <Button variant="primary" icon={<Play aria-hidden="true" />} onClick={() => ui.openAnalysis({ domains: ["accessibility"] })}>
+              Analyser universell utforming
+            </Button>
+          </>
         }
       />
       <div className="ek-stack" data-gap="6">

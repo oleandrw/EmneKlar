@@ -1,6 +1,7 @@
 import { Route, Routes, useLocation } from "react-router";
 
 import { useSession } from "../../core/session";
+import { HelpLink } from "../../core/HelpLink";
 import { usePageTitle } from "../../core/usePageTitle";
 import { Alert, NavTabs, PageHeader } from "../../design-system";
 import { QuizList, QuizReview } from "./ExistingQuizzes";
@@ -27,6 +28,7 @@ export function QuizAssistantPage() {
       <PageHeader
         title="Quizassistent"
         description="Kvalitetssjekk av klassiske quizer, KI-spørsmålsbank og bygging av nye quizer. Fasit endres aldri automatisk."
+        actions={<HelpLink topic="quizassistent" />}
       />
       <div className="ek-stack" data-gap="6">
         <NavTabs

@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { api } from "../../core/api/client";
 import { useCurrentCourse } from "../../core/course";
 import { formatDateTime, formatNumber } from "../../core/format";
+import { HelpLink } from "../../core/HelpLink";
 import { usePageTitle } from "../../core/usePageTitle";
 import { useUi } from "../../core/ui";
 import {
@@ -209,9 +210,12 @@ export function ContentQualityPage() {
         title="Innholdskvalitet"
         description="Tekniske kvalitetsproblemer: lenker som ikke virker, medier som er borte og unødvendig kode. Dette er ikke en vurdering av faglig kvalitet."
         actions={
-          <Button variant="primary" icon={<Play aria-hidden="true" />} onClick={() => ui.openAnalysis({ domains: ["content_quality"] })}>
-            Analyser innholdskvalitet
-          </Button>
+          <>
+            <HelpLink topic="innholdskvalitet" />
+            <Button variant="primary" icon={<Play aria-hidden="true" />} onClick={() => ui.openAnalysis({ domains: ["content_quality"] })}>
+              Analyser innholdskvalitet
+            </Button>
+          </>
         }
       />
       <Tabs
