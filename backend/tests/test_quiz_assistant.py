@@ -421,3 +421,15 @@ def test_rich_question_text_is_never_replaced_by_plain_text(canvas_client: TestC
     kept = canvas_client.post(f"/api/quiz/findings/{finding['id']}/stage", json={"stem": "PNG støtter gjennomsiktighet."})
     assert kept.status_code == 200, kept.text
     assert "<img" in kept.json()["proposed"]["question_text"], "keeping the wording keeps the image"
+
+
+def test_requeuing_a_quiz_suggestion_replaces_the_earlier_version(canvas_client: TestClient,
+                                                                 canvas_container: AppContainer) -> None:
+    finding = _ai_key_finding(canvas_client, canvas_container, "PNG støtter ikke gjennomsiktighet.")
+    first = canvas_client.post(f"/api/quiz/findings/{finding['id']}/stage", json={}).json()
+    second = canvas_client.post(f"/api/quiz/findings/{finding['id']}/stage", json={
+        "stem": "PNG støtter ikke gjennomsiktighet.", "answers": [{"text": "Sant", "correct": True}, {"text": "Usant"}]}).json()
+    assert first["id"] == second["id"], "no duplicate changes for the same question"
+    pending = canvas_client.get(f"/api/changes?course_id={COURSE_ID}").json()["items"]
+    assert len([c for c in pending if c["kind"] == "quiz_question.update"]) == 1
+    assert second["proposed"]["answers"][0] == {"text": "Sant", "correct": True}

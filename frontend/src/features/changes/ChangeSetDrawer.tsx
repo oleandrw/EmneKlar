@@ -15,6 +15,7 @@ import {
   EmptyState,
   ExternalLink,
   Spinner,
+  TextField,
   useToast,
 } from "../../design-system";
 import { FINAL_STATUSES, useJob } from "../analysis/useJob";
@@ -39,6 +40,27 @@ const RESULT_TEXT: Record<string, string> = {
   failed: "Feilet",
 };
 
+const EDIT_LABELS: Record<string, string> = { name: "Navn", title: "Tittel" };
+
+/** «Rediger» for editable changes with simple text values (for example a new module name). */
+function EditChange({ change, onSave, saving }: { change: Change; onSave: (proposed: Record<string, unknown>) => void; saving: boolean }) {
+  const fields = Object.entries(change.proposed).filter(([key, value]) => typeof value === "string" && key in EDIT_LABELS);
+  const [values, setValues] = useState<Record<string, string>>(Object.fromEntries(fields.map(([k, v]) => [k, String(v)])));
+  if (!fields.length) return null;
+  return (
+    <form className="ek-stack" data-gap="2" onSubmit={(e) => {
+      e.preventDefault();
+      onSave({ ...change.proposed, ...values });
+    }}>
+      {fields.map(([key]) => (
+        <TextField key={key} label={EDIT_LABELS[key]} value={values[key] ?? ""} maxLength={255}
+          onChange={(e) => setValues({ ...values, [key]: e.target.value })} />
+      ))}
+      <div><Button size="sm" type="submit" variant="primary" loading={saving}>Lagre endringen</Button></div>
+    </form>
+  );
+}
+
 export function ChangeSetDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const session = useSession();
   const toast = useToast();
@@ -47,6 +69,7 @@ export function ChangeSetDrawer({ open, onClose }: { open: boolean; onClose: () 
   const m = useChangeMutations();
   const [selected, setSelected] = useState<number[]>([]);
   const [preview, setPreview] = useState<Change | null>(null);
+  const [editing, setEditing] = useState<number | null>(null);
   const [confirm, setConfirm] = useState<{ ids: number[] } | null>(null);
   const [confirmChecked, setConfirmChecked] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -189,10 +212,20 @@ export function ChangeSetDrawer({ open, onClose }: { open: boolean; onClose: () 
                       <Button size="sm" variant="primary" disabled={Boolean(running) || c.status === "conflict"} onClick={() => startApply([c.id])}>
                         Gjennomfør<span className="ek-visually-hidden">: {c.title}</span>
                       </Button>
+                      {c.editable && c.status !== "applied" ? (
+                        <Button size="sm" aria-expanded={editing === c.id} onClick={() => setEditing(editing === c.id ? null : c.id)}>
+                          Rediger<span className="ek-visually-hidden">: {c.title}</span>
+                        </Button>
+                      ) : null}
                       <Button size="sm" variant="ghost" onClick={() => m.discard.mutate(c.id)}>
                         Fjern<span className="ek-visually-hidden">: {c.title}</span>
                       </Button>
                     </div>
+                    {editing === c.id ? (
+                      <EditChange change={c} saving={m.edit.isPending}
+                        onSave={(proposed) => m.edit.mutate({ id: c.id, proposed }, { onSuccess: () => setEditing(null) })} />
+                    ) : null}
+                    {editing === c.id && m.edit.error ? <Alert tone="danger" role="alert">{(m.edit.error as Error).message}</Alert> : null}
                   </div>
                 </li>
               ))}

@@ -249,7 +249,7 @@ async def stage_question(finding_id: int, body: StageQuestionBody,
         proposed={"question_text": question_text, "answers": answers},
         rationale=rationale, risk="high" if changes_key else "medium", requires_confirmation=changes_key,
         source={"feature": "quiz", "finding_fingerprints": [finding.fingerprint], "rule_ids": [finding.rule_id]},
-        editable=True, ai_generated=True)
+        ai_generated=True, merge=True)  # edits happen before queuing; re-queuing replaces the earlier version
 
 
 # ------------------------------------------------------------------------------ presets
