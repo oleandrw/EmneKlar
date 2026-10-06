@@ -37,6 +37,16 @@ describe("ChangePreview", () => {
     expect(screen.getByText("Hva er SVG?")).toBeInTheDocument();
   });
 
+  it("explains what happens when a page becomes the front page", () => {
+    render(<ChangePreview change={change({
+      kind: "front_page.set", target: { object_type: "page", object_id: "ny-forside", title: "Ny forside" },
+      before: { front_page_url: "gammel-forside", default_view: "modules" }, proposed: { default_view: "wiki" },
+    })} />);
+    expect(screen.getByText("Ny forside", { selector: "dd" })).toBeInTheDocument();
+    expect(screen.getByText("gammel-forside")).toBeInTheDocument();
+    expect(screen.getByText("Moduler → Forside")).toBeInTheDocument();
+  });
+
   it("shows the answer key before and after for quiz question edits", () => {
     render(<ChangePreview change={change({
       kind: "quiz_question.update",

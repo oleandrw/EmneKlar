@@ -7,7 +7,7 @@ from html import escape
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 
 from emneklar.api.deps import get_container, require_course_id
@@ -25,7 +25,14 @@ from emneklar.features.findings.api import enrich
 from emneklar.features.findings.store import FindingStore
 from emneklar.features.quiz_assistant import ai_review
 from emneklar.features.quiz_assistant.analyzer import quiz_draft
-from emneklar.features.quiz_assistant.bank import BankItemIn, QuestionBank, QuestionType
+from emneklar.features.quiz_assistant.bank import (
+    AnswerIn,
+    BankItemIn,
+    QuestionBank,
+    QuestionType,
+    generation_plan,
+    plan_summary,
+)
 from emneklar.features.quiz_assistant.builder import (
     BUILTIN_PRESETS,
     BuildRequest,
@@ -98,7 +105,12 @@ async def quiz_detail(course_id: str, quiz_id: str, c: AppContainer = Depends(ge
 async def copy_settings(course_id: str, quiz_id: str, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
     _flag(c)
     quiz = await CanvasAPI(c.canvas()).get_quiz(require_course_id(course_id), quiz_id)
-    return {"settings": settings_from_quiz(quiz).model_dump(mode="json"), "source": quiz.get("title")}
+    try:
+        settings = settings_from_quiz(quiz)
+    except ValidationError as exc:
+        raise AppError("validation_error", message="Innstillingene i denne quizen kan ikke brukes for en ny quiz.",
+                       detail=str(exc.errors()[0].get("msg"))) from exc
+    return {"settings": settings.model_dump(mode="json"), "source": quiz.get("title")}
 
 
 class ReviewBody(BaseModel):
@@ -339,8 +351,11 @@ async def builder_stage(course_id: str, body: BuildRequest, c: AppContainer = De
 async def bank_list(course_id: str, status: str | None = None, module: str | None = None, q: str | None = None,
                     c: AppContainer = Depends(get_container)) -> dict[str, Any]:
     _flag(c)
-    items = QuestionBank(c).list(require_course_id(course_id), status=status, module=module, q=q)
-    return {"items": items, "counts": {s: sum(1 for i in items if i["review_status"] == s)
+    bank = QuestionBank(c)
+    course_id = require_course_id(course_id)
+    every = bank.list(course_id)
+    items = bank.list(course_id, status=status, module=module, q=q) if (status or module or q) else every
+    return {"items": items, "counts": {s: sum(1 for i in every if i["review_status"] == s)
                                        for s in ("draft", "approved", "rejected")}}
 
 
@@ -351,9 +366,12 @@ async def bank_create(course_id: str, body: BankItemIn, c: AppContainer = Depend
 
 
 class BankPatch(BaseModel):
-    stem: str | None = Field(default=None, max_length=4000)
-    answers: list[dict[str, Any]] | None = None
+    question_type: QuestionType | None = None
+    stem: str | None = Field(default=None, min_length=3, max_length=4000)
+    answers: list[AnswerIn] | None = Field(default=None, min_length=2, max_length=10)
     explanation: str | None = Field(default=None, max_length=4000)
+    module_name: str | None = Field(default=None, max_length=500)  # null clears the module
+    module_id: str | None = Field(default=None, max_length=64)
     topic: str | None = Field(default=None, max_length=300)
     difficulty: Literal["easy", "medium", "hard"] | None = None
     review_status: Literal["draft", "approved", "rejected"] | None = None
@@ -362,7 +380,11 @@ class BankPatch(BaseModel):
 @router.patch("/bank/{item_id}")
 async def bank_update(item_id: int, body: BankPatch, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
     _flag(c)
-    return QuestionBank(c).update(item_id, body.model_dump(exclude_none=True))
+    fields = body.model_dump(exclude_unset=True)
+    if "answers" in fields and fields["answers"] is not None:
+        fields["answers"] = [{"text": a["text"].strip(), "correct": a["correct"]} for a in fields["answers"]
+                             if a["text"].strip()]
+    return QuestionBank(c).update(item_id, fields)
 
 
 @router.delete("/bank/{item_id}")
@@ -391,15 +413,14 @@ async def generate_prepare(course_id: str, body: GenerateBody, c: AppContainer =
         return {"available": False, "reason": "Kjør en analyse av emnet først, slik at spørsmålene kan forankres i "
                 "emnets innhold.", "payload_summary": None, "needs_confirmation": False, "route": None}
     chunks = build_chunks(view, module_ids=body.module_ids or None)
-    pages = len({ch.object_ref for ch in chunks})
-    chars = sum(len(ch.text) for ch in chunks)
     if not chunks:
         return {"available": False, "reason": "Fant ikke nok tekstinnhold i valgt omfang.", "payload_summary": None,
                 "needs_confirmation": False, "route": None}
-    summary = (f"Utdrag fra {pages} sider/oppgaver i emnet (ca. {chars // 1000 + 1} 000 tegn totalt, sendt i mindre "
-               "deler) sendes til KI-leverandøren. Ingen studentdata sendes.")
-    plan = c.ai.plan("quiz_generation", input_chars=min(chars, 12_000), images=0, summary=summary)
-    return {**plan, "chunks": len(chunks), "pages": pages}
+    selection = generation_plan(chunks, body.count)
+    summary, chars = plan_summary(selection)
+    largest = max(sum(len(ch.text) for ch in batch) for batch in selection)
+    plan = c.ai.plan("quiz_generation", input_chars=largest, images=0, summary=summary)
+    return {**plan, "chunks": len(chunks), "pages": len({ch.object_ref for ch in chunks}), "characters": chars}
 
 
 @router.post("/courses/{course_id}/bank/generate")

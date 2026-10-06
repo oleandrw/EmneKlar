@@ -60,9 +60,7 @@ async def stage(course_id: str, body: PlanRequest, c: AppContainer = Depends(get
         changed = module["settings"]["changed"]
         if changed:
             current = module["settings"]["current"]
-            labels: dict[str, dict[Any, str]] = {
-                "requirement_type": {"all": "alle krav", "one": "ett krav"},
-                "require_sequential_progress": {True: "i rekkefølge", False: "fritt"}}
+            labels: dict[str, dict[Any, str]] = {"require_sequential_progress": {True: "i rekkefølge", False: "fritt"}}
             text = ", ".join(f"{labels[k][current[k]]} → {labels[k][v]}" for k, v in changed.items())
             change = c.changes.stage(
                 course_id=course_id, domain="canvas", kind="module.update", title=f"Modulinnstillinger: {module['name']}",

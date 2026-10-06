@@ -79,7 +79,7 @@ function HtmlFixPanel({ finding, onStaged }: { finding: Finding; onStaged: () =>
   const [unlink, setUnlink] = useState(false);
   const [options, setOptions] = useState<string[] | null>(null);
   const [device, setDevice] = useState<PreviewDevice>("desktop");
-  const [preview, setPreview] = useState<FixPreview | null>(null);
+  const [previewed, setPreviewed] = useState<{ key: string; data: FixPreview } | null>(null);
 
   const cleanupOptions = useQuery({
     queryKey: ["cleanup-options"],
@@ -106,9 +106,16 @@ function HtmlFixPanel({ finding, onStaged }: { finding: Finding; onStaged: () =>
     set_iframe_title: "Tittel på innebygd innhold",
     table_caption: "Tabelltittel",
   };
-  const changed = () => setPreview(null);
+  // The preview belongs to exactly these choices; any change (text, language, AI suggestion …) requires a new one.
+  const key = JSON.stringify(params);
+  const preview = previewed?.key === key ? previewed.data : null;
 
-  const previewMutation = useMutation({ mutationFn: () => fixPreview(finding.id, params), onSuccess: setPreview });
+  const previewMutation = useMutation({
+    // The key travels with the request, so a slow answer is never shown as the preview of newer choices.
+    mutationFn: async (request: { key: string; params: FixParams }) =>
+      ({ key: request.key, data: await fixPreview(finding.id, request.params) }),
+    onSuccess: setPreviewed,
+  });
   const stageMutation = useMutation({
     mutationFn: () => fixStage(finding.id, params),
     onSuccess: () => {
@@ -127,7 +134,6 @@ function HtmlFixPanel({ finding, onStaged }: { finding: Finding; onStaged: () =>
           checked={decorative}
           onChange={(e) => {
             setDecorative(e.target.checked);
-            changed();
           }}
         />
       ) : null}
@@ -138,7 +144,6 @@ function HtmlFixPanel({ finding, onStaged }: { finding: Finding; onStaged: () =>
             value={text}
             onChange={(e) => {
               setText(e.target.value);
-              changed();
             }}
             hint={fix.type === "set_alt" ? "Beskriv det bildet formidler i denne sammenhengen – ikke utseendet alene." : undefined}
             maxLength={500}
@@ -152,7 +157,6 @@ function HtmlFixPanel({ finding, onStaged }: { finding: Finding; onStaged: () =>
           value={level}
           onChange={(e) => {
             setLevel(e.target.value);
-            changed();
           }}
           options={[2, 3, 4, 5, 6].map((n) => ({ value: String(n), label: `Overskrift ${n}` }))}
         />
@@ -171,7 +175,6 @@ function HtmlFixPanel({ finding, onStaged }: { finding: Finding; onStaged: () =>
               hint="EmneKlar sletter aldri lenker automatisk. Kontroller at den nye adressen er riktig."
               onChange={(e) => {
                 setUrl(e.target.value);
-                changed();
               }}
             />
           ) : null}
@@ -181,7 +184,6 @@ function HtmlFixPanel({ finding, onStaged }: { finding: Finding; onStaged: () =>
               checked={unlink}
               onChange={(e) => {
                 setUnlink(e.target.checked);
-                changed();
               }}
             />
           ) : null}
@@ -196,7 +198,6 @@ function HtmlFixPanel({ finding, onStaged }: { finding: Finding; onStaged: () =>
               checked={chosen.includes(o.id)}
               onChange={(e) => {
                 setOptions(e.target.checked ? [...chosen, o.id] : chosen.filter((x) => x !== o.id));
-                changed();
               }}
             />
           ))}
@@ -215,7 +216,7 @@ function HtmlFixPanel({ finding, onStaged }: { finding: Finding; onStaged: () =>
       ) : null}
 
       <div className="ek-cluster">
-        <Button onClick={() => previewMutation.mutate()} loading={previewMutation.isPending}>
+        <Button onClick={() => previewMutation.mutate({ key, params })} loading={previewMutation.isPending}>
           Forhåndsvis løsning
         </Button>
         <Button

@@ -74,6 +74,7 @@ class FakeCanvasState:
     rate_limit_failures: int = 0
     rate_limit_status: int = 429
     fail: dict[str, int] = field(default_factory=dict)  # path substring -> status
+    ignored_fields: set[str] = field(default_factory=set)  # fields a PUT accepts without storing (tests)
     origin: str = "http://canvas.test"
 
 
@@ -515,9 +516,10 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
         m = find_module(c, request.path_params["mid"])
         if request.method == "PUT":
             data = (await body(request)).get("module", {})
-            for key in ("name", "position", "require_sequential_progress", "requirement_type", "unlock_at",
-                        "prerequisite_module_ids"):
-                if key in data:
+            # Like canvas-lms ContextModulesApiController#update: requirement_type is NOT applied.
+            for key in ("name", "position", "require_sequential_progress", "unlock_at", "prerequisite_module_ids",
+                        "publish_final_grade"):
+                if key in data and key not in state.ignored_fields:
                     m[key] = data[key]
         return JSONResponse(module_json(m, True))
 

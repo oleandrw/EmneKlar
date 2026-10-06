@@ -309,6 +309,10 @@ async def build_fix(c: AppContainer, finding: Finding, params: FixParams) -> dic
     kind = HTML_KIND_BY_OBJECT[finding.object_type].kind
     field = HTML_FIELD[finding.object_type]
     existing = open_change_for(c, finding.course_id, kind, finding.object_id)
+    if existing is not None and existing.status == "conflict":
+        # The queued change was built on content that has since changed in Canvas: start again from the live
+        # content (staging replaces the stale change, and the fixes it covered become open again).
+        existing = None
     live = await live_html(c, finding.course_id, finding.object_type, finding.object_id)
     if existing is not None:
         base = existing.proposed.get(field) or ""
@@ -349,4 +353,4 @@ async def fix_stage(finding_id: int, params: FixParams, c: AppContainer = Depend
         before=result["before_state"], proposed={result["field"]: result["after"]},
         rationale=f"{label} – {finding.message}", risk=result["risk"],
         source={"feature": finding.domain, "finding_fingerprints": [finding.fingerprint], "rule_ids": [finding.rule_id]},
-        editable=False, merge=True)
+        editable=False, merge=True, layered=result["existing_change_id"] is not None)

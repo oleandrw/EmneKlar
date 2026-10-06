@@ -141,7 +141,8 @@ async def blueprint(course_id: str, c: AppContainer = Depends(get_container)) ->
         return _unavailable(subscriptions)
     items, modules = await _inventory(api, course_id)
     counts = {kind: {"total": sum(1 for i in items if i["content_type"] == kind),
-                     "locked": sum(1 for i in items if i["content_type"] == kind and i["restricted"])}
+                     "locked": sum(1 for i in items if i["content_type"] == kind and i["restricted"] is True),
+                     "unknown": sum(1 for i in items if i["content_type"] == kind and i["restricted"] is None)}
               for kind in CONTENT_TYPES}
     return {"available": True, "template": {"associated_course_count": template.get("associated_course_count"),
                                             "last_export_completed_at": template.get("last_export_completed_at")},

@@ -26,6 +26,7 @@ import {
   TextField,
   useToast,
   type Column,
+  type Tone,
 } from "../../design-system";
 import { JobRunner } from "../analysis/JobRunner";
 import type { JobWording } from "../analysis/ProgressPanel";
@@ -293,10 +294,21 @@ function CoverageTable({ coverage }: { coverage: Coverage }) {
 
 /* --------------------------------------------------------------------------------------- page */
 
+const GROUNDING: Record<BankItem["grounding"], { label: string; tone: Tone }> = {
+  verified: { label: "Kilde bekreftet", tone: "teal" },
+  partial: { label: "Endret etter kildekontroll", tone: "warning" },
+  unverified: { label: "Ikke kontrollert mot emnet", tone: "warning" },
+};
+
+/** Short form of a question for accessible button names («Godkjenn: Hva er …»). */
+const shortStem = (stem: string) => (stem.length > 60 ? `${stem.slice(0, 57)}…` : stem);
+
 function BankItemCard({ item, onEdit, onDelete }: { item: BankItem; onEdit: () => void; onDelete: () => void }) {
   const { courseId } = useCurrentCourse();
   const m = useBankMutations(courseId);
   const status = REVIEW_STATUS[item.review_status];
+  const grounding = GROUNDING[item.grounding] ?? GROUNDING.unverified;
+  const name = shortStem(item.stem);
   return (
     <li className="ek-question">
       <div className="ek-stack" data-gap="2">
@@ -309,7 +321,7 @@ function BankItemCard({ item, onEdit, onDelete }: { item: BankItem; onEdit: () =
           ) : (
             <Badge>Skrevet manuelt</Badge>
           )}
-          {item.grounding === "verified" ? <Badge tone="teal">Kilde bekreftet</Badge> : <Badge tone="warning">Ikke kontrollert mot emnet</Badge>}
+          <Badge tone={grounding.tone}>{grounding.label}</Badge>
           {item.used_in.length ? <Badge tone="info">Brukt i {item.used_in.map((u) => u.title).join(", ")}</Badge> : null}
         </div>
         <p className="ek-strong">{item.stem}</p>
@@ -336,15 +348,18 @@ function BankItemCard({ item, onEdit, onDelete }: { item: BankItem; onEdit: () =
         <div className="ek-cluster" data-gap="2">
           {item.review_status !== "approved" ? (
             <Button size="sm" variant="primary" icon={<Check aria-hidden="true" />} loading={m.update.isPending}
-              onClick={() => m.update.mutate({ id: item.id, review_status: "approved" })}>
+              aria-label={`Godkjenn: ${name}`} onClick={() => m.update.mutate({ id: item.id, review_status: "approved" })}>
               Godkjenn
             </Button>
           ) : null}
           {item.review_status !== "rejected" ? (
-            <Button size="sm" onClick={() => m.update.mutate({ id: item.id, review_status: "rejected" })}>Avvis</Button>
+            <Button size="sm" aria-label={`Avvis: ${name}`}
+              onClick={() => m.update.mutate({ id: item.id, review_status: "rejected" })}>Avvis</Button>
           ) : null}
-          <Button size="sm" icon={<Pencil aria-hidden="true" />} onClick={onEdit}>Rediger</Button>
-          <Button size="sm" variant="ghost" icon={<Trash aria-hidden="true" />} onClick={onDelete}>Slett</Button>
+          <Button size="sm" icon={<Pencil aria-hidden="true" />} onClick={onEdit} aria-label={`Rediger: ${name}`}>Rediger</Button>
+          <Button size="sm" variant="ghost" icon={<Trash aria-hidden="true" />} onClick={onDelete} aria-label={`Slett: ${name}`}>
+            Slett
+          </Button>
         </div>
         {m.update.error ? <Alert tone="danger" role="alert">{(m.update.error as Error).message}</Alert> : null}
       </div>

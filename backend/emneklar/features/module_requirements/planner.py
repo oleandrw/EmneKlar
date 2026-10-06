@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from emneklar.core.canvas.requirements import ALLOWED, LABELS, allowed_for, describe, normalize, validate_requirement
 
@@ -36,7 +36,7 @@ class PlanRequest(BaseModel):
     existing: Literal["keep", "replace"] = "keep"
     policy: dict[str, str | None] = Field(default_factory=_default_policy)
     min_score: float | None = Field(default=None, ge=0)
-    requirement_type: Literal["all", "one"] | None = None  # None = leave unchanged
+    # «All requirements / one requirement» is not offered: Canvas' API ignores it (see docs/CANVAS_API.md).
     require_sequential_progress: bool | None = None  # None = leave unchanged
 
     @field_validator("policy")
@@ -49,6 +49,12 @@ class PlanRequest(BaseModel):
             if kind is not None and (kind not in ALLOWED or item_type not in ALLOWED[kind]):
                 raise ValueError(f"«{LABELS.get(kind, kind)}» kan ikke brukes på {TYPE_LABELS[item_type]}")
         return merged
+
+    @model_validator(mode="after")
+    def _min_score(self) -> PlanRequest:
+        if "min_score" in self.policy.values() and self.min_score is None:
+            raise ValueError("Angi minstepoeng når «Oppnå minstepoeng» er valgt")
+        return self
 
 
 def proposed_for(item: dict[str, Any], request: PlanRequest, submission_types: dict[str, list[str]]) -> \
@@ -111,11 +117,8 @@ def plan(modules: list[dict[str, Any]], request: PlanRequest, submission_types: 
         rows = [plan_item(item, request, submission_types) for item in module.get("items") or []]
         for row in rows:
             counts[row["status"]] += 1
-        current = {"requirement_type": module.get("requirement_type") or "all",
-                   "require_sequential_progress": bool(module.get("require_sequential_progress"))}
+        current = {"require_sequential_progress": bool(module.get("require_sequential_progress"))}
         proposed = dict(current)
-        if request.requirement_type is not None:
-            proposed["requirement_type"] = request.requirement_type
         if request.require_sequential_progress is not None:
             proposed["require_sequential_progress"] = request.require_sequential_progress
         changed = {k: v for k, v in proposed.items() if current[k] != v}
@@ -125,6 +128,7 @@ def plan(modules: list[dict[str, Any]], request: PlanRequest, submission_types: 
             warnings.append(f"«{module.get('name')}»: rekkefølge krever at elementene har krav. Elementer uten krav "
                             "hoppes over i rekkefølgen.")
         result.append({"id": module_id, "name": module.get("name") or "", "published": module.get("published"),
+                       "requirement_type": module.get("requirement_type"),
                        "items": rows, "settings": {"current": current, "proposed": proposed, "changed": changed}})
     if wanted and not result:
         warnings.append("Fant ingen av de valgte modulene.")

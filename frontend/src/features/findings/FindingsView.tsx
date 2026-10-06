@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import type { Finding } from "../../core/api/types";
 import { useCurrentCourse } from "../../core/course";
 import { formatDateTime, formatNumber } from "../../core/format";
+import { useSession } from "../../core/session";
 import { CLASSIFICATION, OBJECT_TYPE, TEST_METHOD, type Classification } from "../../core/labels";
 import { useUi } from "../../core/ui";
 import {
@@ -35,9 +36,12 @@ export function FindingsView({
 }) {
   const { courseId } = useCurrentCourse();
   const ui = useUi();
-  const [filters, setFilters] = useState<FindingFilters>({
-    classification: [], category: [], status: "open", q: "", sort: "priority", page: 1, page_size: 50,
+  const session = useSession();
+  const [chosen, setFilters] = useState<Omit<FindingFilters, "page_size">>({
+    classification: [], category: [], status: "open", q: "", sort: "priority", page: 1,
   });
+  // «Funn per side» from Innstillinger → Generelt.
+  const filters: FindingFilters = { ...chosen, page_size: session.general.page_size };
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Finding | null>(null);
   const findings = useFindings(courseId, domain, filters);

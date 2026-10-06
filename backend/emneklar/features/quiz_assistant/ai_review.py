@@ -94,6 +94,7 @@ def interpret(course_id: str, quiz: Quiz, question: Question, answer: dict[str, 
                 for e in answer.get("evidence") or [] if isinstance(e, dict)
                 and quote_supported(str(e.get("quote") or ""), chunks.get(str(e.get("chunk_id"))))]
     assessment = answer.get("key_assessment")
+    key_claim_verified = assessment in ("wrong_key", "multiple_valid", "no_valid") and bool(verified)
     suggestion = answer.get("suggestion") or {}
     fix = None
     if (suggestion.get("stem") or "").strip() and suggestion.get("answers"):
@@ -101,12 +102,17 @@ def interpret(course_id: str, quiz: Quiz, question: Question, answer: dict[str, 
                             for a in suggestion["answers"] if str(a.get("text") or "").strip()]
         current_key = sorted(a.text for a in question.answers if a.correct)
         new_key = sorted(str(a["text"]) for a in proposed_answers if a["correct"])
-        if proposed_answers and any(a["correct"] for a in proposed_answers):
+        changes_key = current_key != new_key
+        # A suggestion that changes the key is only offered when the key claim itself was backed by a verified
+        # quote from the course. Otherwise it is dropped (the wording issues are still reported).
+        if proposed_answers and any(a["correct"] for a in proposed_answers) and (key_claim_verified or not changes_key):
             fix = {"type": "quiz_question_update", "label": "Godkjenn forslag",
                    "params": {"quiz_id": quiz.id, "question_id": question.id,
                               "stem": str(suggestion["stem"]).strip(), "answers": proposed_answers,
                               "explanation": str(suggestion.get("explanation") or "").strip(),
-                              "changes_key": current_key != new_key}}
+                              "changes_key": changes_key}}
+        elif changes_key and assessment not in ("wrong_key", "multiple_valid", "no_valid"):
+            discarded += 1  # an unverified key change hidden in a suggestion (key claims are counted below)
 
     def add(rule_id: str, message: str, confidence: str) -> None:
         rule = RULES[rule_id]
@@ -225,14 +231,19 @@ class QuizQuestionUpdate(Applier):
         return payload
 
     async def apply(self, api: CanvasAPI, change: ChangeData, permit: WritePermit) -> dict[str, Any]:
-        state = {**change.before, **change.proposed}
+        # Start from the live question (points, feedback and name may have changed since the change was queued –
+        # the conflict check only guards the text and the answers this change replaces).
+        live = await self.current(api, change)
+        state = {**live, **{k: v for k, v in change.proposed.items() if k in ("question_text", "answers")}}
         await api.update_quiz_question(change.course_id, change.target["quiz_id"], change.target["object_id"],
                                        self._payload(state), permit=permit)
         return await self.current(api, change)
 
     async def undo(self, api: CanvasAPI, change: ChangeData, before: dict[str, Any], permit: WritePermit) -> dict[str, Any]:
+        live = await self.current(api, change)
+        state = {**live, "question_text": before["question_text"], "answers": before["answers"]}
         await api.update_quiz_question(change.course_id, change.target["quiz_id"], change.target["object_id"],
-                                       self._payload(before), permit=permit)
+                                       self._payload(state), permit=permit)
         return await self.current(api, change)
 
 

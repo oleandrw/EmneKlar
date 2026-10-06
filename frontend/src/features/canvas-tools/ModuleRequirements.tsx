@@ -49,6 +49,7 @@ interface Preview {
     id: string;
     name: string;
     published: boolean | null;
+    requirement_type: "all" | "one" | null;
     items: Row[];
     settings: { current: Record<string, unknown>; proposed: Record<string, unknown>; changed: Record<string, unknown> };
   }[];
@@ -79,7 +80,6 @@ export function ModuleRequirements() {
   const [existing, setExisting] = useState<"keep" | "replace">("keep");
   const [policy, setPolicy] = useState<Record<string, string>>({});
   const [minScore, setMinScore] = useState("");
-  const [requirementType, setRequirementType] = useState("");
   const [sequential, setSequential] = useState("");
   const [previewed, setPreviewed] = useState<{ key: string; data: Preview } | null>(null);
 
@@ -95,14 +95,16 @@ export function ModuleRequirements() {
   const body = {
     module_ids: scope === "modules" ? moduleIds : [], existing, policy: effectivePolicy,
     min_score: usesMinScore && minScore ? Number(minScore) : null,
-    requirement_type: requirementType || null,
     require_sequential_progress: sequential === "" ? null : sequential === "yes",
   };
   const key = JSON.stringify(body);
   const preview = previewed?.key === key ? previewed.data : null;
   const previewMutation = useMutation({
-    mutationFn: () => api.post<Preview>(`/api/courses/${courseId}/module-requirements/preview`, body),
-    onSuccess: (data) => setPreviewed({ key, data }),
+    mutationFn: async (request: { key: string; body: typeof body }) => ({
+      key: request.key,
+      data: await api.post<Preview>(`/api/courses/${courseId}/module-requirements/preview`, request.body),
+    }),
+    onSuccess: setPreviewed,
   });
   const stage = useMutation({
     mutationFn: () => api.post<{ staged: number }>(`/api/courses/${courseId}/module-requirements/stage`, body),
@@ -172,14 +174,15 @@ export function ModuleRequirements() {
               <TextField label="Minstepoeng" type="number" min={0} value={minScore} onChange={(e) => setMinScore(e.target.value)} />
             ) : null}
             <div className="ek-grid" data-cols="2">
-              <SelectField label="Hva må studentene fullføre i hver modul?" value={requirementType}
-                onChange={(e) => setRequirementType(e.target.value)}
-                options={[{ value: "", label: "Ikke endre" }, { value: "all", label: "Alle krav" }, { value: "one", label: "Ett av kravene" }]} />
               <SelectField label="Må kravene fullføres i rekkefølge?" value={sequential} onChange={(e) => setSequential(e.target.value)}
                 options={[{ value: "", label: "Ikke endre" }, { value: "yes", label: "Ja, i rekkefølge" }, { value: "no", label: "Nei, fritt" }]} />
             </div>
+            <p className="ek-small ek-muted">
+              Om studentene må fullføre alle kravene eller bare ett av dem, kan ikke endres gjennom Canvas-API-et.
+              Endre det i modulens innstillinger i Canvas. Forhåndsvisningen viser hva hver modul bruker i dag.
+            </p>
             <div className="ek-cluster">
-              <Button icon={<Eye aria-hidden="true" />} onClick={() => previewMutation.mutate()} loading={previewMutation.isPending}
+              <Button icon={<Eye aria-hidden="true" />} onClick={() => previewMutation.mutate({ key, body })} loading={previewMutation.isPending}
                 disabled={scope === "modules" && moduleIds.length === 0}>
                 Forhåndsvis
               </Button>
@@ -208,7 +211,12 @@ export function ModuleRequirements() {
             ) : null}
             {preview.modules.map((m) => (
               <Card key={m.id} title={m.name} headingLevel={3}
-                actions={Object.keys(m.settings.changed).length ? <Badge tone="warning">Modulinnstillinger endres</Badge> : null}>
+                actions={m.requirement_type === "one" || Object.keys(m.settings.changed).length ? (
+                  <>
+                    {m.requirement_type === "one" ? <Badge tone="info">Ett av kravene må fullføres</Badge> : null}
+                    {Object.keys(m.settings.changed).length ? <Badge tone="warning">Modulinnstillinger endres</Badge> : null}
+                  </>
+                ) : null}>
                 <DataTable caption={`Elementer i ${m.name}`} captionHidden columns={columns} rows={m.items} rowKey={(r) => r.item_id}
                   empty="Modulen har ingen elementer." />
               </Card>

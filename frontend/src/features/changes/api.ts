@@ -26,6 +26,7 @@ export interface Change {
   result: Record<string, unknown>;
   error: string | null;
   created_at: string;
+  updated_at: string | null;
   applied_at: string | null;
 }
 

@@ -63,11 +63,10 @@ def test_invalid_combinations_are_rejected(canvas_client: TestClient) -> None:
 
 def test_stage_apply_and_undo_requirements_for_selected_module(canvas_client: TestClient,
                                                                fake_state: FakeCanvasState) -> None:
-    body = {"module_ids": ["201"], "requirement_type": "one", "require_sequential_progress": True}
+    body = {"module_ids": ["201"], "require_sequential_progress": True}
     preview = canvas_client.post(f"/api/courses/{COURSE_ID}/module-requirements/preview", json=body).json()
     assert [m["id"] for m in preview["modules"]] == ["201"]
-    assert preview["modules"][0]["settings"]["changed"] == {"requirement_type": "one",
-                                                            "require_sequential_progress": True}
+    assert preview["modules"][0]["settings"]["changed"] == {"require_sequential_progress": True}
     staged = canvas_client.post(f"/api/courses/{COURSE_ID}/module-requirements/stage", json=body).json()
     assert staged["staged"] == 4  # three items + module settings
     writes = len(fake_state.writes)
@@ -76,7 +75,7 @@ def test_stage_apply_and_undo_requirements_for_selected_module(canvas_client: Te
     assert item(fake_state, "1001")["completion_requirement"]["type"] == "must_view"
     assert item(fake_state, "1002")["completion_requirement"]["type"] == "must_contribute"
     module = next(m for m in fake_state.courses[COURSE_ID].modules if m["id"] == "201")
-    assert module["requirement_type"] == "one" and module["require_sequential_progress"] is True
+    assert module["require_sequential_progress"] is True
     assert len(fake_state.writes) > writes
     again = canvas_client.post(f"/api/courses/{COURSE_ID}/module-requirements/preview", json=body).json()
     assert again["changes"] == 0, "after applying, nothing is left to change"
@@ -189,3 +188,22 @@ def test_stage_default_view_and_explicit_preference(canvas_client: TestClient, f
     same = canvas_client.post(f"/api/courses/{COURSE_ID}/canvas-settings/stage",
                               json={"kind": "default_view", "value": "modules"})
     assert same.status_code == 400
+
+
+def test_min_score_requires_a_value(canvas_client: TestClient) -> None:
+    response = canvas_client.post(f"/api/courses/{COURSE_ID}/module-requirements/preview",
+                                  json={"policy": {"Quiz": "min_score"}, "existing": "replace"})
+    assert response.status_code == 422, "no silent «Fjernes» when the minimum score is missing"
+
+
+def test_a_write_canvas_ignores_is_reported_as_failed(canvas_client: TestClient, fake_state: FakeCanvasState) -> None:
+    fake_state.ignored_fields.add("require_sequential_progress")
+    staged = canvas_client.post(f"/api/courses/{COURSE_ID}/module-requirements/stage",
+                                json={"module_ids": ["202"], "require_sequential_progress": True,
+                                      "policy": {"Page": None, "File": None, "ExternalUrl": None, "ExternalTool": None,
+                                                 "Discussion": None, "Assignment": None, "Quiz": None}}).json()
+    assert staged["staged"] == 1
+    result = apply(canvas_client, staged["change_ids"])
+    assert result["summary"] == {"failed": 1}
+    change = canvas_client.get(f"/api/changes/{staged['change_ids'][0]}").json()
+    assert change["status"] == "failed" and "krav om rekkefølge" in change["error"]

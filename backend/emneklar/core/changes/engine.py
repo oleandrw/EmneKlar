@@ -99,7 +99,16 @@ class ChangeEngine:
         requires_confirmation: bool | None = None,
         ai_generated: bool = False,
         merge: bool = False,
+        layered: bool = False,
     ) -> dict[str, Any]:
+        """Stage a change. With ``merge``, an open change for the same object and kind is reused:
+
+        * same feature and the same fields (a new choice, e.g. another start page) -> the old proposal is replaced;
+        * ``layered`` proposals (built on top of the queued proposal, e.g. several HTML fixes on one page) and
+          changes to other fields -> combined into one change;
+        * an open change in conflict (Canvas changed since it was queued) -> replaced, its «before» is stale.
+        Changes from different features to different fields of the same object stay separate changes.
+        """
         applier = get_applier(kind)
         if risk not in RISKS:
             raise AppError("validation_error", detail="Ukjent risikonivå")
@@ -107,25 +116,44 @@ class ChangeEngine:
         source = source or {}
         with self.db.session() as session:
             existing = None
+            feature = source.get("feature")
             if merge:
                 candidates = session.scalars(select(StagedChange).where(
                     StagedChange.course_id == course_id, StagedChange.kind == kind,
                     StagedChange.status.in_(OPEN_STATUSES))).all()
-                existing = next((c for c in candidates if c.target.get("object_id") == target.get("object_id")), None)
+                existing = next((c for c in candidates if c.target.get("object_id") == target.get("object_id")
+                                 and ((c.source or {}).get("feature") == feature
+                                      or set(c.proposed or {}) & set(proposed))), None)
             if existing is not None:
-                merged_source = dict(existing.source or {})
-                fingerprints = list(dict.fromkeys([*(merged_source.get("finding_fingerprints") or []),
-                                                   *(source.get("finding_fingerprints") or [])]))
-                merged_source.update(source)
-                merged_source["finding_fingerprints"] = fingerprints
-                existing.proposed = proposed
-                existing.rationale = f"{existing.rationale}\n{rationale}".strip()
-                existing.source = merged_source
-                existing.risk = max(existing.risk, risk, key=RISKS.index)
+                same_feature = (existing.source or {}).get("feature") == feature
+                old_proposed = {k: v for k, v in (existing.proposed or {}).items() if not k.startswith("_")}
+                replace = existing.status == "conflict" or (
+                    not layered and same_feature and set(proposed) >= set(old_proposed))
+                new_fps = list(source.get("finding_fingerprints") or [])
+                old_fps = list((existing.source or {}).get("finding_fingerprints") or [])
+                if replace:
+                    # The old proposal no longer applies: the findings it covered are open again.
+                    self._mark_findings(session, [f for f in old_fps if f not in new_fps], "open")
+                    existing.title, existing.before, existing.proposed = title[:500], before, proposed
+                    existing.rationale, existing.risk, existing.source = rationale, risk, source
+                    existing.requires_confirmation = (risk == "high" if requires_confirmation is None
+                                                      else requires_confirmation)
+                    existing.ai_generated, existing.editable = ai_generated, editable
+                else:
+                    existing.source = {**(existing.source or {}), **source,
+                                       "finding_fingerprints": list(dict.fromkeys([*old_fps, *new_fps]))}
+                    existing.proposed = {**old_proposed, **proposed}
+                    # Fields already queued keep the «before» their proposal was built on.
+                    existing.before = {**before, **(existing.before or {})}
+                    existing.rationale = f"{existing.rationale}\n{rationale}".strip()
+                    existing.risk = max(existing.risk, risk, key=RISKS.index)
+                    existing.ai_generated = existing.ai_generated or ai_generated
+                    existing.requires_confirmation = (existing.requires_confirmation or bool(requires_confirmation)
+                                                      or risk == "high")
+                    if not same_feature:
+                        existing.title = f"{target.get('title') or existing.target.get('title') or ''}: flere endringer"
                 existing.status = "staged"
                 existing.conflict_status = "not_checked"
-                existing.ai_generated = existing.ai_generated or ai_generated
-                existing.requires_confirmation = existing.requires_confirmation or bool(requires_confirmation)
                 existing.error = None
                 row = existing
             else:
@@ -308,6 +336,14 @@ class ChangeEngine:
         except AppError as exc:
             log.warning("Endring %s feilet: %s", data.id, exc.code)
             return self._fail(data, base_log, _friendly_error(exc), backup_id=backup_id, before=current)
+        mismatches = applier.verify(data.proposed, after)
+        if mismatches:
+            message = ("Canvas bekreftet lagringen, men verdiene ble ikke endret: " + ", ".join(mismatches)
+                       + ". Endringen er ikke gjennomført – kontroller innstillingen i Canvas.")
+            self._set(data.id, status="failed", error=message)
+            self._log(**base_log, action="failed", before=current, after=after, backup_id=backup_id,
+                      api_result={"sent": True, "error": message})
+            return {"change_id": data.id, "status": "failed", "message": message}
         proposed = dict(row.proposed or {})
         if applier.stores_created:
             proposed["_created"] = after

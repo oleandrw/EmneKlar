@@ -95,6 +95,7 @@ function DraftView({ draft, sectionLabel }: { draft: Draft; sectionLabel: (key: 
   const [html, setHtml] = useState(draft.html);
   const [title, setTitle] = useState("Forside (utkast fra EmneKlar)");
   const [confirmReplace, setConfirmReplace] = useState(false);
+  const unsaved = html !== draft.html;
   const save = useMutation({
     mutationFn: () => api.put<Draft>(`/api/homepage/drafts/${draft.id}`, { html }),
     onSuccess: (updated) => {
@@ -153,7 +154,7 @@ function DraftView({ draft, sectionLabel }: { draft: Draft; sectionLabel: (key: 
               </Button>
             ))}
             <Button size="sm" icon={<Code aria-hidden="true" />} aria-pressed={editing} onClick={() => setEditing((v) => !v)}>
-              {editing ? "Skjul HTML" : "Forhåndsvis HTML"}
+              {editing ? "Skjul HTML-koden" : "Rediger HTML-koden"}
             </Button>
           </div>
           <HtmlPreview html={draft.preview_html} title="Forhåndsvisning av forsiden" device={device} minHeight={560} />
@@ -164,8 +165,8 @@ function DraftView({ draft, sectionLabel }: { draft: Draft; sectionLabel: (key: 
             <TextArea label="HTML" value={html} onChange={(e) => setHtml(e.target.value)} rows={14} spellCheck={false}
               hint="Du kan redigere koden. Det Canvas ikke tillater, fjernes når du lagrer – og vises som varsel over." />
             <div className="ek-cluster">
-              <Button onClick={() => setHtml(draft.html)} disabled={html === draft.html}>Angre endringene</Button>
-              <Button variant="primary" onClick={() => save.mutate()} loading={save.isPending} disabled={html === draft.html}>
+              <Button onClick={() => setHtml(draft.html)} disabled={!unsaved}>Angre endringene</Button>
+              <Button variant="primary" onClick={() => save.mutate()} loading={save.isPending} disabled={!unsaved}>
                 Lagre HTML
               </Button>
             </div>
@@ -175,13 +176,19 @@ function DraftView({ draft, sectionLabel }: { draft: Draft; sectionLabel: (key: 
 
         <section className="ek-stack" aria-labelledby="publiser">
           <h3 id="publiser">Bruk utkastet</h3>
+          {unsaved ? (
+            <Alert tone="warning" title="HTML-endringene er ikke lagret">
+              Lagre eller angre endringene i HTML-koden før du bruker utkastet. Ellers ville en annen versjon enn den du
+              ser, blitt lagt i endringskøen.
+            </Alert>
+          ) : null}
           <TextField label="Tittel på den nye siden" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={255} />
           <div className="ek-cluster">
             <Button variant="primary" icon={<FilePlus aria-hidden="true" />} onClick={() => stage.mutate("create_page")}
-              loading={stage.isPending && stage.variables === "create_page"} disabled={!title.trim()}>
+              loading={stage.isPending && stage.variables === "create_page"} disabled={!title.trim() || unsaved}>
               Opprett som ny side
             </Button>
-            <Button variant="danger" icon={<Replace aria-hidden="true" />} onClick={() => setConfirmReplace(true)}>
+            <Button variant="danger" icon={<Replace aria-hidden="true" />} onClick={() => setConfirmReplace(true)} disabled={unsaved}>
               Erstatt eksisterende forside
             </Button>
           </div>

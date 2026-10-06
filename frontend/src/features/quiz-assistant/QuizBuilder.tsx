@@ -164,8 +164,12 @@ export function QuizBuilder() {
   const preview = previewed?.key === requestKey ? previewed.data : null;
 
   const previewMutation = useMutation({
-    mutationFn: () => api.post<BuildPreview>(`/api/courses/${courseId}/quiz-builder/preview`, request),
-    onSuccess: (data) => setPreviewed({ key: requestKey, data }),
+    // The key travels with the request, so a slow answer is never shown as the preview of newer choices.
+    mutationFn: async (sent: { key: string; request: BuildRequest }) => ({
+      key: sent.key,
+      data: await api.post<BuildPreview>(`/api/courses/${courseId}/quiz-builder/preview`, sent.request),
+    }),
+    onSuccess: setPreviewed,
   });
   const stage = useMutation({
     mutationFn: () => api.post(`/api/courses/${courseId}/quiz-builder/stage`, request),
@@ -313,7 +317,7 @@ export function QuizBuilder() {
       <Card title="4. Forhåndsvis og legg i endringskøen" headingLevel={2}>
         <div className="ek-stack">
           <div className="ek-cluster">
-            <Button icon={<Eye aria-hidden="true" />} onClick={() => previewMutation.mutate()} loading={previewMutation.isPending}
+            <Button icon={<Eye aria-hidden="true" />} onClick={() => previewMutation.mutate({ key: requestKey, request })} loading={previewMutation.isPending}
               disabled={!ready}>
               Forhåndsvis
             </Button>

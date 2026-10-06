@@ -65,6 +65,18 @@ async def get_change(change_id: int, c: AppContainer = Depends(get_container)) -
     return c.changes.get(change_id)
 
 
+@router.get("/changes/{change_id}/preview")
+async def change_preview(change_id: int, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
+    from emneklar.core.security.sanitize import preview_html
+
+    change = c.changes.get(change_id)
+    field = next((f for f in ("body", "description", "message", "syllabus_body", "question_text")
+                  if isinstance(change["proposed"].get(f), str)), None)
+    if field is None:
+        return {"html": None}
+    return {"html": preview_html(change["proposed"][field], c.settings.get().canvas.base_url)}
+
+
 @router.patch("/changes/{change_id}")
 async def edit_change(change_id: int, body: ProposedBody, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
     return c.changes.update_proposed(change_id, body.proposed)

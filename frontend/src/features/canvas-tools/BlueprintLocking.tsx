@@ -44,7 +44,7 @@ type BlueprintData =
       template: { associated_course_count: number | null; last_export_completed_at: string | null };
       items: Item[];
       modules: { id: string; name: string }[];
-      counts: Record<string, { total: number; locked: number }>;
+      counts: Record<string, { total: number; locked: number; unknown: number }>;
       content_types: { value: string; label: string }[];
       restriction_options: { value: string; label: string }[];
       note: string;
@@ -57,6 +57,15 @@ interface PreviewRow extends Item {
 }
 
 const lockLabel = (value: boolean | null) => (value === null ? "Ukjent" : value ? "Låst" : "Ulåst");
+
+/** «3 av 10 låst», or a truthful note when Canvas does not report the lock status. */
+function countLabel(count: { total: number; locked: number; unknown: number } | undefined): string {
+  if (!count || count.total === 0) return "Ingen";
+  if (count.unknown === count.total) return `${count.total} – låsestatus vises ikke av Canvas`;
+  const known = count.total - count.unknown;
+  const base = `${count.locked} av ${known} låst`;
+  return count.unknown ? `${base} (${count.unknown} med ukjent status)` : base;
+}
 
 export function BlueprintLocking() {
   const { courseId } = useCurrentCourse();
@@ -85,8 +94,11 @@ export function BlueprintLocking() {
   const key = JSON.stringify(body);
   const rows = previewed?.key === key ? previewed.rows : null;
   const preview = useMutation({
-    mutationFn: () => api.post<{ rows: PreviewRow[] }>(`/api/courses/${courseId}/blueprint/preview`, body),
-    onSuccess: (result) => setPreviewed({ key, rows: result.rows }),
+    mutationFn: async (request: { key: string; body: typeof body }) => ({
+      key: request.key,
+      rows: (await api.post<{ rows: PreviewRow[] }>(`/api/courses/${courseId}/blueprint/preview`, request.body)).rows,
+    }),
+    onSuccess: setPreviewed,
   });
   const stage = useMutation({
     mutationFn: () => api.post(`/api/courses/${courseId}/blueprint/stage`, body),
@@ -141,7 +153,7 @@ export function BlueprintLocking() {
             <KeyValue items={[
               ["Tilknyttede emner", String(bp.template.associated_course_count ?? "–")],
               ["Siste synkronisering", bp.template.last_export_completed_at ? formatDateTime(bp.template.last_export_completed_at) : "Ikke synkronisert"],
-              ...bp.content_types.map((t) => [t.label, `${bp.counts[t.value]?.locked ?? 0} av ${bp.counts[t.value]?.total ?? 0} låst`] as [string, string]),
+              ...bp.content_types.map((t) => [t.label, countLabel(bp.counts[t.value])] as [string, string]),
             ]} />
             <p className="ek-xs ek-muted">{bp.note} Endringer får virkning i tilknyttede emner ved neste synkronisering.</p>
           </div>
@@ -179,7 +191,7 @@ export function BlueprintLocking() {
               </div>
             ) : null}
             <div className="ek-cluster">
-              <Button icon={<Eye aria-hidden="true" />} onClick={() => preview.mutate()} loading={preview.isPending}
+              <Button icon={<Eye aria-hidden="true" />} onClick={() => preview.mutate({ key, body })} loading={preview.isPending}
                 disabled={chosenTypes.length === 0 || (custom && action === "lock" && restrictions.length === 0)}>
                 Forhåndsvis
               </Button>

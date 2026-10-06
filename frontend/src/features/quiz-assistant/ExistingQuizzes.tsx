@@ -123,6 +123,7 @@ export function QuizReview() {
   const client = useQueryClient();
   const aiConfigured = useAiConfigured();
   const [jobId, setJobId] = useState<string | null>(null);
+  const [jobEnded, setJobEnded] = useState(false);
   const [plan, setPlan] = useState<AiPlan | null>(null);
   const [selected, setSelected] = useState<Finding | null>(null);
   const prepare = useMutation({ mutationFn: () => prepareReview(courseId!, quizId!), onSuccess: setPlan });
@@ -130,6 +131,7 @@ export function QuizReview() {
     mutationFn: (useAi: boolean) => startReview(courseId!, quizId!, { use_ai: useAi, confirmed: useAi }),
     onSuccess: (job) => {
       setPlan(null);
+      setJobEnded(false);
       setJobId(job.id);
     },
   });
@@ -148,7 +150,7 @@ export function QuizReview() {
   const { quiz, questions, findings } = detail.data;
   const quizLevel = findings.filter((f) => f.object_type === "quiz");
   const settings = quiz.settings;
-  const running = jobId !== null;
+  const running = jobId !== null && !jobEnded;
 
   return (
     <div className="ek-stack" data-gap="6">
@@ -197,9 +199,11 @@ export function QuizReview() {
             </Alert>
           ) : null}
           {jobId ? (
-            <JobRunner jobId={jobId} wording={REVIEW_WORDING} onDone={() => {
+            <JobRunner jobId={jobId} wording={REVIEW_WORDING} onDone={(job) => {
               refresh();
-              setJobId(null);
+              // A failed or cancelled check keeps its panel so the reason stays visible; a new check can be started.
+              if (job.status === "completed") setJobId(null);
+              else setJobEnded(true);
             }} />
           ) : null}
         </div>
@@ -220,7 +224,7 @@ export function QuizReview() {
               <li key={f.id} className="ek-cluster" data-gap="2">
                 <Badge tone={CLASSIFICATION[f.classification].tone}>{CLASSIFICATION[f.classification].label}</Badge>
                 <span className="ek-small">{f.message}</span>
-                <Button size="sm" variant="link" onClick={() => setSelected(f)}>Vis</Button>
+                <Button size="sm" variant="link" onClick={() => setSelected(f)} aria-label={`Vis funn: ${f.message}`}>Vis</Button>
               </li>
             ))}
           </ul>

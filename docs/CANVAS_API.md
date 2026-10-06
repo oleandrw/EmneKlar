@@ -40,9 +40,12 @@ er brukt direkte i koden – ikke gjett nye verdier; kontroller mot dokumentasjo
 
 * `GET …/modules?include[]=items&include[]=content_details` – elementer tas bare med når modulen har ≤ 100
   elementer; ellers `GET …/modules/:id/items`.
-* Modul: `require_sequential_progress`, `requirement_type` (`all | one`), `prerequisite_module_ids`,
-  `unlock_at`, `published`. **Publisering av en modul publiserer også alle elementene** – EmneKlar endrer aldri
-  modulens publiseringsstatus.
+* Modul: `require_sequential_progress`, `prerequisite_module_ids`, `unlock_at`, `published`. **Publisering av en
+  modul publiserer også alle elementene** – EmneKlar endrer aldri modulens publiseringsstatus.
+* `requirement_type` (`all | one`) står i dokumentasjonen for «Update a module», men `ContextModulesApiController`
+  i canvas-lms (kontrollert 6.10.2026) tillater bare `name`, `unlock_at`, `require_sequential_progress` og
+  `publish_final_grade`; `requirement_count` brukes bare når en funksjonsbryter er på. EmneKlar tilbyr derfor ikke å
+  endre «alle krav / ett krav», og leser alltid verdier tilbake etter skriving for å oppdage slike stille avvik.
 * Elementtyper: `File | Page | Discussion | Assignment | Quiz | SubHeader | ExternalUrl | ExternalTool`.
 * Fullføringskrav (skriving): `must_view`, `must_submit`, `must_contribute`, `min_score` (+ `min_score`),
   `must_mark_done`. Gyldighet (håndheves av EmneKlar, serveren håndhever bare delvis):

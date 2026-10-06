@@ -1,7 +1,9 @@
+import { useQuery } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { useState } from "react";
 
-import { Alert, Badge, Button, DataTable, DiffView, HtmlPreview, KeyValue, type PreviewDevice } from "../../design-system";
+import { api } from "../../core/api/client";
+import { Alert, Badge, Button, DataTable, DiffView, HtmlPreview, KeyValue, Spinner, type PreviewDevice } from "../../design-system";
 import { formatHtml, HTML_FIELDS, type Change } from "./api";
 
 const FIELD_LABELS: Record<string, string> = {
@@ -74,6 +76,11 @@ function HtmlChange({ change, field }: { change: Change; field: string }) {
   const [device, setDevice] = useState<PreviewDevice>("desktop");
   const before = String(change.before[field] ?? "");
   const after = String(change.proposed[field] ?? "");
+  // Sanitised by the backend, with Canvas images shown through the local image proxy.
+  const preview = useQuery({
+    queryKey: ["changes", "preview", change.id, change.updated_at],
+    queryFn: () => api.get<{ html: string | null }>(`/api/changes/${change.id}/preview`),
+  });
   return (
     <div className="ek-stack">
       <DiffView before={formatHtml(before)} after={formatHtml(after)} beforeTitle="Nå i Canvas" afterTitle="Foreslått" />
@@ -84,7 +91,11 @@ function HtmlChange({ change, field }: { change: Change; field: string }) {
           </Button>
         ))}
       </div>
-      <HtmlPreview html={after} title={`Forhåndsvisning: ${change.title}`} device={device} />
+      {preview.isPending ? <Spinner label="Lager forhåndsvisning …" /> : preview.error ? (
+        <Alert tone="warning" role="alert">Forhåndsvisningen kunne ikke lages: {(preview.error as Error).message}</Alert>
+      ) : (
+        <HtmlPreview html={preview.data.html ?? ""} title={`Forhåndsvisning: ${change.title}`} device={device} />
+      )}
     </div>
   );
 }
@@ -123,6 +134,17 @@ export function ChangePreview({ change }: { change: Change }) {
           <Answers answers={afterAnswers} title="Foreslåtte svaralternativer" />
         </div>
       </div>
+    );
+  }
+  if (change.kind === "front_page.set") {
+    const previousView = change.before.default_view;
+    return (
+      <KeyValue items={[
+        ["Ny forside", change.target.title ?? change.target.object_id ?? "–"],
+        ["Nåværende forside", change.before.front_page_url ? String(change.before.front_page_url) : "Ingen"],
+        ["Startside for emnet", previousView === "wiki" ? "Forside (uendret)" : `${show(previousView)} → Forside`],
+        ["Publisering", "Siden publiseres hvis den ikke er publisert"],
+      ]} />
     );
   }
   const htmlField = HTML_FIELDS.find((f) => typeof change.proposed[f] === "string");

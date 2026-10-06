@@ -1,11 +1,13 @@
 """Local data housekeeping: snapshot retention, storage overview and «Slett lokale data».
 
-Only local EmneKlar data is touched – never Canvas. The change log and backups are
-the safety net for undo and are never deleted from here.
+Only local EmneKlar data is touched – never Canvas. The change log and the backups of
+changed Canvas content are the safety net for undo and are never deleted from here. Of
+the whole-database copies made before updates and migrations, the newest few are kept.
 """
 
 from __future__ import annotations
 
+import logging
 import shutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -32,6 +34,9 @@ from emneklar.core.storage.models import (
 )
 
 ClearTarget = Literal["cache", "analysis", "reports"]
+DATABASE_COPY_PREFIXES = ("for-oppdatering-", "for-migrering-")  # scripts/update.py, core/storage/db.py
+KEEP_DATABASE_COPIES = 5
+log = logging.getLogger(__name__)
 
 
 def _count(result: Any) -> int:
@@ -51,6 +56,21 @@ def prune_snapshots(db: Database, retention_days: int, *, now: datetime | None =
             session.execute(delete(SnapshotObject).where(SnapshotObject.snapshot_id.in_(old)))
             session.execute(delete(Snapshot).where(Snapshot.id.in_(old)))
     return len(old)
+
+
+def prune_database_copies(backups_dir: Path, keep: int = KEEP_DATABASE_COPIES) -> int:
+    """Keep the ``keep`` newest database copies of each kind (before update / before migration); delete the rest."""
+    removed = 0
+    for prefix in DATABASE_COPY_PREFIXES:
+        copies = sorted((p for p in (backups_dir / "database").glob(f"{prefix}*.db") if p.is_file()),
+                        key=lambda p: p.stat().st_mtime, reverse=True)
+        for old in copies[keep:]:
+            try:
+                old.unlink()
+                removed += 1
+            except OSError as exc:  # in use or read-only: try again next start
+                log.warning("Kunne ikke slette gammel databasekopi %s: %s", old.name, exc)
+    return removed
 
 
 def _dir_size(path: Path) -> tuple[int, int]:

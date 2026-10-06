@@ -69,6 +69,30 @@ class Applier:
     def conflict(self, before: dict[str, Any], current: dict[str, Any]) -> bool:
         return state_fingerprint(before) != state_fingerprint({k: current.get(k) for k in before})
 
+    def verify(self, proposed: dict[str, Any], after: dict[str, Any]) -> list[str]:
+        """Fields Canvas accepted (HTTP 200) but did not store, judged from the state read back after the write.
+
+        HTML is skipped (Canvas normalises it on save) and so are positions (Canvas renumbers them).
+        """
+        problems = []
+        for key, value in proposed.items():
+            if key.startswith("_") or key in VERIFY_SKIP or key not in after or isinstance(value, dict | list):
+                continue
+            if not _same(value, after[key]):
+                problems.append(FIELD_NAMES.get(key, key))
+        return problems
+
+
+#: Not compared after a write: HTML that Canvas normalises, and positions that Canvas renumbers.
+VERIFY_SKIP = {"body", "description", "message", "syllabus_body", "question_text", "position"}
+FIELD_NAMES = {"default_view": "startside", "require_sequential_progress": "krav om rekkefølge", "name": "navn",
+               "completion_requirement": "fullføringskrav", "title": "tittel", "published": "publisering",
+               "module_id": "modul", "front_page": "forside"}
+
+
+def _same(a: Any, b: Any) -> bool:
+    return bool(a == b or str(a).strip().lower() == str(b).strip().lower())
+
 
 # ---------------------------------------------------------------------------- HTML content
 
@@ -205,10 +229,27 @@ class PageCreate(Applier):
             raise AppError("validation_error", detail="Siden må ha tittel og innhold")
 
     async def current(self, api: CanvasAPI, change: ChangeData) -> dict[str, Any]:
-        return {}
+        """Before creation: nothing. For undo: the live page (conflict check and backup before deleting)."""
+        created = change.proposed.get("_created") or {}
+        if not created.get("url"):
+            return {}
+        try:
+            page = await api.get_page(change.course_id, str(created["url"]))
+        except CanvasError as exc:
+            if exc.code == "canvas_not_found":
+                return {"missing": True}
+            raise
+        return {"url": page.get("url"), "page_id": page.get("page_id"), "title": page.get("title"),
+                "body": page.get("body"), "published": page.get("published"), "html_url": page.get("html_url"),
+                "front_page": page.get("front_page")}
 
     def conflict(self, before: dict[str, Any], current: dict[str, Any]) -> bool:
-        return False
+        if not before:
+            return False  # applying: the page does not exist yet
+        if current.get("missing"):
+            return True
+        keys = ("title", "body", "published")
+        return state_fingerprint({k: before.get(k) for k in keys}) != state_fingerprint({k: current.get(k) for k in keys})
 
     async def apply(self, api: CanvasAPI, change: ChangeData, permit: WritePermit) -> dict[str, Any]:
         fields: dict[str, Any] = {k: change.proposed[k] for k in ("title", "body", "published", "front_page")
@@ -307,11 +348,14 @@ class ModuleItemUpdate(Applier):
         try:
             item = await api.get_module_item(change.course_id, module_id, change.target["object_id"])
         except CanvasError as exc:
-            if exc.code != "canvas_not_found" or "module_id" not in change.proposed:
+            if exc.code != "canvas_not_found":
                 raise
-            # Already moved? Look in the proposed module.
-            item = await api.get_module_item(change.course_id, str(change.proposed["module_id"]),
-                                             change.target["object_id"])
+            # The item has been moved (by this change or another one): find it in the course's modules.
+            found = await _find_module_item(api, change.course_id, str(change.target["object_id"]))
+            if found is None:
+                raise
+            item = found
+            change.target = {**change.target, "module_id": str(item.get("module_id"))}
         from emneklar.core.canvas.requirements import normalize
 
         requirement = normalize(item.get("completion_requirement"))
@@ -321,6 +365,15 @@ class ModuleItemUpdate(Applier):
     def conflict(self, before: dict[str, Any], current: dict[str, Any]) -> bool:
         keys = [k for k in before if k in self.FIELDS]
         return any(before.get(k) != current.get(k) for k in keys)
+
+    def verify(self, proposed: dict[str, Any], after: dict[str, Any]) -> list[str]:
+        from emneklar.core.canvas.requirements import normalize
+
+        problems = super().verify(proposed, after)
+        if "completion_requirement" in proposed and (
+                normalize(proposed["completion_requirement"]) != after.get("completion_requirement")):
+            problems.append(FIELD_NAMES["completion_requirement"])
+        return problems
 
     @staticmethod
     def _payload(values: dict[str, Any]) -> dict[str, Any]:
@@ -344,18 +397,27 @@ class ModuleItemUpdate(Applier):
         return await self.current(api, change)
 
 
+async def _find_module_item(api: CanvasAPI, course_id: str, item_id: str) -> dict[str, Any] | None:
+    for module in await api.list_modules(course_id):
+        for item in module.get("items") or []:
+            if str(item.get("id")) == item_id:
+                return {**item, "module_id": str(item.get("module_id") or module.get("id"))}
+    return None
+
+
 class ModuleUpdate(Applier):
     kind = "module.update"
     label = "Endre modulinnstillinger"
     object_type = "module"
-    FIELDS = ("name", "position", "require_sequential_progress", "requirement_type")
+    # The modules API applies name and require_sequential_progress. «All/one requirement» (requirement_type)
+    # is documented but ignored by Canvas' controller (requirement_count is behind a feature flag), so it is
+    # not offered – see docs/CANVAS_API.md.
+    FIELDS = ("name", "require_sequential_progress")
 
     def validate(self, change: ChangeData) -> None:
         unknown = set(change.proposed) - set(self.FIELDS)
         if unknown or not change.proposed:
             raise AppError("validation_error", detail=f"Ugyldige felt: {sorted(unknown)}")
-        if "requirement_type" in change.proposed and change.proposed["requirement_type"] not in ("all", "one"):
-            raise AppError("validation_error", detail="requirement_type må være all eller one")
 
     async def current(self, api: CanvasAPI, change: ChangeData) -> dict[str, Any]:
         module = await api.get_module(change.course_id, change.target["object_id"])
@@ -382,10 +444,21 @@ class ModuleItemCreate(Applier):
     undo_note = "Kan angres ved å fjerne elementet fra modulen (innholdet selv slettes ikke)."
 
     async def current(self, api: CanvasAPI, change: ChangeData) -> dict[str, Any]:
-        return {}
+        created = change.proposed.get("_created") or {}
+        if not created.get("item_id"):
+            return {}
+        try:
+            item = await api.get_module_item(change.course_id, str(created["module_id"]), str(created["item_id"]))
+        except CanvasError as exc:
+            if exc.code == "canvas_not_found":
+                return {"missing": True}
+            raise
+        return {"item_id": str(item.get("id")), "module_id": str(created["module_id"]), "title": item.get("title")}
 
     def conflict(self, before: dict[str, Any], current: dict[str, Any]) -> bool:
-        return False
+        if not before:
+            return False
+        return bool(current.get("missing")) or current.get("title") != before.get("title")
 
     async def apply(self, api: CanvasAPI, change: ChangeData, permit: WritePermit) -> dict[str, Any]:
         item = await api.create_module_item(change.course_id, change.target["module_id"], dict(change.proposed),

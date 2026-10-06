@@ -102,16 +102,22 @@ class AppContainer:
         return self._sessions
 
     def startup(self) -> None:
-        from emneklar.core.storage.maintenance import prune_snapshots
+        from emneklar.core.storage.maintenance import prune_database_copies, prune_snapshots
 
         self.migrate()
         interrupted = self.jobs.recover_after_restart()
         if interrupted:
             log.info("%s jobb(er) ble avbrutt ved forrige avslutning", interrupted)
         settings = self.settings.get()
+        default_course = settings.general.default_course_id
+        if default_course and settings.current_course_id != default_course:
+            settings = self.settings.update(lambda s: setattr(s, "current_course_id", default_course))
         pruned = prune_snapshots(self.db, settings.privacy.snapshot_retention_days)
         if pruned:
             log.info("%s gamle øyeblikksbilder av emner ble slettet (oppbevaringstid)", pruned)
+        copies = prune_database_copies(self.config.backups_dir)
+        if copies:
+            log.info("%s eldre databasekopier fra oppdateringer/migreringer ble slettet", copies)
         self.apply_log_level(settings)
         self.settings.on_change(self.apply_log_level)
         self._write_instance_file()

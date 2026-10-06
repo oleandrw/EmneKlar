@@ -54,6 +54,37 @@ GEN_SCHEMA: dict[str, Any] = {
 }
 
 
+EXCERPTS_PER_BATCH = 4
+
+
+def generation_plan(chunks: list[Chunk], count: int) -> list[list[Chunk]]:
+    """Excerpts for each AI request, spread evenly over all selected content (all modules, not just the first)."""
+    count = max(1, min(MAX_QUESTIONS, count))
+    batches = (count + BATCH_QUESTIONS - 1) // BATCH_QUESTIONS
+    if not chunks:
+        return []
+    per_batch = max(1, min(EXCERPTS_PER_BATCH, -(-len(chunks) // batches)))
+    slots = batches * per_batch
+    if slots >= len(chunks):
+        indices = [i % len(chunks) for i in range(slots)]
+    else:
+        indices = [int(i * len(chunks) / slots) for i in range(slots)]
+    return [[chunks[i] for i in indices[b * per_batch:(b + 1) * per_batch]] for b in range(batches)]
+
+
+def plan_summary(plan: list[list[Chunk]]) -> tuple[str, int]:
+    """Consent text for exactly the excerpts that will be sent, and their size in characters."""
+    used = {c.id: c for batch in plan for c in batch}
+    chars = sum(len(c.text) for c in used.values())
+    sources = len({c.object_ref for c in used.values()})
+    size = f"{chars:,}".replace(",", " ")
+    origin = "side, oppgave eller diskusjon" if sources == 1 else "sider, oppgaver eller diskusjoner"
+    requests = "i én forespørsel" if len(plan) == 1 else f"fordelt på {len(plan)} forespørsler"
+    text = (f"{len(used)} utdrag fra {sources} {origin} i emnet (ca. {size} tegn) sendes til KI-leverandøren "
+            f"{requests}. Ingen studentdata sendes.")
+    return text, chars
+
+
 class AnswerIn(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
     correct: bool = False
@@ -154,10 +185,16 @@ class QuestionBank:
             row = session.get(QuestionBankItem, item_id)
             if row is None:
                 raise NotFoundError("not_found", detail="spørsmål")
+            content_changed = any(key in fields and fields[key] != getattr(row, key)
+                                  for key in ("stem", "answers", "question_type"))
             for key, value in fields.items():
-                if key in allowed:
-                    setattr(row, key, value)
+                if key not in allowed or (value is None and key not in ("module_name", "module_id")):
+                    continue
+                setattr(row, key, value.strip() if isinstance(value, str) and key == "stem" else value)
             validate_answers(row.question_type, row.answers)
+            if content_changed and row.grounding == "verified":
+                # The source quote supported the original question and key – not necessarily the edited one.
+                row.grounding = "partial"
             if fields.get("review_status") not in (None, "draft", "approved", "rejected"):
                 raise AppError("validation_error", detail="Ugyldig status")
             return item_dict(row, usage(session, row.course_id).get(row.id))
@@ -207,17 +244,16 @@ class QuestionBank:
         if not chunks:
             raise AppError("validation_error", message="Fant ikke nok tekstinnhold i valgt omfang til å lage spørsmål.")
         count = max(1, min(MAX_QUESTIONS, count))
-        batch_count = (count + BATCH_QUESTIONS - 1) // BATCH_QUESTIONS
+        plan = generation_plan(chunks, count)
+        batch_count = len(plan)
         job.progress.set_phase("generate", "Lager spørsmål", index=1, count=1, determinate=True)
         job.progress.add_tasks("ai", batch_count)
         existing = [shingles(i["stem"], 3) for i in self.list(course_id)]
         batch_id = str(uuid.uuid4())
         kept = discarded = duplicates = 0
         last_model: str | None = None
-        per_batch = max(1, min(4, len(chunks) // max(1, batch_count) or 1))
-        for index in range(batch_count):
+        for index, selection in enumerate(plan):
             await job.checkpoint()
-            selection = [chunks[(index * per_batch + i) % len(chunks)] for i in range(per_batch)]
             wanted = min(BATCH_QUESTIONS, count - index * BATCH_QUESTIONS)
             t0 = job.progress.start("ai", item=f"Kilder: {', '.join(sorted({c.title for c in selection}))[:120]}",
                                     operation="Genererer forankrede spørsmål")
