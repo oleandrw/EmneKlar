@@ -14,6 +14,7 @@ from emneklar.api.deps import get_container, require_course_id
 from emneklar.core import flags
 from emneklar.core.ai.base import AIMessage, AIRequest, TextPart
 from emneklar.core.canvas.api import CanvasAPI
+from emneklar.core.canvas.html import norm_text, parse_html
 from emneklar.core.changes.appliers import ChangeData, get_applier
 from emneklar.core.container import AppContainer
 from emneklar.core.errors import AppError, NotFoundError
@@ -230,12 +231,22 @@ async def stage_question(finding_id: int, body: StageQuestionBody,
     before = await applier.current(CanvasAPI(c.canvas()), ChangeData(0, finding.course_id, applier.kind, target, {}, {}))
     old_key = sorted(str(a["text"]) for a in before["answers"] if a["correct"])
     changes_key = old_key != sorted(str(a["text"]) for a in answers if a["correct"])
+    original_text = norm_text(parse_html(before["question_text"]).get_text(" "))
+    if " ".join(stem.split()).lower() == " ".join(original_text.split()).lower():
+        question_text = before["question_text"]  # unchanged wording: keep the original HTML as it is
+    elif ai_review.has_rich_content(before["question_text"]):
+        raise AppError("unsupported", message="Spørsmålsteksten inneholder bilder, tabeller eller annet innhold som "
+                       "ville gått tapt. Endre teksten i Canvas, eller behold spørsmålsteksten og endre bare "
+                       "svaralternativene her.")
+    else:
+        question_text = f"<p>{escape(stem)}</p>"
+    answers = ai_review.carry_over(answers, before["answers"])
     rationale = (f"KI-forslag – må vurderes. {finding.message}"
                  + (" Forslaget ENDRER FASITEN og må kontrolleres nøye." if changes_key else ""))
     return c.changes.stage(
         course_id=finding.course_id, domain="quiz", kind="quiz_question.update",
         title=f"Quizspørsmål: {finding.object_title}", target=target, before=before,
-        proposed={"question_text": f"<p>{escape(stem)}</p>", "answers": answers},
+        proposed={"question_text": question_text, "answers": answers},
         rationale=rationale, risk="high" if changes_key else "medium", requires_confirmation=changes_key,
         source={"feature": "quiz", "finding_fingerprints": [finding.fingerprint], "rule_ids": [finding.rule_id]},
         editable=True, ai_generated=True)

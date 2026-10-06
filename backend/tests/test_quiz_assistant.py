@@ -371,3 +371,53 @@ def test_builder_respects_dry_run(canvas_client: TestClient, fake_state: FakeCan
     assert apply(canvas_client, change["id"])["result"]["summary"] == {"dry_run": 1}
     assert len(fake_state.writes) == writes
     assert not any(q["title"] == "Prøvequiz" for q in fake_state.courses[COURSE_ID].quizzes.values())
+
+
+def _ai_key_finding(client: TestClient, container: AppContainer, suggestion_stem: str) -> dict:
+    snapshot(client)
+
+    def answer(prompt: str) -> dict:
+        sources = sources_in(prompt)
+        questions = json.loads(prompt.split("\n\nSPØRSMÅL (data):\n", 1)[1])
+        out = []
+        for q in questions:
+            entry: dict[str, Any] = {"question_id": q["question_id"], "key_assessment": "supported", "correct_answer_ids": [],
+                                     "issues": [], "evidence": [], "suggestion": {"stem": "", "answers": [], "explanation": ""}}
+            if q["question_id"] == "603":
+                entry.update(key_assessment="wrong_key", evidence=[{"chunk_id": sources[0]["chunk_id"], "quote": quote_from(sources[0])}],
+                             suggestion={"stem": suggestion_stem, "explanation": "",
+                                         "answers": [{"text": "Sant", "correct": False}, {"text": "Usant", "correct": True}]})
+            out.append(entry)
+        return {"questions": out}
+
+    enable_ai(client, container, answer)
+    review(client, use_ai=True, confirmed=True)
+    return next(f for f in detail(client)["findings"] if f["rule_id"] == "QZ-AI-KEY")
+
+
+def test_approving_a_suggestion_keeps_formatting_and_feedback(canvas_client: TestClient, canvas_container: AppContainer,
+                                                             fake_state: FakeCanvasState) -> None:
+    question = next(q for q in fake_state.courses[COURSE_ID].questions[QUIZ] if q["id"] == "603")
+    question["question_text"] = "<p><strong>PNG</strong> støtter gjennomsiktighet.</p>"
+    question["neutral_comments"] = "Se kapittel 2."
+    question["answers"][1]["comments"] = "Les om alfakanalen."
+    finding = _ai_key_finding(canvas_client, canvas_container, "PNG støtter gjennomsiktighet.")
+    change = canvas_client.post(f"/api/quiz/findings/{finding['id']}/stage", json={}).json()
+    assert change["proposed"]["question_text"] == question["question_text"], "unchanged wording keeps the original HTML"
+    assert apply(canvas_client, change["id"], confirm=True)["result"]["summary"] == {"applied": 1}
+    assert question["question_text"] == "<p><strong>PNG</strong> støtter gjennomsiktighet.</p>"
+    assert question["neutral_comments"] == "Se kapittel 2."
+    assert [(a["text"], a["weight"], a["comments"]) for a in question["answers"]] == [
+        ("Sant", 0.0, ""), ("Usant", 100.0, "Les om alfakanalen.")]
+
+
+def test_rich_question_text_is_never_replaced_by_plain_text(canvas_client: TestClient, canvas_container: AppContainer,
+                                                           fake_state: FakeCanvasState) -> None:
+    question = next(q for q in fake_state.courses[COURSE_ID].questions[QUIZ] if q["id"] == "603")
+    question["question_text"] = '<p>PNG støtter gjennomsiktighet.</p><p><img src="/courses/101/files/9004/preview" alt="Logo"></p>'
+    finding = _ai_key_finding(canvas_client, canvas_container, "Støtter PNG-formatet gjennomsiktighet?")
+    response = canvas_client.post(f"/api/quiz/findings/{finding['id']}/stage", json={})
+    assert response.status_code == 400 and "bilder" in response.json()["error"]["message"]
+    kept = canvas_client.post(f"/api/quiz/findings/{finding['id']}/stage", json={"stem": "PNG støtter gjennomsiktighet."})
+    assert kept.status_code == 200, kept.text
+    assert "<img" in kept.json()["proposed"]["question_text"], "keeping the wording keeps the image"

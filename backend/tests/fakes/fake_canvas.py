@@ -698,12 +698,15 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
             return err(404, "not found")
         if request.method == "PUT":
             data = (await body(request)).get("question", {})
-            for key in ("question_name", "question_text", "points_possible", "question_type"):
+            for key in ("question_name", "question_text", "points_possible", "question_type", "correct_comments",
+                        "incorrect_comments", "neutral_comments"):
                 if key in data:
                     found[key] = data[key]
             if "answers" in data:
+                # Like Canvas: the answers are replaced wholesale by what is sent.
                 found["answers"] = [{"id": a.get("id") or next_id(), "text": a.get("answer_text", ""),
-                                     "html": a.get("answer_html", ""), "weight": float(a.get("answer_weight", 0))}
+                                     "html": a.get("answer_html", ""), "weight": float(a.get("answer_weight", 0)),
+                                     "comments": a.get("answer_comments", "")}
                                     for a in data["answers"]]
         return JSONResponse(found)
 

@@ -151,10 +151,42 @@ TYPE_TO_CANVAS = {"single_choice": "multiple_choice_question", "multiple_answers
                   "true_false": "true_false_question"}
 
 
+#: Question fields sent back unchanged, so a PUT (which replaces the question) does not lose feedback texts.
+QUESTION_KEEP = ("question_name", "question_type", "points_possible", "correct_comments", "incorrect_comments",
+                 "neutral_comments", "correct_comments_html", "incorrect_comments_html", "neutral_comments_html")
+#: Answer fields carried over for answers whose text is unchanged (formatting and per-answer feedback).
+ANSWER_KEEP = {"html": "answer_html", "comments": "answer_comments", "comments_html": "answer_comments_html"}
+RICH_ELEMENTS = ("img", "iframe", "video", "audio", "object", "embed", "table", "math", "svg")
+
+
 def _answers_state(raw: dict[str, Any]) -> list[dict[str, Any]]:
     from emneklar.core.canvas.api import answer_is_correct, answer_text
 
-    return [{"text": answer_text(a), "correct": answer_is_correct(a)} for a in raw.get("answers") or []]
+    answers = []
+    for a in raw.get("answers") or []:
+        item: dict[str, Any] = {"text": answer_text(a), "correct": answer_is_correct(a)}
+        item.update({key: a[key] for key in ANSWER_KEEP if a.get(key)})
+        answers.append(item)
+    return answers
+
+
+def has_rich_content(html: str) -> bool:
+    from emneklar.core.canvas.html import parse_html
+
+    return parse_html(html or "").find(list(RICH_ELEMENTS)) is not None
+
+
+def carry_over(proposed: list[dict[str, Any]], original: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep formatting/feedback of answers whose text is unchanged; changed answers become plain text."""
+    by_text = {" ".join(str(a.get("text") or "").split()).lower(): a for a in original}
+    result = []
+    for answer in proposed:
+        item = {"text": answer["text"], "correct": bool(answer["correct"])}
+        match = by_text.get(" ".join(answer["text"].split()).lower())
+        if match:
+            item.update({key: match[key] for key in ANSWER_KEEP if match.get(key)})
+        result.append(item)
+    return result
 
 
 class QuizQuestionUpdate(Applier):
@@ -169,9 +201,9 @@ class QuizQuestionUpdate(Applier):
         raw = next((q for q in questions if str(q.get("id")) == change.target["object_id"]), None)
         if raw is None:
             raise AppError("not_found", status=404, detail="Spørsmålet finnes ikke lenger")
-        return {"question_text": raw.get("question_text") or "", "answers": _answers_state(raw),
-                "question_name": raw.get("question_name") or "", "question_type": raw.get("question_type"),
-                "points_possible": raw.get("points_possible"), "neutral_comments": raw.get("neutral_comments") or ""}
+        state: dict[str, Any] = {"question_text": raw.get("question_text") or "", "answers": _answers_state(raw)}
+        state.update({key: raw[key] for key in QUESTION_KEEP if raw.get(key) not in (None, "")})
+        return state
 
     def conflict(self, before: dict[str, Any], current: dict[str, Any]) -> bool:
         return before.get("question_text") != current.get("question_text") or before.get("answers") != current.get(
@@ -179,12 +211,18 @@ class QuizQuestionUpdate(Applier):
 
     @staticmethod
     def _payload(state: dict[str, Any]) -> dict[str, Any]:
-        # Always send the whole question (Canvas replaces answers wholesale; partial PUTs lose data).
-        return {"question_name": state.get("question_name") or "", "question_text": state["question_text"],
-                "question_type": state.get("question_type"), "points_possible": state.get("points_possible") or 1,
-                "neutral_comments": state.get("neutral_comments") or "",
-                "answers": [{"answer_text": a["text"], "answer_weight": 100 if a["correct"] else 0}
-                            for a in state["answers"]]}
+        # Always send the whole question: Canvas replaces the question and its answers wholesale, so anything
+        # left out (feedback, answer formatting) would be lost.
+        payload: dict[str, Any] = {key: state[key] for key in QUESTION_KEEP if state.get(key) not in (None, "")}
+        payload["question_text"] = state["question_text"]
+        payload.setdefault("points_possible", 1)
+        answers = []
+        for a in state["answers"]:
+            item = {"answer_text": a["text"], "answer_weight": 100 if a["correct"] else 0}
+            item.update({target: a[source] for source, target in ANSWER_KEEP.items() if a.get(source)})
+            answers.append(item)
+        payload["answers"] = answers
+        return payload
 
     async def apply(self, api: CanvasAPI, change: ChangeData, permit: WritePermit) -> dict[str, Any]:
         state = {**change.before, **change.proposed}
