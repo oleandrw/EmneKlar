@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router";
+import { Route, Routes, useLocation } from "react-router";
 
 import { useSession } from "../../core/session";
 import { usePageTitle } from "../../core/usePageTitle";
@@ -10,6 +10,8 @@ import { QuizBuilder } from "./QuizBuilder";
 export function QuizAssistantPage() {
   usePageTitle("Quizassistent");
   const session = useSession();
+  const { pathname } = useLocation();
+  const onExisting = pathname.replace(/\/$/, "") === "/quizassistent" || pathname.startsWith("/quizassistent/quiz/");
   if (session.flags.quiz_assistant === false) {
     return (
       <>
@@ -30,7 +32,7 @@ export function QuizAssistantPage() {
         <NavTabs
           label="Quizassistent"
           items={[
-            { to: "/quizassistent", label: "Eksisterende quizer", end: true },
+            { to: "/quizassistent", label: "Eksisterende quizer", current: onExisting },
             { to: "/quizassistent/sporsmalsbank", label: "KI-spørsmålsbank" },
             { to: "/quizassistent/ny-quiz", label: "Lag ny quiz" },
           ]}

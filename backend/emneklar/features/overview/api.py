@@ -56,26 +56,27 @@ def _next_steps(cards: dict[str, dict[str, Any]], pending_changes: int) -> list[
     manual = a["by_classification"].get("manual_check", 0)
     if manual:
         steps.append({"key": "uu-manual", "count": manual, "domain": "accessibility",
-                      "title": f"{manual} punkter krever manuell kontroll",
+                      "title": f"{_n(manual, 'punkt krever', 'punkter krever')} manuell kontroll",
                       "description": "For eksempel teksting av ekstern video og innhold i eksterne verktøy.",
                       "path": "/universell-utforming", "tone": "violet"})
     c = cards["content_quality"]
     dead = sum(c["by_rule"].get(r, 0) for r in DEAD_LINK_RULES)
     if dead:
         steps.append({"key": "dead-links", "count": dead, "domain": "content_quality",
-                      "title": f"{dead} lenker fungerer ikke", "description": "Døde eksterne eller interne lenker.",
+                      "title": f"{_n(dead, 'lenke fungerer', 'lenker fungerer')} ikke",
+                      "description": "Døde eksterne eller interne lenker.",
                       "path": "/innholdskvalitet", "tone": "warning"})
     media = sum(c["by_rule"].get(r, 0) for r in MEDIA_RULES)
     if media:
         steps.append({"key": "media", "count": media, "domain": "content_quality",
-                      "title": f"{media} videoer er utilgjengelige",
+                      "title": f"{_n(media, 'video er utilgjengelig', 'videoer er utilgjengelige')}",
                       "description": "Innebygd video som er fjernet eller privat.",
                       "path": "/innholdskvalitet", "tone": "warning"})
     s = cards["structure"]
     placement = sum(s["by_rule"].get(r, 0) for r in PLACEMENT_RULES)
     if placement:
         steps.append({"key": "placement", "count": placement, "domain": "structure",
-                      "title": f"{placement} elementer kan være feilplassert",
+                      "title": f"{_n(placement, 'element kan være feilplassert', 'elementer kan være feilplassert')}",
                       "description": "Innhold som ikke ligger i en modul eller ser ut til å høre hjemme et annet sted.",
                       "path": "/emnestruktur", "tone": "info"})
     q = cards["quiz"]
@@ -86,10 +87,14 @@ def _next_steps(cards: dict[str, dict[str, Any]], pending_changes: int) -> list[
                       "path": "/quizassistent", "tone": "info"})
     if pending_changes:
         steps.append({"key": "changes", "count": pending_changes, "domain": "changes",
-                      "title": f"{pending_changes} endringer venter i endringskøen",
+                      "title": f"{_n(pending_changes, 'endring venter', 'endringer venter')} i endringskøen",
                       "description": "Godkjenn og gjennomfør, eller fjern forslag du ikke vil bruke.",
                       "path": None, "tone": "success"})
     return steps
+
+
+def _n(count: int, one: str, many: str) -> str:
+    return f"{count} {one if count == 1 else many}"
 
 
 def _stats(c: AppContainer, course_id: str) -> dict[str, Any] | None:

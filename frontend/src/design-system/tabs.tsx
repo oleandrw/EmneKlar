@@ -4,7 +4,7 @@
  * which renders ordinary links with aria-current (no tab roles).
  */
 import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
-import { NavLink } from "react-router";
+import { Link, NavLink } from "react-router";
 
 export interface TabItem<T extends string> {
   id: T;
@@ -72,15 +72,28 @@ export function Tabs<T extends string>({
   );
 }
 
-export function NavTabs({ items, label }: { items: { to: string; label: ReactNode; end?: boolean }[]; label: string }) {
+export function NavTabs({
+  items,
+  label,
+}: {
+  /** `current` overrides route matching, e.g. to keep a tab current on its sub-pages. */
+  items: { to: string; label: ReactNode; end?: boolean; current?: boolean }[];
+  label: string;
+}) {
   return (
     <nav aria-label={label}>
       <div className="ek-tabs__list">
-        {items.map((item) => (
-          <NavLink key={item.to} to={item.to} end={item.end} className="ek-tabs__tab">
-            {item.label}
-          </NavLink>
-        ))}
+        {items.map((item) =>
+          item.current === undefined ? (
+            <NavLink key={item.to} to={item.to} end={item.end} className="ek-tabs__tab">
+              {item.label}
+            </NavLink>
+          ) : (
+            <Link key={item.to} to={item.to} className="ek-tabs__tab" aria-current={item.current ? "page" : undefined}>
+              {item.label}
+            </Link>
+          ),
+        )}
       </div>
     </nav>
   );
