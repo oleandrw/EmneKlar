@@ -10,12 +10,17 @@ from __future__ import annotations
 from collections import Counter
 from urllib.parse import urlsplit
 
-from emneklar.core.canvas.html import MEDIA_FILE_EXT, element_path, filename_from_url, find_media, norm_text, text_of
+from emneklar.core.canvas.html import (
+    MEDIA_FILE_EXT,
+    element_path,
+    filename_from_url,
+    find_media,
+    is_generic_iframe_title,
+    norm_text,
+    text_of,
+)
 from emneklar.features.accessibility.checks.base import ContentDoc, Issue, fix
 
-GENERIC_TITLES = {"iframe", "frame", "embed", "embedded content", "video", "youtube", "youtube video player", "media",
-                  "content", "untitled", "player", "external tool", "vimeo", "video player", "innhold", "ramme",
-                  "innebygd innhold", "spiller"}
 FOCUSABLE = ["a", "button", "input", "select", "textarea", "iframe", "audio", "video"]
 EXTERNAL_CAPTIONS_MESSAGE = "Teksting kan ikke verifiseres automatisk."
 
@@ -53,7 +58,7 @@ def check_iframes(doc: ContentDoc) -> list[Issue]:
                     element=frame, evidence={"src": src},
                     fix=fix("set_iframe_title", "Legg til en beskrivende tittel", path=path,
                             suggestion=_suggest_title(src))))
-            elif title.lower() in GENERIC_TITLES:
+            elif is_generic_iframe_title(title):
                 issues.append(Issue(
                     "UU-IFRAME-GENERIC-TITLE", f"Iframen har den generelle tittelen «{title}».", element=frame,
                     evidence={"src": src, "title": title},

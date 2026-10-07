@@ -6,6 +6,18 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
 
 ## [Unreleased]
 
+### Lagt til
+- Innholdskvalitet → Media: «Standardiser videoavspillere» for YouTube. Finner innebygde videoer, forklarer avvik
+  fra én responsiv og Canvas-trygg standard (16:9, maks bredde, sentrert, `allowfullscreen`, `loading="lazy"`),
+  foreslår beskrivende title med synlig kilde (eksisterende title, YouTube-metadata, Canvas-kontekst, KI-forslag på
+  forespørsel eller manuelt), forhåndsviser før og etter på PC, nettbrett og mobil og legger godkjente endringer i
+  endringskøen – én og én eller alle kompatible videoer. Video-ID og parametere beholdes, og bare videoens egen kode
+  endres.
+
+### Endret
+- Kontrollen av innebygd innhold (Universell utforming) og videostandardiseringen bruker samme liste over generelle
+  titler. «YouTube video», «Embedded video» og titler med kolon eller punktum til slutt regnes nå også som generelle.
+
 ## [0.1.0] – under utvikling
 
 ### Lagt til

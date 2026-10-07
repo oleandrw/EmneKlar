@@ -16,6 +16,7 @@ ROUTERS = [
     "emneklar.features.accessibility.fixes",
     "emneklar.features.overview.api",
     "emneklar.features.content_quality.api",
+    "emneklar.features.content_quality.video_api",
     "emneklar.features.course_structure.api",
     "emneklar.core.ai.api",
     "emneklar.features.accessibility.ai_alt",

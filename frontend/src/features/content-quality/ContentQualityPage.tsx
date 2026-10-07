@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CircleCheck, CircleHelp, Clock, FileCheck, Link2, Lock, Play, RefreshCw, Unlink, CornerDownRight } from "lucide-react";
+import { CircleCheck, CircleHelp, Clock, FileCheck, Film, Link2, Lock, Play, RefreshCw, Unlink, CornerDownRight } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 
 import { api } from "../../core/api/client";
@@ -27,6 +27,7 @@ import {
   type Tone,
 } from "../../design-system";
 import { FindingsView } from "../findings/FindingsView";
+import { VideoStandardiser } from "./VideoStandardiser";
 
 type LinkState = "WORKING" | "REDIRECT" | "DEAD" | "TIMEOUT" | "AUTH_REQUIRED" | "UNKNOWN";
 
@@ -211,7 +212,7 @@ function LinksPanel() {
 export function ContentQualityPage() {
   usePageTitle("Innholdskvalitet");
   const ui = useUi();
-  const [tab, setTab] = useState<"findings" | "links">("findings");
+  const [tab, setTab] = useState<"findings" | "links" | "media">("findings");
   return (
     <>
       <PageHeader
@@ -233,6 +234,7 @@ export function ContentQualityPage() {
         tabs={[
           { id: "findings", label: "Funn", icon: <FileCheck aria-hidden="true" /> },
           { id: "links", label: "Lenker", icon: <Link2 aria-hidden="true" /> },
+          { id: "media", label: "Media", icon: <Film aria-hidden="true" /> },
         ]}
       >
         <div className="ek-mt-6">
@@ -241,8 +243,10 @@ export function ContentQualityPage() {
               domain="content_quality"
               emptyText="Kjør en analyse for å kontrollere lenker, medier og HTML-kode i emnet. Analysen leser bare fra Canvas."
             />
-          ) : (
+          ) : tab === "links" ? (
             <LinksPanel />
+          ) : (
+            <VideoStandardiser />
           )}
         </div>
       </Tabs>

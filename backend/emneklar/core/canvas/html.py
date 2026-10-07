@@ -186,6 +186,23 @@ def absolute(url: str, base: str | None) -> str:
     return urljoin(base + "/", url) if base and not urlsplit(url).scheme else url
 
 
+# -- iframe titles ----------------------------------------------------------------------------
+
+# Titles that do not say what an embedded frame contains (WCAG 4.1.2). The one list used by the
+# accessibility check and the video standardiser, so both agree on what «generic» means.
+GENERIC_IFRAME_TITLES = frozenset({
+    "iframe", "frame", "embed", "embedded content", "embedded video", "video", "youtube", "youtube video",
+    "youtube video player", "media", "content", "untitled", "player", "external tool", "vimeo", "video player",
+    "innhold", "ramme", "innebygd innhold", "spiller",
+})
+
+
+def is_generic_iframe_title(title: str | None) -> bool:
+    """True for a missing or generic title («YouTube video player», «Video», …), case-insensitive."""
+    text = norm_text(title).lower().rstrip(":.-–— ")
+    return not text or text in GENERIC_IFRAME_TITLES
+
+
 # -- media ------------------------------------------------------------------------------------
 
 YOUTUBE_RE = re.compile(r"(?:youtube(?:-nocookie)?\.com/(?:embed/|watch\?v=|v/|shorts/)|youtu\.be/)([A-Za-z0-9_-]{6,})")
