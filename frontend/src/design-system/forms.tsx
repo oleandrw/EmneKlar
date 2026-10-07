@@ -13,7 +13,7 @@ import {
   type TextareaHTMLAttributes,
 } from "react";
 
-import { cx } from "./primitives";
+import { cx, type Tone } from "./primitives";
 
 interface FieldBase {
   label: ReactNode;
@@ -201,6 +201,9 @@ export interface RadioOption<T extends string> {
   label: ReactNode;
   hint?: ReactNode;
   disabled?: boolean;
+  /** Card variant only: a decorative icon in a tile of this tone. */
+  icon?: ReactNode;
+  tone?: Tone;
 }
 
 export function RadioGroup<T extends string>({
@@ -213,6 +216,7 @@ export function RadioGroup<T extends string>({
   error,
   variant = "plain",
   hideLegend,
+  columns = 1,
 }: {
   legend: ReactNode;
   name: string;
@@ -223,19 +227,28 @@ export function RadioGroup<T extends string>({
   error?: ReactNode;
   variant?: "plain" | "card";
   hideLegend?: boolean;
+  /** Card variant: choices side by side (fewer columns on narrow screens). */
+  columns?: 1 | 2 | 3 | 4;
 }) {
+  const choices = options.map((option) => (
+    <RadioChoice
+      key={option.value}
+      name={name}
+      option={option}
+      checked={value === option.value}
+      onSelect={() => onChange(option.value)}
+      variant={variant}
+    />
+  ));
   return (
     <Fieldset legend={legend} hint={hint} error={error} hideLegend={hideLegend}>
-      {options.map((option) => (
-        <RadioChoice
-          key={option.value}
-          name={name}
-          option={option}
-          checked={value === option.value}
-          onSelect={() => onChange(option.value)}
-          variant={variant}
-        />
-      ))}
+      {columns > 1 ? (
+        <div className="ek-choice-grid" data-cols={columns}>
+          {choices}
+        </div>
+      ) : (
+        choices
+      )}
     </Fieldset>
   );
 }
@@ -265,6 +278,11 @@ function RadioChoice<T extends string>({
         onChange={onSelect}
         aria-describedby={option.hint ? hintId : undefined}
       />
+      {variant === "card" && option.icon ? (
+        <span className="ek-tile" data-tone={option.tone ?? "info"} data-size="sm" aria-hidden="true">
+          {option.icon}
+        </span>
+      ) : null}
       <span className="ek-choice__text">
         <span>{option.label}</span>
         {option.hint ? (

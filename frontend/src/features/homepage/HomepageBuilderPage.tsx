@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Code, FilePlus, Replace, Sparkles, WandSparkles } from "lucide-react";
-import { useState } from "react";
+import { Code, FilePlus, FileText, Palette, Replace, Sparkles, WandSparkles } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 import { AiConsent, AiNotConfigured, useAiConfigured, type AiPlan } from "../../core/ai";
 import { api } from "../../core/api/client";
@@ -28,6 +28,7 @@ import {
   TextField,
   useToast,
   type PreviewDevice,
+  type Tone,
 } from "../../design-system";
 
 type Mode = "design" | "design_content" | "improve";
@@ -77,6 +78,12 @@ const MODE_HINTS: Record<Mode, string> = {
   design_content: "Layout med innhold hentet fra emnet: moduler, kommende frister og hurtiglenker. Ingenting blir funnet på.",
   improve: "Gir den nåværende forsiden et nytt design. Eksisterende innhold beholdes som standard.",
 };
+const MODE_ICONS: Record<Mode, ReactNode> = {
+  design: <Palette />,
+  design_content: <FileText />,
+  improve: <WandSparkles />,
+};
+const MODE_TONES: Record<Mode, Tone> = { design: "violet", design_content: "info", improve: "teal" };
 const NOTE_LABEL: Record<Draft["notes"][number]["kind"], { label: string; tone: "warning" | "violet" | "info" | "neutral" | "danger" }> = {
   placeholder: { label: "Fyll inn", tone: "warning" },
   ai: { label: "KI-forslag – må vurderes", tone: "violet" },
@@ -326,13 +333,14 @@ export function HomepageBuilderPage() {
               hideLegend
               name="mode"
               variant="card"
+              columns={3}
               value={mode}
               onChange={(value) => {
                 setMode(value);
                 setSections(null);
               }}
               options={options.data.modes.map((m) => ({
-                value: m.value, label: m.label,
+                value: m.value, label: m.label, icon: MODE_ICONS[m.value], tone: MODE_TONES[m.value],
                 hint: m.value === "improve" && !ctx.has_front_page ? "Emnet har ingen forside å forbedre." : MODE_HINTS[m.value],
                 disabled: m.value === "improve" && !ctx.has_front_page,
               }))}
@@ -356,6 +364,7 @@ export function HomepageBuilderPage() {
             hideLegend
             name="style"
             variant="card"
+            columns={2}
             value={style}
             onChange={setStyle}
             options={options.data.styles.map((s) => ({

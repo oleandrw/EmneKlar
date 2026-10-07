@@ -61,7 +61,7 @@ backend/emneklar/
     overview/          domenekort og anbefalte neste steg
 frontend/src/
   core/                API-klient, økt, global emnekontekst, layout (navigasjon, topplinje)
-  design-system/       tokens, komponenter (knapper, kort, skjema, dialog, tabell, faner, diff, forhåndsvisning)
+  design-system/       tokens, komponenter (kort, nøkkeltall, handlingsrader, diagram, skjema, dialog, tabell, faner) – se DESIGN_SYSTEM.md
   features/            én mappe per domene, speiler backend
 ```
 

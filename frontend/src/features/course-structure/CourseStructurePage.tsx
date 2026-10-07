@@ -1,5 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Play } from "lucide-react";
+import {
+  AppWindow,
+  ArrowRight,
+  BookOpen,
+  ClipboardList,
+  ExternalLink as ExternalLinkIcon,
+  FileText,
+  Flag,
+  Heading,
+  Lightbulb,
+  MessagesSquare,
+  Paperclip,
+  Play,
+  Route,
+  SquareCheckBig,
+  type LucideIcon,
+} from "lucide-react";
 import { useState } from "react";
 
 import { api } from "../../core/api/client";
@@ -16,6 +32,7 @@ import {
   Card,
   EmptyState,
   ExternalLink,
+  IconTile,
   PageHeader,
   Spinner,
   Tabs,
@@ -50,25 +67,59 @@ interface StructureResponse {
 }
 
 const STEP_TONE: Record<string, Tone> = {
-  Les: "info", Innlevering: "warning", Quiz: "teal", Diskusjon: "violet", Fil: "neutral",
-  "Ekstern ressurs": "neutral", Verktøy: "neutral",
+  Les: "info", Innlevering: "orange", Quiz: "success", Diskusjon: "violet", Fil: "neutral",
+  "Ekstern ressurs": "teal", Verktøy: "teal",
 };
-const ITEM_TYPE: Record<string, string> = {
-  Page: "Side", Assignment: "Oppgave", Quiz: "Quiz", Discussion: "Diskusjon", File: "Fil",
-  ExternalUrl: "Ekstern lenke", ExternalTool: "Eksternt verktøy", SubHeader: "Underoverskrift",
+const STEP_ICON: Record<string, LucideIcon> = {
+  Les: BookOpen, Innlevering: ClipboardList, Quiz: SquareCheckBig, Diskusjon: MessagesSquare, Fil: Paperclip,
+  "Ekstern ressurs": ExternalLinkIcon, Verktøy: AppWindow,
 };
+const ITEM_TYPE: Record<string, { label: string; plural: string; icon: LucideIcon; tone: Tone }> = {
+  Page: { label: "Side", plural: "sider", icon: FileText, tone: "info" },
+  Assignment: { label: "Oppgave", plural: "oppgaver", icon: ClipboardList, tone: "orange" },
+  Quiz: { label: "Quiz", plural: "quizer", icon: SquareCheckBig, tone: "success" },
+  Discussion: { label: "Diskusjon", plural: "diskusjoner", icon: MessagesSquare, tone: "violet" },
+  File: { label: "Fil", plural: "filer", icon: Paperclip, tone: "neutral" },
+  ExternalUrl: { label: "Ekstern lenke", plural: "eksterne lenker", icon: ExternalLinkIcon, tone: "teal" },
+  ExternalTool: { label: "Eksternt verktøy", plural: "eksterne verktøy", icon: AppWindow, tone: "teal" },
+  SubHeader: { label: "Underoverskrift", plural: "underoverskrifter", icon: Heading, tone: "neutral" },
+};
+
+/** «4 sider · 1 oppgave · 1 quiz» – counts of the real items in the module. */
+function itemSummary(items: StructureItem[]): string {
+  const counts = new Map<string, number>();
+  for (const item of items) if (item.type !== "SubHeader") counts.set(item.type, (counts.get(item.type) ?? 0) + 1);
+  return [...counts.entries()]
+    .map(([type, n]) => {
+      const info = ITEM_TYPE[type];
+      if (!info) return `${n} ${type}`;
+      return `${n} ${n === 1 ? info.label.toLowerCase() : info.plural}`;
+    })
+    .join(" · ");
+}
 
 function Journey({ steps, label }: { steps: string[]; label: string }) {
   if (!steps.length) return <p className="ek-small ek-muted">Modulen har ikke innhold ennå.</p>;
   return (
     <ol className="ek-journey" aria-label={label}>
-      <li className="ek-journey__step" data-tone="neutral">Start</li>
-      {steps.map((step, i) => (
-        <li key={i} className="ek-cluster" data-gap="2">
-          <ArrowRight aria-hidden="true" size={14} className="ek-journey__arrow" />
-          <span className="ek-journey__step" data-tone={STEP_TONE[step] ?? "neutral"}>{step}</span>
-        </li>
-      ))}
+      <li className="ek-journey__item">
+        <span className="ek-journey__step" data-tone="neutral">
+          <Flag aria-hidden="true" />
+          Start
+        </span>
+      </li>
+      {steps.map((step, i) => {
+        const Icon = STEP_ICON[step];
+        return (
+          <li key={i} className="ek-journey__item">
+            <ArrowRight aria-hidden="true" className="ek-journey__arrow" />
+            <span className="ek-journey__step" data-tone={STEP_TONE[step] ?? "neutral"}>
+              {Icon ? <Icon aria-hidden="true" /> : null}
+              {step}
+            </span>
+          </li>
+        );
+      })}
     </ol>
   );
 }
@@ -101,10 +152,12 @@ function StudentJourney() {
         {formatDateTime(structure.data.snapshot_at)}). Visningen viser rekkefølgen – den sier ikke at én
         undervisningsform er riktig.
       </p>
-      {structure.data.modules.map((module) => (
+      {structure.data.modules.map((module, index) => (
         <Card
           key={module.id}
+          eyebrow={`Modul ${index + 1}`}
           title={module.name}
+          description={itemSummary(module.items) || "Ingen elementer"}
           headingLevel={3}
           actions={
             <>
@@ -117,20 +170,29 @@ function StudentJourney() {
           <div className="ek-stack">
             <Journey steps={module.journey} label={`Studentreisen i ${module.name}`} />
             {module.items.length ? (
-              <ol className="ek-list-reset ek-divider-list">
-                {module.items.map((item) => (
-                  <li key={item.id} className="ek-row" style={{ paddingLeft: `${item.indent * 1.25}rem` }}>
-                    <div className="ek-row__main">
-                      {item.url ? <ExternalLink href={item.url}>{item.title}</ExternalLink> : <span>{item.title}</span>}
-                      <span className="ek-xs ek-muted">
-                        {ITEM_TYPE[item.type] ?? item.type}
-                        {item.due_at ? ` · frist ${formatDate(item.due_at)}` : ""}
-                        {item.requirement ? ` · krav: ${item.requirement}` : ""}
-                      </span>
-                    </div>
-                    {item.published === false ? <Badge tone="warning">Upublisert</Badge> : null}
-                  </li>
-                ))}
+              <ol className="ek-item-list">
+                {module.items.map((item) => {
+                  const info = ITEM_TYPE[item.type];
+                  const Icon = info?.icon ?? FileText;
+                  return (
+                    <li key={item.id} className="ek-item-row" style={{ paddingLeft: `${item.indent * 1.5}rem` }}>
+                      <IconTile tone={info?.tone ?? "neutral"} size="sm" shape="square">
+                        <Icon />
+                      </IconTile>
+                      <div className="ek-item-row__main">
+                        {item.url ? <ExternalLink href={item.url}>{item.title}</ExternalLink> : <span>{item.title}</span>}
+                        <span className="ek-item-row__meta">
+                          {info?.label ?? item.type}
+                          {item.due_at ? ` · frist ${formatDate(item.due_at)}` : ""}
+                          {item.requirement ? ` · krav: ${item.requirement}` : ""}
+                        </span>
+                      </div>
+                      <div className="ek-item-row__side">
+                        {item.published === false ? <Badge tone="warning" dot>Upublisert</Badge> : null}
+                      </div>
+                    </li>
+                  );
+                })}
               </ol>
             ) : null}
           </div>
@@ -165,8 +227,8 @@ export function CourseStructurePage() {
         selected={journeyEnabled ? tab : "suggestions"}
         onSelect={setTab}
         tabs={[
-          { id: "suggestions", label: "Forslag" },
-          ...(journeyEnabled ? [{ id: "journey" as const, label: "Studentreisen" }] : []),
+          { id: "suggestions", label: "Forslag", icon: <Lightbulb aria-hidden="true" /> },
+          ...(journeyEnabled ? [{ id: "journey" as const, label: "Studentreisen", icon: <Route aria-hidden="true" /> }] : []),
         ]}
       >
         <div className="ek-mt-6">

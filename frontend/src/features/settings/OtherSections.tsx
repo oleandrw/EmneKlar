@@ -212,7 +212,7 @@ export function PrivacySettings({ settings }: { settings: AppSettings }) {
             e.preventDefault();
             save.mutate({ snapshot_retention_days: retention });
           }}>
-            <div style={{ minWidth: "14rem" }}>
+            <div className="ek-field-box">
               <NumberField label="Behold nedlastet emneinnhold i (dager)" value={retention} min={1} max={3650}
                 hint="Den nyeste kopien av hvert emne beholdes alltid." onChange={setRetention} />
             </div>

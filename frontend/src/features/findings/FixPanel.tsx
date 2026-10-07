@@ -309,7 +309,7 @@ function StructureFixPanel({ finding, onStaged }: { finding: Finding; onStaged: 
         />
       ) : null}
       {previewed ? (
-        <div className="ek-card" data-tone="info" style={{ padding: "0.75rem 1rem" }}>
+        <div className="ek-card ek-card--tone ek-card--compact" data-tone="info">
           <KeyValue
             items={
               fix.type === "rename_module"
@@ -410,7 +410,7 @@ function QuizFixPanel({ finding, onStaged }: { finding: Finding; onStaged: () =>
           <Fieldset legend="Svaralternativer" hint="Merk av riktige svar. Minst to alternativer og minst ett riktig.">
             {answers.map((a, i) => (
               <div key={i} className="ek-cluster" data-align="end">
-                <div style={{ flex: 1, minWidth: "12rem" }}>
+                <div className="ek-grow">
                   <TextField label={`Alternativ ${i + 1}`} value={a.text} maxLength={1000}
                     onChange={(e) => setAnswers(answers.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))} />
                 </div>

@@ -155,6 +155,7 @@ export function MetricCard({
   onClick?: () => void;
   pressed?: boolean;
 }) {
+  const kind = typeof value === "string" ? "text" : "number";
   const content = (
     <>
       <IconTile tone={tone} size="lg" shape={shape}>
@@ -170,20 +171,21 @@ export function MetricCard({
   );
   if (to) {
     return (
-      <Link to={to} className="ek-metric-card" data-value-tone={valueTone}>
+      <Link to={to} className="ek-metric-card" data-value-tone={valueTone} data-value-kind={kind}>
         {content}
       </Link>
     );
   }
   if (onClick) {
     return (
-      <button type="button" className="ek-metric-card" data-value-tone={valueTone} onClick={onClick} aria-pressed={pressed}>
+      <button type="button" className="ek-metric-card" data-value-tone={valueTone} data-value-kind={kind} onClick={onClick}
+        aria-pressed={pressed}>
         {content}
       </button>
     );
   }
   return (
-    <div className="ek-metric-card" data-value-tone={valueTone}>
+    <div className="ek-metric-card" data-value-tone={valueTone} data-value-kind={kind}>
       {content}
     </div>
   );
@@ -330,6 +332,44 @@ export function StatTile({ icon, tone = "neutral", value, label }: { icon: React
   );
 }
 
+/* --------------------------------------------------------------- key figures */
+
+export function KeyFigureList({ children, label }: { children: ReactNode; label: string }) {
+  return (
+    <ul className="ek-key-figures" aria-label={label}>
+      {children}
+    </ul>
+  );
+}
+
+/** A figure inside a card: icon, number, label and a short explanation (no card of its own). */
+export function KeyFigure({
+  icon,
+  tone = "neutral",
+  value,
+  label,
+  description,
+}: {
+  icon: ReactNode;
+  tone?: Tone;
+  value: number;
+  label: string;
+  description?: ReactNode;
+}) {
+  return (
+    <li className="ek-key-figure">
+      <IconTile tone={tone} shape="square">
+        {icon}
+      </IconTile>
+      <span className="ek-key-figure__text">
+        <span className="ek-key-figure__value">{show(value)}</span>{" "}
+        <span className="ek-key-figure__label">{label}</span>
+        {description ? <span className="ek-key-figure__description">{description}</span> : null}
+      </span>
+    </li>
+  );
+}
+
 /* -------------------------------------------------------------- activity list */
 
 export interface ActivityEntry {
@@ -375,28 +415,80 @@ export interface ChipOption<T extends string> {
   icon?: ReactNode;
 }
 
+function ChipGroup({ label, showLabel, children }: { label: string; showLabel?: boolean; children: ReactNode }) {
+  const id = useId();
+  if (!showLabel) {
+    return (
+      <div className="ek-chips" role="group" aria-label={label}>
+        {children}
+      </div>
+    );
+  }
+  return (
+    <div className="ek-filter-group">
+      <span id={id} className="ek-filter-group__label">
+        {label}
+      </span>
+      <div className="ek-chips" role="group" aria-labelledby={id}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Chip({ option, pressed, onClick }: { option: ChipOption<string>; pressed: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className="ek-chip" aria-pressed={pressed} onClick={onClick}>
+      {option.icon}
+      {option.label}
+      {option.count !== undefined ? <>{" "}<span>({numberFormat.format(option.count)})</span></> : null}
+    </button>
+  );
+}
+
 /** A row of mutually exclusive filters (one pressed at a time). */
 export function FilterChips<T extends string>({
   label,
   options,
   value,
   onChange,
+  showLabel,
 }: {
   label: string;
   options: ChipOption<T>[];
   value: T;
   onChange: (value: T) => void;
+  /** Show the label above the chips (otherwise it is only announced). */
+  showLabel?: boolean;
 }) {
   return (
-    <div className="ek-chips" role="group" aria-label={label}>
+    <ChipGroup label={label} showLabel={showLabel}>
       {options.map((o) => (
-        <button key={o.value} type="button" className="ek-chip" aria-pressed={o.value === value}
-          onClick={() => onChange(o.value)}>
-          {o.icon}
-          {o.label}
-          {o.count !== undefined ? <span>({numberFormat.format(o.count)})</span> : null}
-        </button>
+        <Chip key={o.value} option={o} pressed={o.value === value} onClick={() => onChange(o.value)} />
       ))}
-    </div>
+    </ChipGroup>
+  );
+}
+
+/** A row of independent on/off filters (any number pressed). */
+export function ToggleChips<T extends string>({
+  label,
+  options,
+  values,
+  onToggle,
+  showLabel,
+}: {
+  label: string;
+  options: ChipOption<T>[];
+  values: T[];
+  onToggle: (value: T) => void;
+  showLabel?: boolean;
+}) {
+  return (
+    <ChipGroup label={label} showLabel={showLabel}>
+      {options.map((o) => (
+        <Chip key={o.value} option={o} pressed={values.includes(o.value)} onClick={() => onToggle(o.value)} />
+      ))}
+    </ChipGroup>
   );
 }

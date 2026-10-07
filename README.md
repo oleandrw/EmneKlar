@@ -56,6 +56,7 @@ Se [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for trusselmodellen.
 | [docs/ACCESSIBILITY_RULES.md](docs/ACCESSIBILITY_RULES.md) | Regelregister og regulatoriske profiler |
 | [docs/CANVAS_API.md](docs/CANVAS_API.md) | Verifiserte fakta om Canvas REST API |
 | [docs/UPDATING.md](docs/UPDATING.md) | Oppdatering, utgivelser og versjonering |
+| [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) | Designsystem: tokens, komponenter og regler for brukergrensesnittet |
 | [CHANGELOG.md](CHANGELOG.md) | Endringslogg |
 
 Brukerveiledninger, vanlige spørsmål og feilsøking finnes i programmet under **Hjelp**.

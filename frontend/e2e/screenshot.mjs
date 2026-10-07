@@ -34,6 +34,7 @@ await page.getByRole("heading", { level: 1 }).waitFor();
 for (const path of paths.length ? paths : ["/oversikt"]) {
   await page.goto(`${origin}${path}`);
   await page.getByRole("heading", { level: 1 }).waitFor();
+  if (dark) await page.evaluate('document.documentElement.setAttribute("data-theme", "dark")');
   await page.waitForTimeout(600);
   const name = `${path.replace(/^\//, "").replace(/\//g, "_") || "root"}${dark ? "-dark" : ""}-${width}.png`;
   await page.screenshot({ path: join(outDir, name), fullPage: full });

@@ -81,7 +81,7 @@ export function UpdatePanel() {
         ) : null}
         {s.latest?.notes ? (
           <Disclosure summary={`Endringer i ${s.latest.version}`}>
-            <pre className="ek-code-block" style={{ whiteSpace: "pre-wrap" }}>{s.latest.notes}</pre>
+            <pre className="ek-code-block">{s.latest.notes}</pre>
           </Disclosure>
         ) : null}
         <div className="ek-cluster">
@@ -106,7 +106,7 @@ export function UpdatePanel() {
             {s.changelog.map((section) => (
               <div key={section.version} className="ek-stack" data-gap="1">
                 <h3>{section.version}{section.title ? ` – ${section.title}` : ""}</h3>
-                <pre className="ek-code-block" style={{ whiteSpace: "pre-wrap" }}>{section.body}</pre>
+                <pre className="ek-code-block">{section.body}</pre>
               </div>
             ))}
           </div>

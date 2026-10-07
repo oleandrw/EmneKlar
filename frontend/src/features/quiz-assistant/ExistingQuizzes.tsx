@@ -76,7 +76,7 @@ function QuestionCard({ question, findings, onOpen }: { question: QuizQuestion; 
   return (
     <li className="ek-question">
       <div className="ek-cluster" data-justify="between" data-align="start">
-        <div className="ek-stack" data-gap="1" style={{ flex: 1, minWidth: "16rem" }}>
+        <div className="ek-stack ek-grow" data-gap="1">
           <span className="ek-xs ek-muted">
             Spørsmål {question.position} · {question.type_label} · {question.points} poeng
             {question.group_id ? " · i gruppe" : ""}

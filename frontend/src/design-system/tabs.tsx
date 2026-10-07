@@ -9,6 +9,8 @@ import { Link, NavLink } from "react-router";
 export interface TabItem<T extends string> {
   id: T;
   label: ReactNode;
+  /** Decorative icon before the label (mark it aria-hidden). */
+  icon?: ReactNode;
   badge?: ReactNode;
 }
 
@@ -60,6 +62,7 @@ export function Tabs<T extends string>({
             onClick={() => onSelect(tab.id)}
             onKeyDown={onKeyDown}
           >
+            {tab.icon}
             {tab.label}
             {tab.badge ? <> {tab.badge}</> : null}
           </button>
@@ -77,7 +80,7 @@ export function NavTabs({
   label,
 }: {
   /** `current` overrides route matching, e.g. to keep a tab current on its sub-pages. */
-  items: { to: string; label: ReactNode; end?: boolean; current?: boolean }[];
+  items: { to: string; label: ReactNode; icon?: ReactNode; end?: boolean; current?: boolean }[];
   label: string;
 }) {
   return (
@@ -86,10 +89,12 @@ export function NavTabs({
         {items.map((item) =>
           item.current === undefined ? (
             <NavLink key={item.to} to={item.to} end={item.end} className="ek-tabs__tab">
+              {item.icon}
               {item.label}
             </NavLink>
           ) : (
             <Link key={item.to} to={item.to} className="ek-tabs__tab" aria-current={item.current ? "page" : undefined}>
+              {item.icon}
               {item.label}
             </Link>
           ),

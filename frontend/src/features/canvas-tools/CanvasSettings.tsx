@@ -82,7 +82,7 @@ function DefaultViewFix({ courseId, options }: { courseId: string; options: { va
   const stage = useStage(courseId);
   return (
     <div className="ek-cluster" data-align="end">
-      <div style={{ minWidth: "12rem" }}>
+      <div className="ek-field-box">
         <SelectField label="Ny startside" value={value} onChange={(e) => setValue(e.target.value)} options={options} />
       </div>
       <Button icon={<ListPlus aria-hidden="true" />} onClick={() => stage.mutate({ kind: "default_view", value })} loading={stage.isPending}>
@@ -148,7 +148,7 @@ export function CanvasSettings() {
               ) : (
                 <ul className="ek-list-reset ek-stack" data-gap="2">
                   {items.map((item) => (
-                    <li key={item.id} className="ek-card" style={{ padding: "1rem 1.25rem" }}>
+                    <li key={item.id} className="ek-card ek-card--compact">
                       <div className="ek-stack" data-gap="2">
                         <div className="ek-cluster" data-gap="2">
                           <Badge tone={CATEGORY_TONE[item.category]}>{item.category_label}</Badge>
@@ -156,7 +156,7 @@ export function CanvasSettings() {
                             {item.object.url ? <ExternalLink href={item.object.url}>{item.object.title}</ExternalLink> : item.object.title}
                           </span>
                         </div>
-                        <h3 style={{ fontSize: "var(--text-base)" }}>{item.title}</h3>
+                        <h3 className="ek-title-sm">{item.title}</h3>
                         <p className="ek-small">{item.explanation}</p>
                         {item.current ? <p className="ek-xs ek-muted">Nå: {item.current}</p> : null}
                         {item.recommendation ? <p className="ek-small"><span className="ek-strong">Forslag: </span>{item.recommendation}</p> : null}

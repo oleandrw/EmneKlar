@@ -1,10 +1,10 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Play, RefreshCw } from "lucide-react";
-import { useMemo, useState } from "react";
+import { CircleCheck, CircleHelp, Clock, FileCheck, Link2, Lock, Play, RefreshCw, Unlink, CornerDownRight } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { api } from "../../core/api/client";
 import { useCurrentCourse } from "../../core/course";
-import { formatDateTime, formatNumber } from "../../core/format";
+import { formatDateTime } from "../../core/format";
 import { HelpLink } from "../../core/HelpLink";
 import { usePageTitle } from "../../core/usePageTitle";
 import { useUi } from "../../core/ui";
@@ -16,8 +16,10 @@ import {
   DataTable,
   EmptyState,
   ExternalLink,
+  FilterChips,
+  KeyFigure,
+  KeyFigureList,
   PageHeader,
-  SelectField,
   Spinner,
   Tabs,
   TextField,
@@ -35,6 +37,14 @@ export const LINK_STATE: Record<LinkState, { label: string; tone: Tone; descript
   UNKNOWN: { label: "Ukjent", tone: "neutral", description: "Kunne ikke avgjøres sikkert." },
   REDIRECT: { label: "Omdirigeres", tone: "info", description: "Lenken sender videre til en annen adresse." },
   WORKING: { label: "Virker", tone: "success", description: "Lenken svarte som forventet." },
+};
+const STATE_ICON: Record<LinkState, ReactNode> = {
+  DEAD: <Unlink />,
+  TIMEOUT: <Clock />,
+  AUTH_REQUIRED: <Lock />,
+  UNKNOWN: <CircleHelp />,
+  REDIRECT: <CornerDownRight />,
+  WORKING: <CircleCheck />,
 };
 const STATE_ORDER: LinkState[] = ["DEAD", "TIMEOUT", "AUTH_REQUIRED", "UNKNOWN", "REDIRECT", "WORKING"];
 
@@ -112,7 +122,7 @@ function LinksPanel() {
       header: "Lenke",
       rowHeader: true,
       cell: (row) => (
-        <span className="ek-stack" data-gap="1" style={{ maxWidth: "28rem", wordBreak: "break-all" }}>
+        <span className="ek-stack ek-url-cell" data-gap="1">
           <ExternalLink href={row.url}>{row.url}</ExternalLink>
           {row.final_url && row.final_url !== row.url ? <span className="ek-xs ek-muted">→ {row.final_url}</span> : null}
         </span>
@@ -151,37 +161,35 @@ function LinksPanel() {
 
   return (
     <div className="ek-stack" data-gap="6">
-      <div className="ek-grid" data-cols="4">
-        {STATE_ORDER.map((s) => (
-          <Card key={s} tone={LINK_STATE[s].tone} headingLevel={3}>
-            <div className="ek-stack" data-gap="1">
-              <span className="ek-stat__value">{formatNumber(links.data.summary[s] ?? 0)}</span>
-              <span className="ek-strong">{LINK_STATE[s].label}</span>
-              <span className="ek-xs">{LINK_STATE[s].description}</span>
-            </div>
-          </Card>
-        ))}
-      </div>
+      <Card title="Lenkestatus" description={`Alle eksterne lenker i emnet, kontrollert ${formatDateTime(links.data.checked_at)}.`}>
+        <KeyFigureList label="Lenkestatus">
+          {STATE_ORDER.map((s) => (
+            <KeyFigure key={s} icon={STATE_ICON[s]} tone={LINK_STATE[s].tone} value={links.data.summary[s] ?? 0}
+              label={LINK_STATE[s].label} description={LINK_STATE[s].description} />
+          ))}
+        </KeyFigureList>
+      </Card>
       <Alert tone="info" title="Ikke alle feil betyr at lenken er død">
         Noen nettsteder avviser automatiske kontroller (for eksempel med 403) eller svarer tregt. Slike lenker vises som
         «Krever innlogging», «Tidsavbrudd» eller «Ukjent» – kontroller dem manuelt. EmneKlar sletter aldri lenker
         automatisk; rettinger legges i endringskøen fra fanen «Funn».
       </Alert>
-      <div className="ek-cluster" data-align="end">
-        <div style={{ minWidth: "14rem" }}>
-          <SelectField
-            label="Vis"
-            value={state}
-            onChange={(e) => setState(e.target.value)}
-            options={[
-              { value: "problems", label: "Lenker som bør kontrolleres" },
-              { value: "all", label: "Alle lenker" },
-              ...STATE_ORDER.map((s) => ({ value: s, label: LINK_STATE[s].label })),
-            ]}
-          />
-        </div>
-        <div style={{ flex: 1, minWidth: "14rem" }}>
-          <TextField label="Søk" type="search" value={query} onChange={(e) => setQuery(e.target.value)} />
+      <div className="ek-stack" data-gap="4">
+        <FilterChips
+          label="Vis"
+          showLabel
+          value={state}
+          onChange={setState}
+          options={[
+            { value: "problems", label: "Bør kontrolleres" },
+            { value: "all", label: "Alle lenker" },
+            ...STATE_ORDER.map((s) => ({ value: s, label: LINK_STATE[s].label, count: links.data.summary[s] ?? 0 })),
+          ]}
+        />
+        <div className="ek-toolbar">
+          <div className="ek-toolbar__grow">
+            <TextField label="Søk i lenker" type="search" value={query} onChange={(e) => setQuery(e.target.value)} />
+          </div>
         </div>
       </div>
       {recheck.error ? (
@@ -223,8 +231,8 @@ export function ContentQualityPage() {
         selected={tab}
         onSelect={setTab}
         tabs={[
-          { id: "findings", label: "Funn" },
-          { id: "links", label: "Lenker" },
+          { id: "findings", label: "Funn", icon: <FileCheck aria-hidden="true" /> },
+          { id: "links", label: "Lenker", icon: <Link2 aria-hidden="true" /> },
         ]}
       >
         <div className="ek-mt-6">

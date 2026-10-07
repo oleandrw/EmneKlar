@@ -120,8 +120,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         onClose={() => setMenuOpen(false)}
         onCancel={() => setMenuOpen(false)}
       >
-        <div className="ek-cluster" data-justify="end" style={{ padding: "0.5rem" }}>
-          <IconButton label="Lukk menyen" onClick={() => setMenuOpen(false)} style={{ color: "var(--nav-text)" }}>
+        <div className="ek-cluster ek-nav-drawer__top" data-justify="end">
+          <IconButton label="Lukk menyen" onClick={() => setMenuOpen(false)}>
             <X aria-hidden="true" />
           </IconButton>
         </div>

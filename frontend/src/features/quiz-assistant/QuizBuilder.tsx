@@ -299,7 +299,7 @@ export function QuizBuilder() {
             setPresetId("");
           }} />
           <div className="ek-cluster" data-align="end">
-            <div style={{ flex: 1, minWidth: "14rem" }}>
+            <div className="ek-grow">
               <TextField label="Lagre innstillingene som ny forhåndsinnstilling" placeholder="Navn" value={presetName}
                 onChange={(e) => setPresetName(e.target.value)} maxLength={100} />
             </div>

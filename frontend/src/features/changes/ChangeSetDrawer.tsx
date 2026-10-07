@@ -171,7 +171,7 @@ export function ChangeSetDrawer({ open, onClose }: { open: boolean; onClose: () 
             </div>
             <ul className="ek-list-reset ek-stack" data-gap="3">
               {items.map((c) => (
-                <li key={c.id} className="ek-card" style={{ padding: "1rem" }}>
+                <li key={c.id} className="ek-card ek-card--compact">
                   <div className="ek-stack" data-gap="2">
                     <div className="ek-cluster" data-justify="between" data-align="start">
                       <Checkbox
@@ -192,7 +192,7 @@ export function ChangeSetDrawer({ open, onClose }: { open: boolean; onClose: () 
                     </div>
                     {c.error ? <p className="ek-small ek-error">{c.error}</p> : null}
                     <Disclosure summary="Begrunnelse og angring">
-                      <p className="ek-small" style={{ whiteSpace: "pre-line" }}>{c.rationale}</p>
+                      <p className="ek-small ek-pre-line">{c.rationale}</p>
                       <p className="ek-small ek-muted">{c.undo_note}</p>
                       {c.target.url ? (
                         <p className="ek-small">

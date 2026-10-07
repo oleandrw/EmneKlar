@@ -24,7 +24,7 @@ import {
 } from "../../design-system";
 import { BackToTools } from "./shared";
 
-interface LogEntry {
+export interface LogEntry {
   id: number;
   timestamp: string | null;
   change_id: number | null;
@@ -54,7 +54,7 @@ interface BackupInfo {
   size: number;
 }
 
-const ACTION: Record<LogEntry["action"], { label: string; tone: Tone }> = {
+export const ACTION: Record<LogEntry["action"], { label: string; tone: Tone }> = {
   apply: { label: "Gjennomført", tone: "success" },
   dry_run: { label: "Dry run – ikke sendt", tone: "violet" },
   conflict: { label: "Konflikt – ikke sendt", tone: "warning" },
@@ -138,7 +138,7 @@ export function ChangeLog() {
               <h2 id="logg">Endringslogg ({log.data.total})</h2>
               <ol className="ek-list-reset ek-stack" data-gap="2">
                 {log.data.items.map((entry) => (
-                  <li key={entry.id} className="ek-card" style={{ padding: "1rem 1.25rem" }}>
+                  <li key={entry.id} className="ek-card ek-card--compact">
                     <div className="ek-stack" data-gap="2">
                       <div className="ek-cluster" data-justify="between">
                         <div className="ek-cluster" data-gap="2">

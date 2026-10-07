@@ -101,14 +101,14 @@ export function SetupWizard() {
   const back = () => setStep((s) => Math.max(0, s - 1));
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--color-bg)", padding: "2rem 1rem" }}>
-      <main className="ek-stack" data-gap="6" style={{ maxWidth: "62rem", margin: "0 auto" }}>
+    <div className="ek-setup">
+      <main className="ek-stack ek-setup__main" data-gap="6">
         <div className="ek-cluster" data-gap="2">
           <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true">
             <rect width="32" height="32" rx="8" fill="#13254a" />
             <path d="M9 16.5l4.5 4.5L23 11.5" fill="none" stroke="#9ec1ff" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <span className="ek-strong" style={{ fontSize: "var(--text-lg)" }}>
+          <span className="ek-strong ek-setup__brand">
             EmneKlar – oppsett
           </span>
         </div>
@@ -130,7 +130,7 @@ export function SetupWizard() {
           </nav>
           <Card>
             <div className="ek-stack" data-gap="6">
-              <h1 ref={headingRef} tabIndex={-1} style={{ fontSize: "var(--text-xl)" }}>
+              <h1 ref={headingRef} tabIndex={-1} className="ek-setup__title">
                 Steg {step + 1} av {STEPS.length}: {STEPS[step]}
               </h1>
 

@@ -61,7 +61,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   if (expired || (query.error instanceof ApiError && query.error.status === 401)) {
     return (
-      <main className="ek-shell__content" style={{ padding: "4rem 1rem", maxWidth: "40rem" }}>
+      <main className="ek-shell__content ek-message-page">
         <h1>Økten er ikke gyldig</h1>
         <p className="ek-mt-4">
           Start EmneKlar med <strong>start.bat</strong> (eller snarveien). Nettleseren åpnes da automatisk med en ny
@@ -72,14 +72,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }
   if (query.isPending) {
     return (
-      <main style={{ padding: "4rem", display: "grid", placeItems: "center" }}>
+      <main className="ek-loading-page">
         <Spinner label="Starter EmneKlar …" />
       </main>
     );
   }
   if (query.error || !query.data) {
     return (
-      <main style={{ padding: "4rem 1rem", maxWidth: "40rem", margin: "0 auto" }}>
+      <main className="ek-message-page">
         <h1>Fikk ikke kontakt med EmneKlar</h1>
         <div className="ek-mt-4">
           <Alert tone="danger" role="alert" title="Tilkoblingen feilet">

@@ -571,6 +571,7 @@ button.ek-card--link:hover {
   margin-bottom: var(--space-8);
 }
 .ek-page-header__text {
+  flex: 1 1 32rem;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -1627,8 +1628,15 @@ button.ek-metric-card[aria-pressed="true"] {
   color: var(--color-text-muted);
 }
 .ek-feature-card__body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   font-size: var(--text-sm);
   color: var(--color-text-muted);
+}
+.ek-feature-card__body > .ek-badge {
+  max-width: 100%;
+  white-space: normal;
 }
 .ek-feature-card__action {
   margin-top: auto;
@@ -1884,19 +1892,32 @@ button.ek-metric-card[aria-pressed="true"] {
   margin: 0;
   padding: 0;
 }
+.ek-journey__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
 .ek-journey__step {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-2);
+  min-height: 2.25rem;
   padding: var(--space-1) var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   border: 1px solid var(--tone-border);
   background: var(--tone-bg);
   color: var(--tone-text);
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
 }
+.ek-journey__step svg {
+  width: 1rem;
+  height: 1rem;
+  color: var(--tone-icon);
+}
 .ek-journey__arrow {
+  width: 1rem;
+  height: 1rem;
   color: var(--color-text-subtle);
 }
 .ek-code-block {
@@ -2110,4 +2131,286 @@ button.ek-metric-card[aria-pressed="true"] {
 .ek-stack > .ek-badge {
   max-width: 100%;
   white-space: normal;
+}
+
+/* ============================================================ filters & lists */
+.ek-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.ek-filter-group__label {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+.ek-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3) var(--space-4);
+}
+.ek-toolbar > .ek-field {
+  flex: 0 1 12rem;
+}
+.ek-toolbar__grow {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.ek-search {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+.ek-search > .ek-field {
+  flex: 1;
+}
+
+/* Rows of findings (or other items) inside one card, separated by hairlines. */
+.ek-item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ek-item-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-4) 0;
+}
+.ek-item-row + .ek-item-row {
+  border-top: 1px solid var(--color-border);
+}
+.ek-item-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+.ek-item-row__title {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+}
+.ek-item-row__text {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.ek-item-row__meta {
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+}
+.ek-item-row__side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-3);
+}
+@container content (max-width: 44rem) {
+  .ek-item-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .ek-item-row__side {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}
+.ek-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.ek-meta-line {
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+}
+/* Page actions stay on the right, also when they wrap below a long description. */
+.ek-page-header__aside {
+  flex: 0 1 auto;
+  margin-left: auto;
+}
+
+/* Key figures inside a card (e.g. link status): icon, number, label, explanation. */
+.ek-key-figures {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-6) var(--space-6);
+}
+@container content (max-width: 56rem) {
+  .ek-key-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container content (max-width: 32rem) {
+  .ek-key-figures { grid-template-columns: minmax(0, 1fr); }
+}
+.ek-key-figure {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.ek-key-figure__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ek-key-figure__value {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  line-height: 1.2;
+}
+.ek-key-figure__label {
+  font-weight: var(--weight-semibold);
+}
+.ek-key-figure__description {
+  margin-top: 0.125rem;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+/* Numbered steps or sections (e.g. what a report contains). */
+.ek-numbered {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ek-numbered > li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+}
+.ek-numbered > li + li {
+  border-top: 1px solid var(--color-border);
+}
+.ek-numbered__num {
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--tone-info-bg);
+  color: var(--tone-info-text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+.ek-numbered__title {
+  font-weight: var(--weight-semibold);
+}
+.ek-numbered__text {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+/* Card choices side by side (radio groups with `columns`). */
+.ek-choice-grid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr));
+}
+.ek-choice-grid[data-cols="2"] { --cols: 2; }
+.ek-choice-grid[data-cols="3"] { --cols: 3; }
+.ek-choice-grid[data-cols="4"] { --cols: 4; }
+@container content (max-width: 56rem) {
+  .ek-choice-grid[data-cols="3"],
+  .ek-choice-grid[data-cols="4"] { --cols: 2; }
+}
+@container content (max-width: 36rem) {
+  .ek-choice-grid { --cols: 1 !important; }
+}
+.ek-choice-grid > .ek-choice--card {
+  height: 100%;
+}
+.ek-choice--card {
+  gap: var(--space-3);
+}
+/* Dates and «4 av 5» are longer than a count: one step smaller so they stay on one line. */
+.ek-metric-card[data-value-kind="text"] .ek-metric-card__value {
+  font-size: var(--text-xl);
+  line-height: 1.25;
+}
+/* Settings forms: comfortable line length for fields. */
+.ek-sidebar-layout .ek-field {
+  max-width: 38rem;
+}
+
+/* ======================================================== layout utilities */
+/* Named replacements for one-off inline styles – pages use these, never their own values. */
+.ek-card--compact {
+  padding: var(--space-4) var(--space-5);
+}
+.ek-title-sm {
+  font-size: var(--text-md);
+}
+.ek-grow {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.ek-field-box {
+  flex: 0 1 14rem;
+  min-width: 12rem;
+}
+.ek-cluster[data-wrap="false"] {
+  flex-wrap: nowrap;
+}
+.ek-scroll-box {
+  max-height: 16rem;
+  overflow-y: auto;
+}
+.ek-pre-line {
+  white-space: pre-line;
+}
+.ek-url-cell {
+  max-width: 28rem;
+  word-break: break-all;
+}
+.ek-table--narrow {
+  max-width: 28rem;
+}
+.ek-table--narrow tbody th {
+  font-weight: var(--weight-medium);
+}
+.ek-nav-drawer__top {
+  padding: var(--space-2);
+}
+.ek-nav-drawer .ek-btn--icon {
+  color: var(--nav-text);
+}
+.ek-setup {
+  min-height: 100vh;
+  background: var(--color-bg);
+  padding: var(--space-8) var(--space-4);
+}
+.ek-setup__main {
+  max-width: 62rem;
+  margin: 0 auto;
+}
+.ek-setup__brand {
+  font-size: var(--text-lg);
+}
+.ek-setup__title {
+  font-size: var(--text-xl);
+}
+.ek-message-page {
+  margin: 0 auto;
+  max-width: 40rem;
+  padding: var(--space-16) var(--space-4);
+}
+.ek-loading-page {
+  display: grid;
+  place-items: center;
+  padding: var(--space-16);
 }

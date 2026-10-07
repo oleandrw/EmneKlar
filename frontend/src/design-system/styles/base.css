@@ -176,8 +176,13 @@ a {
   gap: var(--gap, var(--space-4));
   grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--min, 16rem)), 1fr));
 }
-.ek-grid[data-cols="2"] { grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); }
-.ek-grid[data-cols="3"] { --min: 18rem; }
+/* At most 2 (or 3) columns; fewer when a column would be narrower than its minimum. */
+.ek-grid[data-cols="2"] {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, max(22rem, calc((100% - var(--gap, var(--space-4))) / 2))), 1fr));
+}
+.ek-grid[data-cols="3"] {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, max(17rem, calc((100% - 2 * var(--gap, var(--space-4))) / 3))), 1fr));
+}
 /* Four equal columns when the content area is wide enough, then 2 × 2, then one column. */
 .ek-grid[data-cols="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @container content (max-width: 62rem) {

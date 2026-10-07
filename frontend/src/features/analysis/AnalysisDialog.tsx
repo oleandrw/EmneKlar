@@ -246,7 +246,7 @@ export function AnalysisDialog({ open, onClose }: { open: boolean; onClose: () =
               <div className="ek-stack" data-gap="2">
                 <TextField label="Filtrer innhold" type="search" value={filter} onChange={(e) => setFilter(e.target.value)} />
                 <Fieldset legend="Elementer" hint={`${items.length} valgt`}>
-                  <div style={{ maxHeight: "16rem", overflowY: "auto" }} className="ek-stack" data-gap="1">
+                  <div className="ek-stack ek-scroll-box" data-gap="1">
                     {filteredItems.map((i) => {
                       const key = `${i.object_type}:${i.object_id}`;
                       return (

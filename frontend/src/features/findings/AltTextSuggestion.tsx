@@ -86,7 +86,7 @@ export function AltTextSuggestion({ finding, onUse }: { finding: Finding; onUse:
       ) : null}
       {run.error ? <Alert tone="danger">{(run.error as Error).message}</Alert> : null}
       {result ? (
-        <div className="ek-card" data-tone="violet" style={{ padding: "0.75rem 1rem" }}>
+        <div className="ek-card ek-card--tone ek-card--compact" data-tone="violet">
           <div className="ek-stack" data-gap="2">
             <Badge tone="violet" icon={<Sparkles aria-hidden="true" />}>
               {result.label}

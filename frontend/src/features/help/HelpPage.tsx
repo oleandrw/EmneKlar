@@ -69,11 +69,11 @@ function GettingStarted() {
     <div className="ek-stack" data-gap="6">
       <ol className="ek-list-reset ek-stack" data-gap="2">
         {steps.map((step, i) => (
-          <li key={step.title} className="ek-card" style={{ padding: "1rem 1.25rem" }}>
+          <li key={step.title} className="ek-card ek-card--compact">
             <div className="ek-cluster" data-align="start" data-gap="4">
               <span className="ek-steps__num" aria-hidden="true">{i + 1}</span>
-              <div className="ek-stack" data-gap="1" style={{ flex: 1 }}>
-                <h2 style={{ fontSize: "var(--text-md)" }}>
+              <div className="ek-stack ek-grow" data-gap="1">
+                <h2 className="ek-title-sm">
                   <span className="ek-visually-hidden">Steg {i + 1}: </span>
                   {step.title}
                 </h2>
@@ -136,7 +136,7 @@ function Faq() {
   return (
     <ul className="ek-list-reset ek-stack" data-gap="2">
       {items.map(([q, a]) => (
-        <li key={q} className="ek-card" style={{ padding: "0.75rem 1rem" }}>
+        <li key={q} className="ek-card ek-card--compact">
           <Disclosure summary={q}>
             <p className="ek-small">{a}</p>
           </Disclosure>
@@ -189,7 +189,7 @@ function Troubleshooting() {
     <div className="ek-stack" data-gap="6">
       <ul className="ek-list-reset ek-stack" data-gap="2">
         {items.map(([q, a]) => (
-          <li key={q} className="ek-card" style={{ padding: "0.75rem 1rem" }}>
+          <li key={q} className="ek-card ek-card--compact">
             <Disclosure summary={q}><p className="ek-small">{a}</p></Disclosure>
           </li>
         ))}

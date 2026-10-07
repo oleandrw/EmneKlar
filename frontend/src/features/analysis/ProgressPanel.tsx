@@ -159,7 +159,7 @@ export function ProgressPanel({
       ) : null}
 
       {typeRows.length > 0 ? (
-        <table className="ek-table" style={{ maxWidth: "28rem" }}>
+        <table className="ek-table ek-table--narrow">
           <caption className="ek-visually-hidden">Fremdrift per innholdstype</caption>
           <thead>
             <tr>
@@ -172,7 +172,7 @@ export function ProgressPanel({
           <tbody>
             {typeRows.map(([key, t]) => (
               <tr key={key}>
-                <th scope="row" style={{ fontWeight: 500 }}>
+                <th scope="row">
                   {t.label}
                 </th>
                 <td className="ek-table__num">

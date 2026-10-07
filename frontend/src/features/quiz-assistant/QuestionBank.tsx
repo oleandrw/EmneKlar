@@ -135,7 +135,7 @@ function BankItemDialog({
         <Fieldset legend="Svaralternativer" hint="Merk av riktig svar. Enkeltvalg og flere svar trenger minst tre alternativer.">
           {answers.map((a, i) => (
             <div key={i} className="ek-cluster" data-align="end">
-              <div style={{ flex: 1, minWidth: "12rem" }}>
+              <div className="ek-grow">
                 <TextField label={`Alternativ ${i + 1}`} value={a.text} maxLength={1000} disabled={type === "true_false"}
                   onChange={(e) => setAnswers(answers.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))} />
               </div>
@@ -405,15 +405,15 @@ export function QuestionBank() {
       <Card title="Spørsmål" headingLevel={2}>
         <div className="ek-stack">
           <div className="ek-cluster" data-align="end">
-            <div style={{ minWidth: "12rem" }}>
+            <div className="ek-field-box">
               <SelectField label="Status" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}
                 placeholder="Alle" options={Object.entries(REVIEW_STATUS).map(([value, s]) => ({ value, label: s.label }))} />
             </div>
-            <div style={{ minWidth: "14rem" }}>
+            <div className="ek-field-box">
               <SelectField label="Modul" value={filters.module} onChange={(e) => setFilters({ ...filters, module: e.target.value })}
                 placeholder="Alle moduler" options={moduleList.map((x) => ({ value: x.name, label: x.name }))} />
             </div>
-            <div style={{ flex: 1, minWidth: "14rem" }}>
+            <div className="ek-grow">
               <TextField label="Søk" type="search" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} />
             </div>
           </div>
