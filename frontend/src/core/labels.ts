@@ -18,6 +18,16 @@ export const DOMAIN_LABEL: Record<Domain, string> = {
   quiz_ai: "Quizkvalitet (KI-vurdering)",
 };
 
+/** Colour identity of each area (icons and cards). Status colours (red/amber) stay reserved for findings. */
+export const DOMAIN_TONE: Record<Domain, Tone> = {
+  accessibility: "violet",
+  content_quality: "info",
+  structure: "teal",
+  quiz: "orange",
+  quiz_ai: "orange",
+};
+
+/** Class colours match the «Åpne funn per område» chart: red, amber, blue and gray. */
 export const CLASSIFICATION: Record<Classification, { label: string; tone: Tone; description: string }> = {
   violation: {
     label: "Avvik",
@@ -26,22 +36,22 @@ export const CLASSIFICATION: Record<Classification, { label: string; tone: Tone;
   },
   likely_violation: {
     label: "Sannsynlig avvik",
-    tone: "warning",
+    tone: "danger",
     description: "Tyder sterkt på brudd, men bør bekreftes av et menneske.",
   },
   should_review: {
     label: "Bør vurderes",
-    tone: "info",
+    tone: "warning",
     description: "Kan være et problem avhengig av sammenhengen.",
   },
   improvement: {
     label: "Forbedringsforslag",
-    tone: "teal",
+    tone: "info",
     description: "God praksis som gjør innholdet bedre, men ikke et krav.",
   },
   manual_check: {
     label: "Manuell kontroll",
-    tone: "violet",
+    tone: "neutral",
     description: "Kan ikke avgjøres automatisk. Et menneske må kontrollere.",
   },
 };

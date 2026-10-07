@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, CircleDot, LoaderCircle, Play, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, CircleQuestionMark, LoaderCircle, Play, Search } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
+import { Link } from "react-router";
 
 import { Alert, Badge, Button, Dialog, Spinner, Switch, TextField, useToast } from "../../design-system";
 import { api } from "../api/client";
@@ -150,20 +151,61 @@ export function useChangeSummary(courseId: string | null) {
   });
 }
 
+/** Pending changes: a green pill when something is ready to review, calm otherwise. */
 export function ChangeSetButton() {
   const { courseId } = useCurrentCourse();
   const summary = useChangeSummary(courseId);
   const ui = useUi();
   const count = summary.data?.pending ?? 0;
   return (
-    <Button
-      size="sm"
-      variant={count > 0 ? "primary" : "secondary"}
-      onClick={ui.openChanges}
-      icon={<CircleDot aria-hidden="true" />}
-    >
+    <button type="button" className="ek-changes-pill" data-tone={count > 0 ? "success" : "neutral"} onClick={ui.openChanges}>
+      <span className="ek-changes-pill__dot" aria-hidden="true" />
       {count === 1 ? "1 endring klar" : `${count} endringer klare`}
-    </Button>
+      <ChevronRight aria-hidden="true" />
+    </button>
+  );
+}
+
+export function HelpButton() {
+  return (
+    <Link to="/hjelp" className="ek-btn ek-btn--ghost ek-btn--icon" aria-label="Hjelp" title="Hjelp">
+      <CircleQuestionMark aria-hidden="true" />
+    </Link>
+  );
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  const first = parts[0][0] ?? "";
+  const last = parts.length > 1 ? (parts[parts.length - 1][0] ?? "") : "";
+  return (first + last).toUpperCase();
+}
+
+/** The Canvas user EmneKlar is connected as; opens the Canvas connection settings. */
+export function UserChip() {
+  const session = useSession();
+  const identity = session.canvas.identity;
+  if (!identity) return null;
+  let host = "Canvas";
+  try {
+    if (session.canvas.base_url) host = new URL(session.canvas.base_url).host;
+  } catch {
+    // keep the generic label
+  }
+  return (
+    <Link to="/innstillinger/canvas-tilkobling" className="ek-user" title={`Innlogget i Canvas som ${identity.name}`}>
+      <span className="ek-user__avatar" aria-hidden="true">
+        {initials(identity.name)}
+      </span>
+      <span className="ek-user__text">
+        <span className="ek-user__name">{identity.name}</span>
+        <span className="ek-user__sub">
+          <span className="ek-visually-hidden">Canvas-tilkobling: </span>
+          {host}
+        </span>
+      </span>
+    </Link>
   );
 }
 
@@ -173,7 +215,7 @@ export function RunAnalysisButton() {
   return (
     <Button
       variant="primary"
-      size="sm"
+      size="lg"
       icon={<Play aria-hidden="true" />}
       onClick={() => ui.openAnalysis()}
       disabled={!courseId}

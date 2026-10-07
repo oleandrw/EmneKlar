@@ -6,3 +6,5 @@ export * from "./table";
 export * from "./toast";
 export * from "./diff";
 export * from "./preview";
+export * from "./dashboard";
+export * from "./chart";

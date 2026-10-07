@@ -7,14 +7,27 @@ import { AnalysisDialog } from "../../features/analysis/AnalysisDialog";
 import { ChangeSetDrawer } from "../../features/changes/ChangeSetDrawer";
 import { useSession } from "../session";
 import { useUi } from "../ui";
-import { ChangeSetButton, CourseSelector, DryRunToggle, JobIndicator, RunAnalysisButton } from "./HeaderControls";
+import {
+  ChangeSetButton,
+  CourseSelector,
+  DryRunToggle,
+  HelpButton,
+  JobIndicator,
+  RunAnalysisButton,
+  UserChip,
+} from "./HeaderControls";
 import { PRIMARY_NAV, SECONDARY_NAV, type NavItem } from "./nav";
 
+/** An open book with a check mark – the course, made clear. */
 function BrandMark() {
   return (
-    <svg className="ek-brand__mark" viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="8" fill="#1d3768" />
-      <path d="M9 16.5l4.5 4.5L23 11.5" fill="none" stroke="#9ec1ff" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+    <svg className="ek-brand__mark" viewBox="0 0 36 36" aria-hidden="true">
+      <path d="M3.5 10.2c4.9-2 9.8-1.7 14.5 1.1v18.4c-4.7-2.8-9.6-3.1-14.5-1.1z" fill="#34d399" />
+      <path d="M32.5 10.2c-4.9-2-9.8-1.7-14.5 1.1v18.4c4.7-2.8 9.6-3.1 14.5-1.1z" fill="#60a5fa" />
+      <path d="M6.5 7.6c3.9-1.3 7.8-1 11.5 1.3 3.7-2.3 7.6-2.6 11.5-1.3" fill="none" stroke="#fbbf24" strokeWidth="2.2"
+        strokeLinecap="round" />
+      <path d="M21.3 19.6l2.7 2.7 4.6-5.3" fill="none" stroke="#0f2342" strokeWidth="2.4" strokeLinecap="round"
+        strokeLinejoin="round" />
     </svg>
   );
 }
@@ -124,17 +137,20 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Menu aria-hidden="true" />
         </IconButton>
         <CourseSelector />
+        <ChangeSetButton />
         <span className="ek-header__spacer" />
         <div className="ek-header__group">
           <JobIndicator />
-          {session.canvas.token_configured ? <RunAnalysisButton /> : null}
-          <ChangeSetButton />
           <DryRunToggle />
+          <span className="ek-header__divider" aria-hidden="true" />
+          <HelpButton />
+          <UserChip />
+          {session.canvas.token_configured ? <RunAnalysisButton /> : null}
         </div>
       </header>
       <main id="hovedinnhold" ref={mainRef} className="ek-shell__main" tabIndex={-1}>
         {session.dry_run ? (
-          <div className="ek-shell__content" style={{ marginBottom: "1.5rem" }}>
+          <div className="ek-shell__content ek-shell__notice">
             <Alert tone="warning" title="Dry run er slått på">
               EmneKlar analyserer, forhåndsviser og legger endringer i kø som vanlig, men sender ingen endringer til
               Canvas.

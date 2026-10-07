@@ -1,27 +1,33 @@
 /*
- * EmneKlar design tokens.
+ * EmneKlar design tokens – the only place colours, sizes, radii and shadows are defined.
+ * Components and pages use these variables; they never invent their own values.
  *
- * All colours used for text meet WCAG 2.2 AA (≥ 4.5:1) against the surface they
- * are documented for; borders that identify form controls meet 1.4.11 (≥ 3:1).
- * Never use colour alone to convey meaning – pair it with text or an icon.
+ * All text colours meet WCAG 2.2 AA (≥ 4.5:1) on the surface they are documented for, and
+ * icons/borders that carry meaning meet 1.4.11 (≥ 3:1) – checked for every pair listed in
+ * docs/DESIGN_SYSTEM.md. Never use colour alone to convey meaning: pair it with text or an icon.
  */
 :root {
-  /* Typography */
-  --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  /* Typography – Inter is bundled with the app (no external requests). */
+  --font-sans: "Inter Variable", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue",
+    Arial, sans-serif;
   --font-mono: "Cascadia Mono", "Consolas", ui-monospace, "SFMono-Regular", Menlo, monospace;
-  --text-xs: 0.8125rem;
-  --text-sm: 0.875rem;
-  --text-base: 1rem;
-  --text-md: 1.125rem;
-  --text-lg: 1.25rem;
-  --text-xl: 1.5rem;
-  --text-2xl: 1.875rem;
-  --leading: 1.5;
+  --text-xs: 0.8125rem; /* 13px – metadata only */
+  --text-sm: 0.875rem; /* 14px – secondary text */
+  --text-base: 0.9375rem; /* 15px – body */
+  --text-md: 1rem; /* 16px */
+  --text-card: 1.0625rem; /* 17px – card titles */
+  --text-lg: 1.125rem; /* 18px – page descriptions */
+  --text-xl: 1.3125rem; /* 21px – section titles */
+  --text-2xl: 1.75rem; /* 28px – key figures */
+  --text-3xl: 2.125rem; /* 34px – page titles */
+  --leading: 1.55;
   --leading-tight: 1.25;
+  --leading-snug: 1.35;
   --weight-normal: 400;
-  --weight-medium: 550;
+  --weight-medium: 500;
   --weight-semibold: 600;
   --weight-bold: 700;
+  --tracking-tight: -0.015em;
 
   /* Spacing (4 px grid); --density scales component padding */
   --density: 1;
@@ -31,23 +37,33 @@
   --space-4: 1rem;
   --space-5: 1.25rem;
   --space-6: 1.5rem;
+  --space-7: 1.75rem;
   --space-8: 2rem;
   --space-10: 2.5rem;
   --space-12: 3rem;
+  --space-16: 4rem;
 
-  /* Shape and depth */
-  --radius-sm: 6px;
+  /* Shape and depth – soft borders, very subtle shadows */
+  --radius-sm: 8px;
   --radius: 10px;
-  --radius-lg: 14px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
   --radius-pill: 999px;
-  --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.06);
-  --shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 2px 6px rgb(16 24 40 / 0.06);
-  --shadow-pop: 0 12px 32px rgb(16 24 40 / 0.18), 0 2px 6px rgb(16 24 40 / 0.08);
+  --shadow-sm: 0 1px 2px rgb(22 29 45 / 0.04);
+  --shadow: 0 1px 2px rgb(22 29 45 / 0.04), 0 4px 14px rgb(22 29 45 / 0.04);
+  --shadow-hover: 0 2px 4px rgb(22 29 45 / 0.05), 0 10px 28px rgb(22 29 45 / 0.08);
+  --shadow-pop: 0 16px 40px rgb(22 29 45 / 0.18), 0 2px 8px rgb(22 29 45 / 0.08);
 
   /* Layout */
-  --nav-width: 15.5rem;
-  --header-height: 4rem;
-  --content-max: 82rem;
+  --nav-width: 16.5rem;
+  --header-height: 4.5rem;
+  --content-max: 100rem;
+  --page-gutter: var(--space-8);
+
+  /* Icon tiles */
+  --tile-sm: 2.25rem;
+  --tile: 2.75rem;
+  --tile-lg: 3.5rem;
 
   /* Motion */
   --duration: 160ms;
@@ -58,54 +74,83 @@
 :root,
 :root[data-theme="light"] {
   color-scheme: light;
-  --color-bg: #f3f5f9;
+  --color-bg: #f7f6f2; /* light, slightly warm page plane */
   --color-surface: #ffffff;
-  --color-surface-muted: #f7f9fc;
-  --color-surface-sunken: #edf1f6;
-  --color-border: #dde3ec;
-  --color-border-strong: #c5cdd9;
-  --color-border-input: #737d8f; /* 3.9:1 on white */
-  --color-text: #172033; /* 15.8:1 */
-  --color-text-muted: #45526a; /* 7.9:1 */
-  --color-text-subtle: #5a6478; /* 5.9:1 */
-  --color-link: #1d4ed8;
-  --color-primary: #1d4ed8; /* white text 6.7:1 */
-  --color-primary-hover: #1e40af;
+  --color-surface-muted: #fafaf7;
+  --color-surface-sunken: #f2f0eb;
+  --color-surface-hover: #f5f4f0;
+  --color-border: #e8e5de;
+  --color-border-strong: #d6d2c8;
+  --color-border-input: #7a7f8c; /* 3.9:1 on white */
+  --color-text: #161d2d; /* 16.5:1 */
+  --color-text-muted: #4b5466; /* 7.4:1 */
+  --color-text-subtle: #5f6779; /* 5.6:1, also on the page plane */
+  --color-link: #1f5bd0;
+  --color-primary: #1e3a5f; /* navy; white text 11.6:1 */
+  --color-primary-hover: #162f4f;
   --color-primary-contrast: #ffffff;
-  --color-focus: #1d4ed8;
+  --color-danger: #b42318; /* white text 6.5:1 */
+  --color-danger-hover: #912018;
+  --color-focus: #2563eb;
   --color-focus-inner: #ffffff;
   --color-overlay: rgb(15 23 42 / 0.45);
 
-  --nav-bg: #0f1f3d;
-  --nav-bg-elevated: #152a52;
-  --nav-text: #e6ecf7; /* 14.6:1 */
-  --nav-text-muted: #aab7d1; /* 8.1:1 */
-  --nav-active-bg: #1d3768;
-  --nav-indicator: #8db4ff;
-  --nav-focus: #9ec1ff;
+  --nav-bg: #172842;
+  --nav-bg-elevated: #1f3352;
+  --nav-text: #f2f5fa; /* 14.2:1 */
+  --nav-text-muted: #c3cddc; /* 9.6:1 */
+  --nav-active-bg: #2a4166;
+  --nav-divider: rgb(255 255 255 / 0.12);
+  --nav-focus: #a8c7ff;
 
-  /* Tones: background / border / text (text ≥ 7:1 on its background) */
-  --tone-neutral-bg: #eef2f7;
-  --tone-neutral-border: #d3dae5;
-  --tone-neutral-text: #334155;
-  --tone-info-bg: #eaf1ff;
-  --tone-info-border: #c6d6fd;
-  --tone-info-text: #1e3a8a;
-  --tone-success-bg: #e7f6ec;
-  --tone-success-border: #b5dfc2;
-  --tone-success-text: #14532d;
-  --tone-warning-bg: #fff3dc;
-  --tone-warning-border: #f2d18a;
-  --tone-warning-text: #713700;
-  --tone-danger-bg: #fdecec;
-  --tone-danger-border: #f3c0bd;
-  --tone-danger-text: #8f1d1d;
-  --tone-violet-bg: #f1ecfe;
-  --tone-violet-border: #d5c8fa;
-  --tone-violet-text: #4c1d95;
-  --tone-teal-bg: #e3f5f4;
-  --tone-teal-border: #afdedb;
-  --tone-teal-text: #0f4f4b;
+  /* Tones: background / border / text (≥ 6:1 on its background) / icon (≥ 3:1 on its background) */
+  --tone-neutral-bg: #f1f0ec;
+  --tone-neutral-border: #e0ddd5;
+  --tone-neutral-text: #3c4455;
+  --tone-neutral-icon: #6a7283;
+  --tone-info-bg: #ebf2fe;
+  --tone-info-border: #cddcfb;
+  --tone-info-text: #1d4ab3;
+  --tone-info-icon: #2563eb;
+  --tone-success-bg: #e8f6ee;
+  --tone-success-border: #c3e6d2;
+  --tone-success-text: #156238;
+  --tone-success-icon: #1d8a4c;
+  --tone-warning-bg: #fff4e2;
+  --tone-warning-border: #f4d9a6;
+  --tone-warning-text: #8a4600;
+  --tone-warning-icon: #c2620a;
+  --tone-danger-bg: #fdeeed;
+  --tone-danger-border: #f5cdca;
+  --tone-danger-text: #a3231f;
+  --tone-danger-icon: #d23b3b;
+  --tone-violet-bg: #f3effe;
+  --tone-violet-border: #ddd3f9;
+  --tone-violet-text: #5a2db0;
+  --tone-violet-icon: #7444db;
+  --tone-teal-bg: #e5f5f1;
+  --tone-teal-border: #bce3d9;
+  --tone-teal-text: #0c5c4f;
+  --tone-teal-icon: #11897a;
+  --tone-orange-bg: #fff0e5;
+  --tone-orange-border: #f8d4b8;
+  --tone-orange-text: #96400a;
+  --tone-orange-icon: #dd6a16;
+
+  /* Status colours for key figures (text, ≥ 4.5:1 on white) */
+  --status-critical: #c42b2b;
+  --status-warning: #b25607;
+  --status-info: #1f5bd0;
+  --status-success: #157a42;
+  --status-neutral: #4b5466;
+
+  /* Charts: series for EmneKlar's finding classes (validated as a set) and chrome */
+  --chart-violation: #d03b3b;
+  --chart-review: #e08a1e;
+  --chart-improvement: #2a78d6;
+  --chart-manual: #8b93a3;
+  --chart-grid: #ece9e2;
+  --chart-axis: #cfcac0;
 
   --diff-add-bg: #e3f6e9;
   --diff-del-bg: #fde9e8;
@@ -114,58 +159,87 @@
 /* ----------------------------------------------------------------- dark */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --color-bg: #0b1322;
-  --color-surface: #131d31;
-  --color-surface-muted: #17233a;
-  --color-surface-sunken: #0f1829;
-  --color-border: #263451;
-  --color-border-strong: #34446a;
-  --color-border-input: #6f7f9e; /* 3.9:1 on surface */
-  --color-text: #e7ecf5;
-  --color-text-muted: #b6c2d6;
-  --color-text-subtle: #9eabc2;
-  --color-link: #8fb0ff;
-  --color-primary: #2f62e0; /* white text 5.3:1 */
-  --color-primary-hover: #2552c4;
+  --color-bg: #0f141d;
+  --color-surface: #171e2b;
+  --color-surface-muted: #1a2230;
+  --color-surface-sunken: #121823;
+  --color-surface-hover: #1d2533;
+  --color-border: #273041;
+  --color-border-strong: #34405a;
+  --color-border-input: #707d96; /* 3.5:1 on surface */
+  --color-text: #e9edf4;
+  --color-text-muted: #b6c0d0;
+  --color-text-subtle: #9da8bb;
+  --color-link: #92b4ff;
+  --color-primary: #3466b0; /* white text 5.6:1 */
+  --color-primary-hover: #2b5aa0;
   --color-primary-contrast: #ffffff;
+  --color-danger: #b93434; /* white text 5.7:1 */
+  --color-danger-hover: #a02c2c;
   --color-focus: #9ec1ff;
-  --color-focus-inner: #0b1322;
+  --color-focus-inner: #0f141d;
   --color-overlay: rgb(2 6 15 / 0.65);
 
-  --nav-bg: #08101f;
-  --nav-bg-elevated: #0f1a30;
-  --nav-text: #e6ecf7;
-  --nav-text-muted: #a4b2cc;
-  --nav-active-bg: #182a4d;
-  --nav-indicator: #8db4ff;
+  --nav-bg: #0b111b;
+  --nav-bg-elevated: #141c2a;
+  --nav-text: #eef2f8;
+  --nav-text-muted: #aeb9cc;
+  --nav-active-bg: #1e2a3e;
+  --nav-divider: rgb(255 255 255 / 0.1);
   --nav-focus: #9ec1ff;
 
-  --tone-neutral-bg: #1b2740;
-  --tone-neutral-border: #2d3b5c;
-  --tone-neutral-text: #d2dae8;
-  --tone-info-bg: #15264a;
-  --tone-info-border: #2a4583;
+  --tone-neutral-bg: #1c2433;
+  --tone-neutral-border: #2e3a50;
+  --tone-neutral-text: #d3dae6;
+  --tone-neutral-icon: #9aa6ba;
+  --tone-info-bg: #14233f;
+  --tone-info-border: #27427a;
   --tone-info-text: #bcd0ff;
-  --tone-success-bg: #11291e;
-  --tone-success-border: #1f5a3c;
+  --tone-info-icon: #6c9cff;
+  --tone-success-bg: #10291d;
+  --tone-success-border: #1f5638;
   --tone-success-text: #a9e3bf;
-  --tone-warning-bg: #2c2110;
-  --tone-warning-border: #6b4d12;
-  --tone-warning-text: #f7d38f;
-  --tone-danger-bg: #301417;
-  --tone-danger-border: #6e2a2e;
-  --tone-danger-text: #f8b7b3;
-  --tone-violet-bg: #231a3d;
-  --tone-violet-border: #47357a;
-  --tone-violet-text: #d6c8ff;
-  --tone-teal-bg: #0f2a2a;
-  --tone-teal-border: #1e5654;
-  --tone-teal-text: #a4e2dd;
+  --tone-success-icon: #4cc483;
+  --tone-warning-bg: #2b2010;
+  --tone-warning-border: #5f4515;
+  --tone-warning-text: #f5d08c;
+  --tone-warning-icon: #e0a23c;
+  --tone-danger-bg: #2f1517;
+  --tone-danger-border: #64282c;
+  --tone-danger-text: #f8b8b4;
+  --tone-danger-icon: #f07070;
+  --tone-violet-bg: #221a3b;
+  --tone-violet-border: #43357a;
+  --tone-violet-text: #d7caff;
+  --tone-violet-icon: #a68bff;
+  --tone-teal-bg: #0f2826;
+  --tone-teal-border: #1d514c;
+  --tone-teal-text: #a2e2d8;
+  --tone-teal-icon: #3fc4b0;
+  --tone-orange-bg: #2d1d10;
+  --tone-orange-border: #64391a;
+  --tone-orange-text: #f8c39b;
+  --tone-orange-icon: #f08a42;
+
+  --status-critical: #f28b85;
+  --status-warning: #f0b35c;
+  --status-info: #8fb3ff;
+  --status-success: #6fd39a;
+  --status-neutral: #c0c9d8;
+
+  --chart-violation: #c94545;
+  --chart-review: #c98500;
+  --chart-improvement: #3987e5;
+  --chart-manual: #6b7383;
+  --chart-grid: #263042;
+  --chart-axis: #3a465c;
 
   --diff-add-bg: #12301f;
   --diff-del-bg: #3a1619;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 2px 6px rgb(0 0 0 / 0.35);
-  --shadow-pop: 0 12px 32px rgb(0 0 0 / 0.55);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.35);
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.35), 0 4px 14px rgb(0 0 0 / 0.25);
+  --shadow-hover: 0 2px 4px rgb(0 0 0 / 0.4), 0 10px 28px rgb(0 0 0 / 0.35);
+  --shadow-pop: 0 16px 40px rgb(0 0 0 / 0.55);
 }
 
 /* --------------------------------------------------- user preferences */

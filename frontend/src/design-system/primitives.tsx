@@ -18,34 +18,43 @@ export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
 }
 
-export type Tone = "neutral" | "info" | "success" | "warning" | "danger" | "violet" | "teal";
-type Variant = "primary" | "secondary" | "ghost" | "danger" | "link";
+export type Tone = "neutral" | "info" | "success" | "warning" | "danger" | "violet" | "teal" | "orange";
+/** "soft" is a pastel call to action in the colour given by `tone` (action rows, feature cards). */
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "link" | "soft";
+type Size = "sm" | "md" | "lg";
 
 /* ------------------------------------------------------------------ buttons */
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
-  size?: "sm" | "md";
+  size?: Size;
+  /** Colour of a "soft" button. */
+  tone?: Tone;
   loading?: boolean;
   icon?: ReactNode;
   block?: boolean;
 }
 
+function buttonClass(variant: Variant, size: Size, block?: boolean, className?: string | null): string {
+  return cx(
+    "ek-btn",
+    variant !== "secondary" && `ek-btn--${variant}`,
+    size !== "md" && `ek-btn--${size}`,
+    block && "ek-btn--block",
+    className,
+  );
+}
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = "secondary", size = "md", loading, icon, block, className, children, disabled, type = "button", ...rest },
+  { variant = "secondary", size = "md", tone, loading, icon, block, className, children, disabled, type = "button", ...rest },
   ref,
 ) {
   return (
     <button
       ref={ref}
       type={type}
-      className={cx(
-        "ek-btn",
-        variant !== "secondary" && `ek-btn--${variant}`,
-        size === "sm" && "ek-btn--sm",
-        block && "ek-btn--block",
-        className,
-      )}
+      className={buttonClass(variant, size, block, className)}
+      data-tone={variant === "soft" ? (tone ?? "neutral") : undefined}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       {...rest}
@@ -59,7 +68,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   label: string;
   size?: "sm" | "md";
-  variant?: Variant;
+  variant?: Exclude<Variant, "soft">;
 }
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
@@ -83,18 +92,23 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
 export function ButtonLink({
   variant = "secondary",
   size = "md",
+  tone,
   icon,
+  iconEnd,
+  block,
   className,
   children,
   ...rest
-}: LinkProps & { variant?: Variant; size?: "sm" | "md"; icon?: ReactNode }) {
+}: LinkProps & { variant?: Variant; size?: Size; tone?: Tone; icon?: ReactNode; iconEnd?: ReactNode; block?: boolean }) {
   return (
     <Link
-      className={cx("ek-btn", variant !== "secondary" && `ek-btn--${variant}`, size === "sm" && "ek-btn--sm", className)}
+      className={buttonClass(variant, size, block, cx(iconEnd ? "ek-btn--between" : null, className))}
+      data-tone={variant === "soft" ? (tone ?? "neutral") : undefined}
       {...rest}
     >
       {icon}
       {children}
+      {iconEnd}
     </Link>
   );
 }
@@ -117,17 +131,20 @@ export function VisuallyHidden({ children }: { children: ReactNode }) {
 export function Badge({
   tone = "neutral",
   icon,
+  dot,
   children,
   className,
 }: {
   tone?: Tone;
   icon?: ReactNode;
+  /** A small coloured dot before the text (status pills). */
+  dot?: boolean;
   children: ReactNode;
   className?: string;
 }) {
   return (
     <span className={cx("ek-badge", className)} data-tone={tone}>
-      {icon}
+      {dot ? <span className="ek-badge__dot" aria-hidden="true" /> : icon}
       {children}
     </span>
   );
@@ -141,6 +158,7 @@ const ALERT_ICONS: Record<Tone, ReactNode> = {
   danger: <OctagonAlert aria-hidden="true" />,
   violet: <Info aria-hidden="true" />,
   teal: <Info aria-hidden="true" />,
+  orange: <Info aria-hidden="true" />,
 };
 
 export function Alert({
@@ -175,6 +193,7 @@ export function Alert({
 export function Card({
   title,
   eyebrow,
+  description,
   actions,
   children,
   footer,
@@ -186,6 +205,7 @@ export function Card({
 }: Omit<HTMLAttributes<HTMLElement>, "title"> & {
   title?: ReactNode;
   eyebrow?: ReactNode;
+  description?: ReactNode;
   actions?: ReactNode;
   footer?: ReactNode;
   tone?: Tone;
@@ -204,6 +224,7 @@ export function Card({
           <div className="ek-stack" data-gap="1">
             {eyebrow ? <span className="ek-card__eyebrow">{eyebrow}</span> : null}
             {title ? <Heading className="ek-card__title">{title}</Heading> : null}
+            {description ? <p className="ek-card__description">{description}</p> : null}
           </div>
           {actions ? <div className="ek-cluster" data-gap="2">{actions}</div> : null}
         </div>
@@ -254,6 +275,7 @@ export function ProgressBar({
   label,
   valueText,
   size = "md",
+  tone,
 }: {
   /** Omit for an indeterminate bar (work in progress, total unknown). */
   value?: number | null;
@@ -261,12 +283,15 @@ export function ProgressBar({
   label: string;
   valueText?: string;
   size?: "sm" | "md";
+  /** Bar colour; the default is the primary colour. */
+  tone?: Tone;
 }) {
   const determinate = typeof value === "number";
   const pct = determinate ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
   return (
     <div
       className={cx("ek-progress", size === "sm" && "ek-progress--sm", !determinate && "ek-progress--indeterminate")}
+      data-tone={tone}
       role="progressbar"
       aria-label={label}
       aria-valuemin={determinate ? 0 : undefined}
@@ -310,11 +335,14 @@ export function PageHeader({
   description,
   actions,
   eyebrow,
+  meta,
 }: {
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
   eyebrow?: ReactNode;
+  /** Quiet status text on the right, e.g. «Sist analysert: …». */
+  meta?: ReactNode;
 }) {
   return (
     <header className="ek-page-header">
@@ -325,7 +353,12 @@ export function PageHeader({
         </h1>
         {description ? <p className="ek-page-header__description">{description}</p> : null}
       </div>
-      {actions ? <div className="ek-cluster">{actions}</div> : null}
+      {actions || meta ? (
+        <div className="ek-page-header__aside">
+          {meta ? <p className="ek-page-header__meta">{meta}</p> : null}
+          {actions ? <div className="ek-cluster">{actions}</div> : null}
+        </div>
+      ) : null}
     </header>
   );
 }

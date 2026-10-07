@@ -18,6 +18,8 @@ body {
   color: var(--color-text);
   background: var(--color-bg);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 h1,
@@ -28,19 +30,22 @@ h4 {
   line-height: var(--leading-tight);
   font-weight: var(--weight-semibold);
   color: var(--color-text);
+  letter-spacing: var(--tracking-tight);
 }
 h1 {
-  font-size: var(--text-2xl);
-  letter-spacing: -0.01em;
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
 }
 h2 {
-  font-size: var(--text-lg);
+  font-size: var(--text-xl);
 }
 h3 {
-  font-size: var(--text-md);
+  font-size: var(--text-card);
 }
 h4 {
-  font-size: var(--text-base);
+  font-size: var(--text-md);
 }
 p {
   margin: 0;
@@ -149,6 +154,7 @@ a {
 .ek-stack[data-gap="1"] { --gap: var(--space-1); }
 .ek-stack[data-gap="2"] { --gap: var(--space-2); }
 .ek-stack[data-gap="3"] { --gap: var(--space-3); }
+.ek-stack[data-gap="5"] { --gap: var(--space-5); }
 .ek-stack[data-gap="6"] { --gap: var(--space-6); }
 .ek-stack[data-gap="8"] { --gap: var(--space-8); }
 
@@ -171,7 +177,29 @@ a {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--min, 16rem)), 1fr));
 }
 .ek-grid[data-cols="2"] { grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); }
-.ek-grid[data-cols="4"] { --min: 13.5rem; }
+.ek-grid[data-cols="3"] { --min: 18rem; }
+/* Four equal columns when the content area is wide enough, then 2 × 2, then one column. */
+.ek-grid[data-cols="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@container content (max-width: 62rem) {
+  .ek-grid[data-cols="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container content (max-width: 32rem) {
+  .ek-grid[data-cols="4"] { grid-template-columns: minmax(0, 1fr); }
+}
+.ek-grid[data-gap="5"] { --gap: var(--space-5); }
+.ek-grid[data-gap="6"] { --gap: var(--space-6); }
+
+/* Two columns, the first wider (dashboards); one column on narrow screens. */
+.ek-split {
+  display: grid;
+  gap: var(--space-6);
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  align-items: start;
+}
+.ek-split[data-align="stretch"] { align-items: stretch; }
+@media (max-width: 75rem) {
+  .ek-split { grid-template-columns: minmax(0, 1fr); }
+}
 
 .ek-muted { color: var(--color-text-muted); }
 .ek-subtle { color: var(--color-text-subtle); }
@@ -198,6 +226,13 @@ a {
     outline: 3px solid Highlight;
   }
   .ek-card,
+  .ek-status-card,
+  .ek-metric-card,
+  .ek-action-row,
+  .ek-feature-card,
+  .ek-chip,
+  .ek-changes-pill,
+  .ek-course-button,
   .ek-badge,
   .ek-btn,
   .ek-alert,

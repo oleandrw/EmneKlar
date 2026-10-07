@@ -1,3 +1,4 @@
+import "@fontsource-variable/inter";
 import "./design-system/styles/tokens.css";
 import "./design-system/styles/base.css";
 import "./design-system/styles/components.css";

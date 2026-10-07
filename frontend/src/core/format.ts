@@ -2,6 +2,7 @@
 
 const dateTime = new Intl.DateTimeFormat("nb-NO", { dateStyle: "medium", timeStyle: "short" });
 const dateOnly = new Intl.DateTimeFormat("nb-NO", { dateStyle: "medium" });
+const timeOnly = new Intl.DateTimeFormat("nb-NO", { timeStyle: "short" });
 const number = new Intl.NumberFormat("nb-NO");
 
 export function formatDateTime(value: string | null | undefined): string {
@@ -14,6 +15,12 @@ export function formatDate(value: string | null | undefined): string {
   if (!value) return "–";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "–" : dateOnly.format(date);
+}
+
+export function formatTime(value: string | null | undefined): string {
+  if (!value) return "–";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "–" : timeOnly.format(date);
 }
 
 export function formatNumber(value: number): string {
