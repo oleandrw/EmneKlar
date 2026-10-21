@@ -747,10 +747,10 @@ function BulkCard({ result, ignored }: { result: ScanResult; ignored: string[] }
             checked={choices.add_title_from_metadata}
             onChange={set("add_title_from_metadata")}
           />
-          <Checkbox label="Erstatt generisk title" checked={choices.replace_generic_title} onChange={set("replace_generic_title")} />
+          <Checkbox label="Erstatt manglende eller generiske titler" checked={choices.replace_generic_title} onChange={set("replace_generic_title")} />
           <Checkbox
-            label="Overskriv eksisterende beskrivende title"
-            hint="Av som standard. Når det er av, beholdes titler som allerede beskriver videoen."
+            label="Erstatt også gode eksisterende titler"
+            hint="Når dette er av, beholdes titler som allerede beskriver videoen godt."
             checked={choices.overwrite_existing_title}
             onChange={set("overwrite_existing_title")}
           />
