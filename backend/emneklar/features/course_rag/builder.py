@@ -79,6 +79,9 @@ class BuildState:
     failed: int = 0
     skipped: int = 0
     unchanged: int = 0
+    kept: int = 0  # indexed before; a new attempt failed or had to wait, so the previous version was kept
+    blocked: set[str] = field(default_factory=set)  # online services that refused us in this build (e.g. YouTube)
+    last_request: dict[str, float] = field(default_factory=dict)  # service -> monotonic time of the last request
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     images_seen: Deduplicator = field(default_factory=Deduplicator)  # perceptual hashes seen in this build
 
@@ -131,6 +134,13 @@ async def store_chunks(state: BuildState, item: SourceItem, records: list[ChunkR
 
 
 def mark(state: BuildState, item: SourceItem, status: str, reason: str) -> None:
+    temporary = status == "failed" or (status == "skipped" and isinstance(reason, Waiting))
+    if temporary and state.store.item_status(item.key) == "done":
+        # A failed or postponed attempt never removes content that was indexed before. The stored row keeps its old
+        # signature, so the next update tries the element again.
+        state.kept += 1
+        state.ctx.progress.note(f"Beholdt forrige versjon av «{item.title}»: {reason}")
+        return
     if isinstance(reason, Waiting) and status == "skipped":
         status = "pending"
     state.store.put_item(item_record(item, state.request, status=status, reason=reason), [])
@@ -450,6 +460,6 @@ async def run_build(ctx: JobContext, c: AppContainer, course_id: str, request: B
         store.close()
         shutil.rmtree(tmp, ignore_errors=True)
     result = {"items_processed": state.done, "unchanged": state.unchanged, "skipped": state.skipped,
-              "failed": state.failed, "chunks": stats["chunks"], "skipped_total": len(skipped)}
+              "failed": state.failed, "kept": state.kept, "chunks": stats["chunks"], "skipped_total": len(skipped)}
     progress.add_findings("rag:chunks", stats["chunks"])
     return result

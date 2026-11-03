@@ -229,6 +229,10 @@ class IndexStore:
         return {r["item_key"]: {**dict(r), "modules": json.loads(r["modules"] or "[]"),
                                 "meta": json.loads(r["meta"] or "{}")} for r in rows}
 
+    def item_status(self, key: str) -> str | None:
+        row = self.conn.execute("SELECT status FROM items WHERE item_key = ?", (key,)).fetchone()
+        return str(row["status"]) if row else None
+
     def put_item(self, item: ItemRecord, chunks: list[ChunkRecord] | None = None,
                  vectors: np.ndarray | None = None) -> None:
         """Replace an item and (when given) all its chunks in one transaction."""

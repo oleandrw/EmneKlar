@@ -64,6 +64,11 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   titler. «YouTube video», «Embedded video» og titler med kolon eller punktum til slutt regnes nå også som generelle.
 
 ### Rettet
+- Emne-RAG: et nytt forsøk som feilet eller måtte vente (for eksempel fordi YouTube blokkerte), erstattet innhold som
+  allerede var indeksert med ingenting. Nå beholdes forrige versjon, og elementet prøves igjen ved neste oppdatering.
+  Hentet YouTube- og Vimeo-teksting bufres lokalt i 30 dager, så oppdateringer og nybygging ikke spør på nytt.
+  Forespørslene spres med litt pause, og blokkerer YouTube (`IpBlocked`), spør EmneKlar ikke mer i den byggingen –
+  resten prøves igjen senere med en forklaring. Meldingen etter byggingen sier hvor mange elementer som ble beholdt.
 - Emne-RAG: YouTube-teksting virket bare med de lokale modellene installert, og ellers sto det misvisende «Fant
   ingen teksting» for hver YouTube-video. `youtube-transcript-api` (liten, ren Python) er nå en fast avhengighet, så
   `update.bat` installerer den. Finnes ikke teksting på norsk eller engelsk, brukes tekstingen videoen har på et

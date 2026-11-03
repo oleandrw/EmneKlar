@@ -22,6 +22,7 @@ import hashlib
 import json
 import logging
 import re
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urljoin, urlsplit
@@ -143,9 +144,11 @@ def cache_dir(state: BuildState) -> Path:
     return path
 
 
-def cached_transcript(state: BuildState, sha: str) -> Transcript | None:
+def cached_transcript(state: BuildState, sha: str, *, max_age_days: float | None = None) -> Transcript | None:
     path = cache_dir(state) / f"{sha}.json"
     try:
+        if max_age_days is not None and time.time() - path.stat().st_mtime > max_age_days * 86400:
+            return None
         return Transcript.from_dict(json.loads(path.read_text(encoding="utf-8")))
     except (OSError, ValueError, KeyError):
         return None
@@ -192,6 +195,38 @@ async def canvas_captions(state: BuildState, item: SourceItem) -> Transcript | N
                       notes=["Teksting fra Canvas" + (" (automatisk generert)" if track.get("asr") else "") + " er brukt."])
 
 
+# Online captions (YouTube, Vimeo): fetched captions are kept for a while, so updates and full rebuilds do not ask
+# again; requests are spaced out, and a service that blocks us is not asked again in the same build.
+ONLINE_CACHE_DAYS = 30
+ONLINE_PAUSE_SECONDS = 1.5
+
+
+def online_cache_key(service: str, video_id: str) -> str:
+    return f"{service}-{re.sub(r'[^A-Za-z0-9_-]', '', video_id)}"
+
+
+def online_cached(state: BuildState, service: str, item: SourceItem) -> Transcript | None:
+    cached = cached_transcript(state, online_cache_key(service, item.canvas_id), max_age_days=ONLINE_CACHE_DAYS)
+    if cached is not None:
+        cached.notes.append("Tekstingen er hentet fra bufferen (hentet de siste 30 dagene).")
+    return cached
+
+
+async def online_pause(state: BuildState, service: str) -> None:
+    """Space out requests to one service (YouTube blocks networks that ask too often)."""
+    wait = state.last_request.get(service, -1e9) + ONLINE_PAUSE_SECONDS - time.monotonic()
+    if wait > 0:
+        await asyncio.sleep(wait)
+    state.last_request[service] = time.monotonic()
+
+
+def blocked_by(state: BuildState, service: str) -> bool:
+    return service in state.blocked
+
+
+YOUTUBE_BLOCKED = Waiting("YouTube blokkerer midlertidig forespørsler om teksting fra nettverket ditt (for mange "
+                          "forespørsler på kort tid). EmneKlar spør ikke YouTube mer i denne byggingen. Vent en stund, "
+                          "gjerne til neste dag, og trykk «Oppdater indeks».")
 YOUTUBE_LANGUAGES = ("no", "nb", "nn", "en", "en-US", "en-GB", "sv", "da")
 NO_AUDIO = "Lyd fra YouTube lastes ikke ned (YouTubes vilkår), så videoen er ikke med."
 # No captions is a Waiting reason: captions can be added on YouTube/Vimeo without anything changing in Canvas.
@@ -227,10 +262,16 @@ async def youtube_captions(state: BuildState, item: SourceItem) -> tuple[Transcr
     """YouTube captions via youtube-transcript-api (only the video id is sent). Returns (transcript, reason)."""
     if not state.c.settings.get().rag.youtube_captions:
         return None, Waiting(f"Henting av YouTube-teksting er slått av (Emne-RAG → Innstillinger). {NO_AUDIO}")
+    cached = online_cached(state, "youtube", item)
+    if cached is not None:
+        return cached, None
+    if blocked_by(state, "youtube"):
+        return None, YOUTUBE_BLOCKED
     try:
         import youtube_transcript_api  # noqa: F401
     except ImportError:
         return None, Waiting("YouTube-teksting krever pakken youtube-transcript-api. Lukk EmneKlar og kjør update.bat.")
+    await online_pause(state, "youtube")
     try:
         rows, language, generated = await asyncio.to_thread(_youtube_rows, item)
     except Exception as exc:  # noqa: BLE001 - every failure of the unofficial interface becomes a clear reason
@@ -238,6 +279,11 @@ async def youtube_captions(state: BuildState, item: SourceItem) -> tuple[Transcr
         log.info("Emne-RAG: ingen YouTube-teksting for %s (%s)", item.canvas_id, name)
         if name in YOUTUBE_REASONS:
             return None, YOUTUBE_REASONS[name]
+        if name in ("RequestBlocked", "IpBlocked", "PoTokenRequired") or "429" in str(exc):
+            state.blocked.add("youtube")
+            state.ctx.progress.note("YouTube blokkerer midlertidig forespørsler om teksting. Resten av YouTube-videoene "
+                                    "prøves igjen ved neste oppdatering.")
+            return None, YOUTUBE_BLOCKED
         return None, Waiting("YouTube svarte ikke på forespørselen om teksting (blokkert nettverk, for mange "
                              f"forespørsler eller en endring hos YouTube: {name}). Prøves igjen ved neste oppdatering.")
     segments = []
@@ -250,8 +296,10 @@ async def youtube_captions(state: BuildState, item: SourceItem) -> tuple[Transcr
     if not segments:
         return None, YOUTUBE_NO_CAPTIONS
     kind = "automatisk generert teksting" if generated else "teksting"
-    return Transcript(segments, language, "youtube", "youtube",
-                      notes=[f"YouTube-{kind}{f' ({language})' if language else ''} er brukt."]), None
+    transcript = Transcript(segments, language, "youtube", "youtube",
+                            notes=[f"YouTube-{kind}{f' ({language})' if language else ''} er brukt."])
+    store_transcript(state, online_cache_key("youtube", item.canvas_id), transcript)
+    return transcript, None
 
 
 VIMEO_PLAYER = "https://player.vimeo.com"
@@ -292,8 +340,14 @@ async def vimeo_captions(state: BuildState, item: SourceItem) -> tuple[Transcrip
     """
     if not state.c.settings.get().rag.vimeo_captions:
         return None, Waiting(f"Henting av Vimeo-teksting er slått av (Emne-RAG → Innstillinger). {VIMEO_NO_AUDIO}")
+    cached = online_cached(state, "vimeo", item)
+    if cached is not None:
+        return cached, None
+    if blocked_by(state, "vimeo"):
+        return None, Waiting("Vimeo ba EmneKlar vente (for mange forespørsler). Prøves igjen ved neste oppdatering.")
     hash_ = item.meta.get("hash")
     params = {"h": str(hash_)} if hash_ else None
+    await online_pause(state, "vimeo")
     async with _vimeo_client(state) as http:
         try:
             response = await http.get(f"{VIMEO_PLAYER}/video/{item.canvas_id}/config", params=params,
@@ -305,6 +359,9 @@ async def vimeo_captions(state: BuildState, item: SourceItem) -> tuple[Transcrip
                           "(eierens personvernvalg), så tekstingen kan ikke hentes.")
         if response.status_code == 404:
             return None, "Vimeo-videoen finnes ikke eller er privat – sjekk lenken i emnet."
+        if response.status_code == 429:
+            state.blocked.add("vimeo")
+            return None, Waiting("Vimeo ba EmneKlar vente (for mange forespørsler). Prøves igjen ved neste oppdatering.")
         if response.status_code != 200:
             return None, Waiting(f"Vimeo svarte med HTTP {response.status_code}. Prøves igjen ved neste oppdatering.")
         try:
@@ -336,8 +393,10 @@ async def vimeo_captions(state: BuildState, item: SourceItem) -> tuple[Transcrip
     kind = "automatisk generert teksting" if _vimeo_auto(track) else "teksting"
     video = config.get("video") if isinstance(config.get("video"), dict) else {}
     duration = float(video.get("duration") or 0) or None
-    return Transcript(segments, language, "vimeo", "vimeo", duration,
-                      notes=[f"Vimeo-{kind}{f' ({language})' if language else ''} er brukt."]), None
+    transcript = Transcript(segments, language, "vimeo", "vimeo", duration,
+                            notes=[f"Vimeo-{kind}{f' ({language})' if language else ''} er brukt."])
+    store_transcript(state, online_cache_key("vimeo", item.canvas_id), transcript)
+    return transcript, None
 
 
 def media_download_url(item: SourceItem) -> str | None:

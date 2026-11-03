@@ -42,6 +42,9 @@ def fake_youtube(monkeypatch: pytest.MonkeyPatch) -> type[FakeYouTubeApi]:
     import youtube_transcript_api
     from youtube_transcript_api import TranscriptsDisabled
 
+    from emneklar.features.course_rag import media
+
+    monkeypatch.setattr(media, "ONLINE_PAUSE_SECONDS", 0.0)
     FakeYouTubeApi.calls = []
     VIMEO_REQUESTS.clear()
     FakeYouTubeApi.videos = {
@@ -160,6 +163,27 @@ def test_incremental_update_only_processes_changes(rag: TestClient, rag_state: F
     assert third["result"]["items_processed"] == 1
     assert search(rag, "metning kulør")["hits"][0]["title"] == "Fargelære"
     assert not any("A101" in h["text"] for h in search(rag, "tirsdager rom A101")["hits"])  # deleted page is gone
+
+
+def test_blocked_youtube_keeps_indexed_captions(rag: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    from youtube_transcript_api import IpBlocked
+
+    from emneklar.features.course_rag import media, sources
+
+    build(rag, video=True, documents=False)
+    assert search(rag, "calibrated monitor skin tones", types=["transcript"])["hits"]
+    # Later YouTube blocks the network, the cached captions are too old and the YouTube handling has changed.
+    monkeypatch.setattr(media, "ONLINE_CACHE_DAYS", 0)
+    monkeypatch.setitem(sources.HANDLER_VERSIONS, "youtube", sources.HANDLER_VERSIONS["youtube"] + 1)
+    FakeYouTubeApi.videos["abcdefghijk"] = IpBlocked("abcdefghijk")
+    FakeYouTubeApi.calls = []
+    job = build(rag, video=True, documents=False)
+    assert FakeYouTubeApi.calls == ["abcdefghijk"]  # blocked once: YouTube is not asked again in this build
+    assert job["result"]["kept"] >= 1  # the indexed captions are kept, not replaced by nothing
+    hits = search(rag, "calibrated monitor skin tones", types=["transcript"])["hits"]
+    assert hits and hits[0]["title"] == "Gjesteforelesning"
+    skipped = rag.get(f"/api/courses/{RAG_COURSE}/rag").json()["index"]["skipped"]
+    assert any(s["title"] == "Ekstra video" and s.get("waiting") and "blokkerer" in s["reason"] for s in skipped)
 
 
 def test_selected_unpublished_module_is_included(rag: TestClient, rag_state: FakeCanvasState) -> None:

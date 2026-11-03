@@ -186,9 +186,11 @@ export function BuildPanel({ courseId, status }: { courseId: string; status: Rag
         <JobRunner jobId={jobId} wording={WORDING} onDone={(job) => {
           void client.invalidateQueries({ queryKey: ["rag", courseId] });
           if (job.status === "completed") {
-            const r = job.result as { chunks?: number; skipped_total?: number; items_processed?: number; unchanged?: number };
+            const r = job.result as { chunks?: number; skipped_total?: number; items_processed?: number; unchanged?: number;
+              kept?: number };
             toast.show({ tone: "success", title: "Indeksen er klar",
               body: `${r.chunks ?? 0} utdrag. ${r.items_processed ?? 0} elementer behandlet, ${r.unchanged ?? 0} uendret, ` +
+                (r.kept ? `${r.kept} beholdt fra forrige versjon (prøves igjen neste gang), ` : "") +
                 `${r.skipped_total ?? 0} hoppet over.` });
           }
         }} />

@@ -142,6 +142,10 @@ backend/tests/test_course_rag_*.py         enhetstester + integrasjonstest mot f
 * Panopto, Kaltura (LTI) og andre eksterne verktøy kan ikke leses via Canvas-API-et og vises som hoppet over med
   forklaring. Lyd fra YouTube og Vimeo lastes ikke ned (YouTubes vilkår); uten teksting hoppes videoen over og
   prøves igjen ved neste oppdatering (teksting kan legges til der uten at noe endres i Canvas).
+* Nettjenester (YouTube, Vimeo): hentet teksting bufres i 30 dager (`cache\rag\transcripts\youtube-<id>.json`),
+  forespørsler spres med minst 1,5 sekunders mellomrom, og en tjeneste som blokkerer (YouTube `IpBlocked`/
+  `RequestBlocked`, Vimeo 429), spørres ikke mer i samme bygging. Et nytt forsøk som feiler eller må vente, sletter
+  aldri innhold som var indeksert før: forrige versjon beholdes med sin gamle signatur og prøves igjen neste gang.
 * Vimeo-teksting hentes slik den innebygde avspilleren gjør det: `player.vimeo.com/video/:id/config` (med `h=` for
   skjulte lenker) gir `request.text_tracks`, og den valgte WebVTT-filen lastes ned – bare fra Vimeos egne domener,
   gjennom SSRF-vernet, uten Referer eller informasjonskapsler. Uoffisielt og kan endres av Vimeo; Vimeos offisielle

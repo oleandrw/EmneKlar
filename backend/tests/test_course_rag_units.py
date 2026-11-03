@@ -646,11 +646,23 @@ def test_openai_transcription_request_and_fallbacks() -> None:
 # -- YouTube captions ---------------------------------------------------------------------------------------------
 
 
-def _youtube_state(enabled: bool = True) -> object:
+def _online_state(cache: Path, *, youtube: bool = True, vimeo: bool = True, transport: object = None) -> object:
+    """Just enough of a BuildState for the YouTube and Vimeo caption functions."""
     from types import SimpleNamespace
 
-    settings = SimpleNamespace(rag=SimpleNamespace(youtube_captions=enabled))
-    return SimpleNamespace(c=SimpleNamespace(settings=SimpleNamespace(get=lambda: settings)))
+    settings = SimpleNamespace(rag=SimpleNamespace(youtube_captions=youtube, vimeo_captions=vimeo))
+    notes: list[str] = []
+    return SimpleNamespace(c=SimpleNamespace(settings=SimpleNamespace(get=lambda: settings), link_transport=transport,
+                                             config=SimpleNamespace(cache_dir=cache)),
+                           ctx=SimpleNamespace(progress=SimpleNamespace(note=notes.append)), notes=notes,
+                           blocked=set(), last_request={})
+
+
+@pytest.fixture(autouse=True)
+def _no_online_pause(monkeypatch: pytest.MonkeyPatch) -> None:
+    from emneklar.features.course_rag import media
+
+    monkeypatch.setattr(media, "ONLINE_PAUSE_SECONDS", 0.0)
 
 
 def _youtube(state: object, video_id: str) -> tuple[object, str | None]:
@@ -662,7 +674,8 @@ def _youtube(state: object, video_id: str) -> tuple[object, str | None]:
     return asyncio.run(youtube_captions(state, item))  # type: ignore[arg-type]
 
 
-def test_youtube_captions_fall_back_to_any_language_and_explain_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_youtube_captions_fall_back_to_any_language_and_explain_failures(monkeypatch: pytest.MonkeyPatch,
+                                                                        tmp_path: Path) -> None:
     import youtube_transcript_api
     from youtube_transcript_api import IpBlocked, TranscriptsDisabled, VideoUnavailable
 
@@ -678,7 +691,7 @@ def test_youtube_captions_fall_back_to_any_language_and_explain_failures(monkeyp
         "off": TranscriptsDisabled("off"), "gone": VideoUnavailable("gone"), "blocked": IpBlocked("blocked"),
     }
     monkeypatch.setattr(youtube_transcript_api, "YouTubeTranscriptApi", FakeYouTubeApi)
-    state = _youtube_state()
+    state = _online_state(tmp_path / "a")
     transcript, reason = _youtube(state, "deutsch")  # no preferred language: the manually created one wins
     assert reason is None and transcript.language == "de-DE"  # type: ignore[attr-defined]
     assert [s.text for s in transcript.segments] == ["Willkommen zur Vorlesung"]  # type: ignore[attr-defined]
@@ -689,13 +702,20 @@ def test_youtube_captions_fall_back_to_any_language_and_explain_failures(monkeyp
     assert reason and reason.startswith("YouTube-videoen har ingen teksting") and isinstance(reason, Waiting)
     _, reason = _youtube(state, "gone")
     assert reason and "ikke tilgjengelig" in reason and not isinstance(reason, Waiting)
+    calls = len(FakeYouTubeApi.calls)
+    transcript, _ = _youtube(state, "norsk")  # fetched captions are cached: YouTube is not asked again
+    assert transcript is not None and len(FakeYouTubeApi.calls) == calls
+    assert "bufferen" in transcript.notes[-1]  # type: ignore[attr-defined]
     _, reason = _youtube(state, "blocked")
-    assert isinstance(reason, Waiting) and "IpBlocked" in reason  # tried again on the next update
-    _, reason = _youtube(_youtube_state(enabled=False), "norsk")
+    assert isinstance(reason, Waiting) and "blokkerer midlertidig" in reason  # tried again on the next update
+    _, reason = _youtube(state, "gone")  # after a block, YouTube is not asked again in the same build
+    assert isinstance(reason, Waiting) and "blokkerer" in reason and FakeYouTubeApi.calls[-1] == "blocked"
+    assert any("blokkerer" in n for n in state.notes)  # type: ignore[attr-defined]
+    _, reason = _youtube(_online_state(tmp_path / "b", youtube=False), "norsk")
     assert isinstance(reason, Waiting) and "slått av" in reason
     calls = len(FakeYouTubeApi.calls)
     monkeypatch.setitem(__import__("sys").modules, "youtube_transcript_api", None)  # package missing
-    _, reason = _youtube(state, "norsk")
+    _, reason = _youtube(_online_state(tmp_path / "c"), "norsk")
     assert isinstance(reason, Waiting) and "update.bat" in reason and len(FakeYouTubeApi.calls) == calls
 
 
@@ -729,16 +749,15 @@ def test_vimeo_links_and_track_choice() -> None:
 
 
 def _vimeo(handler: object, *, enabled: bool = True) -> tuple[object, str | None]:
-    from types import SimpleNamespace
+    import tempfile
 
     import httpx
 
     from emneklar.features.course_rag.media import vimeo_captions
     from emneklar.features.course_rag.sources import SourceItem
 
-    settings = SimpleNamespace(rag=SimpleNamespace(vimeo_captions=enabled))
-    state = SimpleNamespace(c=SimpleNamespace(settings=SimpleNamespace(get=lambda: settings),
-                                              link_transport=httpx.MockTransport(handler)))  # type: ignore[arg-type]
+    state = _online_state(Path(tempfile.mkdtemp()), vimeo=enabled,
+                          transport=httpx.MockTransport(handler))  # type: ignore[arg-type]
     item = SourceItem("vimeo:9", "vimeo", "9", "Video", "https://vimeo.com/9", None)
     return asyncio.run(vimeo_captions(state, item))  # type: ignore[arg-type]
 
@@ -757,6 +776,8 @@ def test_vimeo_failures_are_explained() -> None:
     assert reason and "finnes ikke eller er privat" in reason
     _, reason = _vimeo(status(503))
     assert isinstance(reason, Waiting) and "503" in reason
+    _, reason = _vimeo(status(429))
+    assert isinstance(reason, Waiting) and "vente" in reason
     _, reason = _vimeo(lambda _r: httpx.Response(200, text="<html>"))
     assert isinstance(reason, Waiting) and "uventet svar" in reason
     elsewhere = {"request": {"text_tracks": [{"lang": "no", "url": "https://evil.example/x.vtt"}]}}
