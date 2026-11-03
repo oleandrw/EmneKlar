@@ -58,6 +58,12 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   titler. «YouTube video», «Embedded video» og titler med kolon eller punktum til slutt regnes nå også som generelle.
 
 ### Rettet
+- Emne-RAG: upublisert innhold forsvant ut av estimatet uten forklaring, slik at for eksempel et Blueprint-emne der
+  ingenting er publisert ennå, ga «Fant ikke noe innhold». Nå tas alt i modulene du velger under «Valgte moduler»
+  med, publisert eller ikke, og estimatet sier hvor mange upubliserte elementer som er med. For hele emnet trengs
+  fortsatt «Ta med upubliserte elementer»; det som holdes utenfor, telles og står i listen over elementer som ikke
+  blir med. Upubliserte moduler er merket i modulvalget, «Bygg indeks» er sperret når estimatet ikke fant noe, og
+  loggen viser hvor mye EmneKlar fikk fra hver Canvas-liste.
 - Lange stier og adresser (for eksempel datamappen under *Innstillinger → Sikkerhet og personvern*) brytes nå over
   flere linjer i stedet for å gi sideveis rulling på mobil.
 

@@ -221,6 +221,8 @@ async def estimate(c: AppContainer, course_id: str, options: SourceOptions) -> d
                                     for i in too_large]},
         "chunks_estimate": total_chunks,
         "skipped": [s.as_dict() for s in inv.skipped],
+        "unpublished": inv.unpublished,
+        "unpublished_included": inv.unpublished_included,
         "limitations": inv.limitations,
         "modules": inv.modules,
         "time": {"low_seconds": int(seconds * 0.5), "high_seconds": int(seconds * 2 + 10),

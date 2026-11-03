@@ -63,7 +63,21 @@ function EstimateView({ estimate, accept, setAccept, consent, setConsent }: {
     <section className="ek-stack" data-gap="4" aria-labelledby="rag-estimat">
       <h3 id="rag-estimat">Estimat</h3>
       <DataTable caption="Innhold som leses" columns={columns} rows={rows} rowKey={(r) => r.key}
-        empty="Fant ikke noe innhold med disse valgene." />
+        empty={estimate.unpublished ? "Fant ikke noe publisert innhold med disse valgene."
+          : "Fant ikke noe innhold med disse valgene."} />
+      {estimate.unpublished ? (
+        <Alert tone={rows.length ? "info" : "warning"}
+          title={`${formatNumber(estimate.unpublished)} upubliserte elementer er ikke med`}>
+          For hele emnet tas upublisert innhold ikke med som standard. Slå på «Ta med upubliserte elementer» under
+          «Valg», eller velg modulene under «Valgte moduler», og beregn estimatet på nytt.
+        </Alert>
+      ) : null}
+      {estimate.unpublished_included ? (
+        <Alert tone="info" title={`${formatNumber(estimate.unpublished_included)} upubliserte elementer er med`}>
+          De er ikke synlige for studentene i Canvas ennå. Ikke del indeksen eller eksporten med studenter hvis den har
+          innhold de ikke skal se (for eksempel eksamensoppgaver).
+        </Alert>
+      ) : null}
       <p className="ek-small">
         Omtrent {formatNumber(estimate.words)} ord tekst og {formatNumber(estimate.documents.count)} dokumenter
         ({formatMb(estimate.documents.size_mb)}), anslagsvis {formatNumber(estimate.chunks_estimate)} utdrag.
@@ -157,7 +171,8 @@ export function BuildPanel({ courseId, status }: { courseId: string; status: Rag
   const needsAccept = Boolean(estimate?.downloads.length) && !accept;
   const external = Boolean(estimate && (estimate.embedding.needs_confirmation ||
     estimate.ai.some((a) => a.external && a.available)));
-  const blocked = !estimate || needsAccept || (external && !consent);
+  const empty = Boolean(estimate) && !Object.values(estimate?.counts ?? {}).some((n) => n > 0);
+  const blocked = !estimate || empty || needsAccept || (external && !consent);
   const unavailable = status.not_available;
   const toggleGroup = (group: FileGroup, on: boolean) =>
     set({ file_groups: on ? [...options.file_groups, group] : options.file_groups.filter((g) => g !== group) });
@@ -188,13 +203,15 @@ export function BuildPanel({ courseId, status }: { courseId: string; status: Rag
           <RadioGroup legend="Omfang" name="rag-scope" value={options.scope} onChange={(scope) => set({ scope })}
             options={[
               { value: "course", label: "Hele emnet", hint: "Alt lærerinnhold, også det som ikke ligger i moduler." },
-              { value: "modules", label: "Valgte moduler", hint: "Elementene i modulene og filene de lenker til." },
+              { value: "modules", label: "Valgte moduler",
+                hint: "Alt i modulene du velger og filene de lenker til – også det som ikke er publisert ennå." },
             ]} />
           {options.scope === "modules" ? (
             index.isPending ? <Spinner label="Henter moduler …" /> : (
               <Fieldset legend="Moduler">
                 {(index.data?.modules ?? []).map((m) => (
-                  <Checkbox key={m.id} label={`${m.name} (${m.items_count} elementer)`} checked={options.module_ids.includes(m.id)}
+                  <Checkbox key={m.id} label={`${m.name} (${m.items_count} elementer${m.published === false ? ", upublisert" : ""})`}
+                    checked={options.module_ids.includes(m.id)}
                     onChange={(e) => set({ module_ids: e.target.checked ? [...options.module_ids, m.id]
                       : options.module_ids.filter((x) => x !== m.id) })} />
                 ))}
@@ -225,9 +242,11 @@ export function BuildPanel({ courseId, status }: { courseId: string; status: Rag
               hint={unavailable.images ?? "Beskrivelser med en bildemodell (KI). Pynt, ikoner og duplikater filtreres bort."} />
           </Fieldset>
           <Fieldset legend="Valg">
-            <Checkbox label="Ta med upubliserte elementer" checked={options.include_unpublished}
-              onChange={(e) => set({ include_unpublished: e.target.checked })}
-              hint="Av som standard. Slå på bare hvis indeksen ikke skal deles med studenter." />
+            {options.scope === "course" ? (
+              <Checkbox label="Ta med upubliserte elementer" checked={options.include_unpublished}
+                onChange={(e) => set({ include_unpublished: e.target.checked })}
+                hint="Av som standard for hele emnet. Velger du moduler, tas alt i dem med, publisert eller ikke." />
+            ) : null}
             <Checkbox label="Kontekstuell berikelse med KI" checked={options.contextual_enrichment}
               disabled={Boolean(unavailable.contextual_enrichment)}
               onChange={(e) => set({ contextual_enrichment: e.target.checked })}

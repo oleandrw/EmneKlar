@@ -123,7 +123,10 @@ backend/tests/test_course_rag_*.py         enhetstester + integrasjonstest mot f
   (Word, PDF, Markdown, tekst i tillegg til ZIP), slik at kunnskapsbasen kan lastes opp i verktøy som NotebookLM
   eller Copilot. I tillegg leses flere filtyper enn de som er nevnt: ODT/ODP/ODS, RTF, CSV, HTML og
   undertekstfiler (VTT/SRT). Gamle binærformater (DOC/PPT/XLS) hoppes over med forklaring.
-* Upubliserte elementer tas ikke med som standard (kan slås på).
+* Upublisert innhold: velger du moduler under «Valgte moduler», tas alt i dem med, publisert eller ikke (valget er
+  ditt, for eksempel i et Blueprint- eller utviklingsemne). For hele emnet tas upublisert innhold bare med når
+  «Ta med upubliserte elementer» er slått på. Det som holdes utenfor, telles og listes med forklaring, og estimatet
+  sier hvor mange upubliserte elementer som er med.
 * Uten lokale modeller eller embedding-API brukes bare nøkkelordsøk (BM25); grensesnittet sier det tydelig.
   Embedding kan også gå via en OpenAI-kompatibel leverandør (f.eks. Ollama med `bge-m3` lokalt).
 * NB-Whisper finnes offisielt i Transformers-format. EmneKlar laster ned den offisielle modellen og konverterer

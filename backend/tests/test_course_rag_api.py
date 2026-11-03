@@ -72,6 +72,13 @@ def test_estimate_counts_and_privacy(rag: TestClient) -> None:
     reasons = " ".join(s["reason"] for s in data["skipped"])
     assert "blokkredigering" in reasons and "gammelt binærformat" in reasons and "LTI" in reasons
     assert all("hemmelige" not in s["title"] for s in data["skipped"])  # student titles are not shown
+    # Unpublished content is never dropped silently: it is counted and listed with what to do.
+    assert data["unpublished"] == 1
+    assert any(s["title"] == "Utkast til eksamen" and "Ta med upubliserte elementer" in s["reason"]
+               for s in data["skipped"])
+    with_drafts = rag.post(f"/api/courses/{RAG_COURSE}/rag/estimate",
+                           json={**BASE_OPTIONS, "include_unpublished": True}).json()
+    assert with_drafts["counts"]["page"] == 6 and with_drafts["unpublished"] == 0
     assert data["time"]["low_seconds"] <= data["time"]["high_seconds"] and data["privacy"]
     assert data["embedding"]["available"] and data["downloads"] == []
 
@@ -121,6 +128,26 @@ def test_incremental_update_only_processes_changes(rag: TestClient, rag_state: F
     assert third["result"]["items_processed"] == 1
     assert search(rag, "metning kulør")["hits"][0]["title"] == "Fargelære"
     assert not any("A101" in h["text"] for h in search(rag, "tirsdager rom A101")["hits"])  # deleted page is gone
+
+
+def test_selected_unpublished_module_is_included(rag: TestClient, rag_state: FakeCanvasState) -> None:
+    course = rag_state.courses[RAG_COURSE]
+    course.modules[2]["published"] = False  # «Modul 2 – Farger», not published yet (e.g. a Blueprint template)
+    course.pages["fargelaere"]["published"] = False
+    # Picking the module is the choice: its content is included, published or not, and the estimate says so.
+    picked = rag.post(f"/api/courses/{RAG_COURSE}/rag/estimate", json={**BASE_OPTIONS, "scope": "modules",
+                                                                       "module_ids": ["302"]}).json()
+    assert picked["counts"]["page"] == 1 and picked["counts"]["assignment"] == 1 and picked["counts"]["quiz"] == 1
+    assert picked["unpublished"] == 0 and picked["unpublished_included"] >= 3
+    # For the whole course, unpublished content needs the explicit option – and is listed, never dropped silently.
+    whole = rag.post(f"/api/courses/{RAG_COURSE}/rag/estimate", json=BASE_OPTIONS).json()
+    assert whole["counts"]["page"] == 4 and whole["unpublished"] == 2
+    assert {"Fargelære", "Utkast til eksamen"} <= {s["title"] for s in whole["skipped"] if "upubliserte" in s["reason"]}
+    drafts = rag.post(f"/api/courses/{RAG_COURSE}/rag/estimate", json={**BASE_OPTIONS,
+                                                                       "include_unpublished": True}).json()
+    assert drafts["counts"]["page"] == 6 and drafts["unpublished"] == 0 and drafts["unpublished_included"] == 2
+    build(rag, scope="modules", module_ids=["302"], mode="full")
+    assert search(rag, "metning kulør")["hits"][0]["title"] == "Fargelære"
 
 
 def test_modules_scope(rag: TestClient) -> None:

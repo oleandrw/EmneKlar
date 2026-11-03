@@ -178,6 +178,8 @@ export interface Estimate {
   images?: { candidates: number; documents_note: string };
   chunks_estimate: number;
   skipped: SkippedItem[];
+  unpublished: number;
+  unpublished_included: number;
   limitations: string[];
   modules: { id: string; name: string; published: boolean; items_count: number }[];
   time: { low_seconds: number; high_seconds: number; assumptions: string[] };

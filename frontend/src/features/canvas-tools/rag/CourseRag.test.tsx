@@ -104,7 +104,7 @@ describe("BuildPanel", () => {
     const estimate: Estimate = {
       counts: { page: 3, file_pdf: 2 }, words: 1200, documents: { count: 2, size_mb: 1.5, too_large: [] },
       chunks_estimate: 9, skipped: [{ key: "page:blokk", kind: "page", kind_label: "Side", title: "Blokkside",
-        reason: "Blokkredigering", url: null }], limitations: [], modules: [],
+        reason: "Blokkredigering", url: null }], unpublished: 0, unpublished_included: 0, limitations: [], modules: [],
       time: { low_seconds: 10, high_seconds: 50, assumptions: ["Embedding: ca. 3 utdrag per sekund (CPU)."] },
       downloads: [{ label: "BGE-M3", size_mb: 2270, kind: "embedding" }], ai: [],
       embedding: { available: true, label: "BGE-M3", reason: null, needs_download: true, download_mb: 2270 },
@@ -122,6 +122,53 @@ describe("BuildPanel", () => {
     await userEvent.click(screen.getByRole("checkbox", { name: /Jeg godtar nedlasting/ }));
     await waitFor(() => expect(start).toBeEnabled());
     expect(calls[0].body).toMatchObject({ ...DEFAULT_OPTIONS });
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("explains an empty estimate caused by unpublished content", async () => {
+    const estimate: Estimate = {
+      counts: {}, words: 0, documents: { count: 0, size_mb: 0, too_large: [] }, chunks_estimate: 0,
+      skipped: [{ key: "page:uke-1", kind: "page", kind_label: "Side", title: "Uke 1", reason: "Upublisert i Canvas.",
+        url: null }], unpublished: 12, unpublished_included: 0, limitations: [], modules: [],
+      time: { low_seconds: 0, high_seconds: 10, assumptions: [] }, downloads: [], ai: [],
+      embedding: { available: false, label: "x", reason: null, needs_download: false, download_mb: 0 },
+      reranker: { available: false, label: "x", reason: null, needs_download: false, download_mb: 0 }, device: "cpu",
+      privacy: [], index: { exists: false, embedding: null, built_at: null },
+    };
+    mockApi({ "/rag/estimate": estimate });
+    const { container } = render(wrap(<BuildPanel courseId="104" status={status({ stats: null })} />));
+    await userEvent.click(screen.getByRole("button", { name: "Beregn estimat" }));
+    expect(await screen.findByText("12 upubliserte elementer er ikke med")).toBeInTheDocument();
+    expect(screen.getByText("Fant ikke noe publisert innhold med disse valgene.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bygg indeks" })).toBeDisabled();
+    expect(await axeViolations(container)).toEqual([]);
+  });
+});
+
+describe("BuildPanel with selected modules", () => {
+  it("includes unpublished modules the user picks and says so", async () => {
+    const estimate: Estimate = {
+      counts: { page: 9 }, words: 3000, documents: { count: 0, size_mb: 0, too_large: [] }, chunks_estimate: 20,
+      skipped: [], unpublished: 0, unpublished_included: 9, limitations: [], modules: [],
+      time: { low_seconds: 5, high_seconds: 20, assumptions: [] }, downloads: [], ai: [],
+      embedding: { available: false, label: "x", reason: null, needs_download: false, download_mb: 0 },
+      reranker: { available: false, label: "x", reason: null, needs_download: false, download_mb: 0 }, device: "cpu",
+      privacy: [], index: { exists: false, embedding: null, built_at: null },
+    };
+    const calls = mockApi({
+      "/content-index": { modules: [{ id: "11", name: "Modul 1", items_count: 9, published: false }], items: [],
+        partial: false },
+      "/rag/estimate": estimate,
+    });
+    const { container } = render(wrap(<BuildPanel courseId="104" status={status({ stats: null })} />));
+    await userEvent.click(screen.getByRole("radio", { name: /Valgte moduler/ }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Modul 1 (9 elementer, upublisert)" }));
+    expect(screen.queryByRole("checkbox", { name: /Ta med upubliserte elementer/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Beregn estimat" }));
+    expect(await screen.findByText("9 upubliserte elementer er med")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bygg indeks" })).toBeEnabled();
+    expect(calls.find((c) => c.url.includes("/rag/estimate"))?.body).toMatchObject({ scope: "modules",
+      module_ids: ["11"] });
     expect(await axeViolations(container)).toEqual([]);
   });
 });

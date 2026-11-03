@@ -75,6 +75,12 @@ class SourceOptions(BaseModel):
     contextual_enrichment: bool = False
     keyframes: bool = False
 
+    @property
+    def with_unpublished(self) -> bool:
+        """Selected modules are an explicit choice: everything in them is included, published or not. For the whole
+        course, unpublished content needs «Ta med upubliserte elementer»."""
+        return self.include_unpublished or self.scope == "modules"
+
     def signature(self) -> str:
         """The options that change how an element is processed (scope does not)."""
         return f"{CHUNKER_VERSION}|ctx={int(self.contextual_enrichment)}|kf={int(self.keyframes)}"
@@ -125,6 +131,10 @@ class Skip:
                 "title": self.title, "reason": self.reason, "url": self.url}
 
 
+UNPUBLISHED_REASON = ("Upublisert i Canvas. Slå på «Ta med upubliserte elementer» under «Valg» for å ta det "
+                      "med.")
+
+
 @dataclass
 class Inventory:
     items: list[SourceItem] = field(default_factory=list)
@@ -132,6 +142,8 @@ class Inventory:
     limitations: list[str] = field(default_factory=list)
     modules: list[dict[str, Any]] = field(default_factory=list)
     teacher_check: bool = True
+    unpublished: int = 0  # left out because they are unpublished in Canvas (shown, never silently dropped)
+    unpublished_included: int = 0  # unpublished in Canvas, but included (selected modules or the user's choice)
 
     def by_kind(self, *kinds: str) -> list[SourceItem]:
         return [i for i in self.items if i.kind in kinds]
@@ -239,6 +251,9 @@ async def discover(api: CanvasAPI, course_id: str, options: SourceOptions, base_
     results = await asyncio.gather(*(_fetch(name, label, call, on_list, inv.limitations)
                                      for name, (label, call) in calls.items()))
     data = dict(zip(calls, results, strict=True))
+    log.info("Emne-RAG: emne %s – %s", course_id, ", ".join(
+        f"{name}: {len(value) if isinstance(value, list | set) else ('feil' if value is None else 'ok')}"
+        for name, value in data.items()))
     course = data.get("course") or {}
     tz_name = course.get("time_zone")
     teacher_ids: set[str] | None = data.get("teachers")
@@ -250,6 +265,7 @@ async def discover(api: CanvasAPI, course_id: str, options: SourceOptions, base_
     # -- modules: membership and scope --------------------------------------------------------------
     member: dict[str, list[dict[str, str]]] = {}
     in_modules: set[str] = set()
+    published_in_modules: set[str] = set()  # keys published in at least one wanted module
     selected = set(options.module_ids)
     external: list[tuple[dict[str, Any], dict[str, str]]] = []
     for module in data.get("modules") or []:
@@ -271,7 +287,9 @@ async def discover(api: CanvasAPI, course_id: str, options: SourceOptions, base_
                 if mod not in member[key]:
                     member[key].append(mod)
                 item_published = item.get("published") is not False and module_published
-                if wanted and (item_published or options.include_unpublished):
+                if wanted and item_published:
+                    published_in_modules.add(key)
+                if wanted and (item_published or options.with_unpublished):
                     in_modules.add(key)
 
     def in_scope(key: str) -> bool:
@@ -286,6 +304,18 @@ async def discover(api: CanvasAPI, course_id: str, options: SourceOptions, base_
     def is_published(raw: dict[str, Any]) -> bool:
         return raw.get("published") is not False
 
+    def left_out_unpublished(raw: dict[str, Any], key: str, kind: str, title: str, url: str | None) -> bool:
+        """True when the element is left out because it is unpublished – recorded, never dropped silently."""
+        hidden = not is_published(raw) or (options.scope == "modules" and key not in published_in_modules)
+        if not hidden or not options.text:  # without text, HTML content is only read for links: nothing to report
+            return hidden and not options.with_unpublished
+        if options.with_unpublished:
+            inv.unpublished_included += 1
+            return False
+        inv.unpublished += 1
+        inv.skipped.append(Skip(key, kind, title, UNPUBLISHED_REASON, url))
+        return True
+
     # -- HTML content ---------------------------------------------------------------------------------
     for raw in data.get("pages") or []:
         key = f"page:{raw.get('url')}"
@@ -293,7 +323,7 @@ async def discover(api: CanvasAPI, course_id: str, options: SourceOptions, base_
             continue
         title = raw.get("title") or ""
         url = _abs(base, raw.get("html_url"))
-        if not is_published(raw) and not options.include_unpublished:
+        if left_out_unpublished(raw, key, "page", title, url):
             continue
         if is_block_editor_page(raw):
             inv.skipped.append(Skip(key, "page", title, "Siden er laget med Canvas' blokkredigering. Canvas-API-et gir "
@@ -305,10 +335,12 @@ async def discover(api: CanvasAPI, course_id: str, options: SourceOptions, base_
                        content_hash=_hash(title, body)))
     for raw in data.get("assignments") or []:
         key = f"assignment:{raw.get('id')}"
-        if not in_scope(key) or (not is_published(raw) and not options.include_unpublished):
+        if not in_scope(key):
             continue
         if raw.get("quiz_id") or raw.get("is_quiz_assignment") or raw.get("discussion_topic"):
             continue  # represented by the quiz / discussion itself
+        if left_out_unpublished(raw, key, "assignment", raw.get("name") or "", _abs(base, raw.get("html_url"))):
+            continue
         facts = assignment_facts(raw, tz_name)
         body = (raw.get("description") or "") + (f"<p>{facts}</p>" if facts else "")
         title = raw.get("name") or ""
@@ -316,7 +348,7 @@ async def discover(api: CanvasAPI, course_id: str, options: SourceOptions, base_
                        raw.get("updated_at"), body=body, content_hash=_hash(title, body)))
     for raw in data.get("discussions") or []:
         key = f"discussion:{raw.get('id')}"
-        if not in_scope(key) or (not is_published(raw) and not options.include_unpublished):
+        if not in_scope(key):
             continue
         author = raw.get("author") or {}
         author_id = str(author.get("id") or "") if isinstance(author, dict) else ""
@@ -326,12 +358,16 @@ async def discover(api: CanvasAPI, course_id: str, options: SourceOptions, base_
                                     "Bare lærerens innlegg tas med. Temaer og svar fra studenter hentes aldri."))
             continue
         title = raw.get("title") or ""
+        if left_out_unpublished(raw, key, "discussion", title, _abs(base, raw.get("html_url"))):
+            continue
         body = raw.get("message") or ""
         add(SourceItem(key, "discussion", str(raw.get("id")), title, _abs(base, raw.get("html_url")),
                        raw.get("updated_at"), body=body, content_hash=_hash(title, body)))
     for raw in data.get("quizzes") or []:
         key = f"quiz:{raw.get('id')}"
-        if not in_scope(key) or (not is_published(raw) and not options.include_unpublished):
+        if not in_scope(key):
+            continue
+        if left_out_unpublished(raw, key, "quiz", raw.get("title") or "", _abs(base, raw.get("html_url"))):
             continue
         facts = quiz_facts(raw, tz_name)
         body = (raw.get("description") or "") + (f"<p>{facts}</p>" if facts else "")
@@ -524,8 +560,6 @@ def _add_file(inv: Inventory, raw: dict[str, Any], options: SourceOptions, teach
     name = str(raw.get("display_name") or raw.get("filename") or "")
     url = f"{base}/courses/{course_id}/files/{fid}"
     fmt = file_format(name, raw.get("content-type"))
-    if raw.get("locked") and not options.include_unpublished:
-        return
     uploader = raw.get("user")
     if teacher_ids is not None and isinstance(uploader, dict) and uploader.get("id") is not None \
             and str(uploader.get("id")) not in teacher_ids:
@@ -554,6 +588,12 @@ def _add_file(inv: Inventory, raw: dict[str, Any], options: SourceOptions, teach
         return
     if category is None:
         return
+    if raw.get("locked"):  # «locked» = unpublished file
+        if not options.with_unpublished:
+            inv.unpublished += 1
+            inv.skipped.append(Skip(key, "file", name, UNPUBLISHED_REASON, url))
+            return
+        inv.unpublished_included += 1
     modules = list(member.get(key, []))
     _merge_modules(modules, parent_modules or [])
     inv.items.append(SourceItem(
