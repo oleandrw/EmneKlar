@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node / frontend build output (release zips include frontend/dist, git does not)
+node_modules/
+frontend/dist/
+frontend/playwright-report/
+frontend/test-results/
+frontend/coverage/
+
+# Local data and secrets never belong in the repository.
+# User data lives in %LOCALAPPDATA%\EmneKlar; secrets live in Windows Credential Manager.
+*.db
+*.db-journal
+*.sqlite3
+.env
+.env.*
+!.env.example
+
+# Update scratch space and release packages (scripts/update.py, scripts/package_release.py)
+.update/
+dist-release/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

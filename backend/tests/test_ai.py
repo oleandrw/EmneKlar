@@ -1,0 +1,273 @@
+"""AI: provider abstraction, routing strategies, vision, fallback, privacy, secrets."""
+
+from __future__ import annotations
+
+import json
+
+import httpx
+import pytest
+from fastapi.testclient import TestClient
+
+from emneklar.core.ai.base import AIMessage, AIRequest, ImagePart, TextPart
+from emneklar.core.ai.providers.anthropic import AnthropicProvider
+from emneklar.core.ai.providers.openai_compat import AzureOpenAIProvider, OpenAICompatibleProvider
+from emneklar.core.ai.router import route
+from emneklar.core.storage.settings import AppSettings
+from tests.conftest import wait_for_job
+from tests.fakes.fake_canvas import COURSE_ID
+
+SCHEMA = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"], "additionalProperties": False}
+
+
+def model(provider: str, model_id: str, *, q: int, c: int, s: int = 2, vision: bool = True, ctx: int = 4,
+          known: bool = True, enabled: bool = True) -> dict:
+    return {"provider_id": provider, "model_id": model_id, "display_name": model_id, "vision": vision,
+            "structured_output": True, "context_class": ctx, "quality_class": q, "cost_class": c, "speed_class": s,
+            "enabled": enabled, "capabilities_known": known}
+
+
+MODELS = [
+    model("openai", "small", q=2, c=1, s=3),
+    model("openai", "medium", q=3, c=2, s=2),
+    model("anthropic", "large", q=4, c=4, s=1),
+    model("anthropic", "text-only-cheap", q=2, c=1, s=3, vision=False),
+    model("local", "unclassified", q=1, c=0, known=False),
+]
+READY = {"openai": True, "anthropic": True, "local": True}
+
+
+def settings(strategy: str = "auto", **ai: object) -> AppSettings:
+    s = AppSettings()
+    s.ai.strategy = strategy  # type: ignore[assignment]
+    for key, value in ai.items():
+        setattr(s.ai, key, value)
+    return s
+
+
+# ------------------------------------------------------------------------------------ routing
+
+
+def test_simple_task_uses_cheapest_adequate_model() -> None:
+    decision = route("text_simple", settings(), MODELS, READY)
+    assert decision.primary["model_id"] in ("small", "text-only-cheap")
+    assert "rimeligste" in decision.reason
+
+
+def test_complex_task_needs_capable_model() -> None:
+    decision = route("quiz_generation", settings(), MODELS, READY, input_tokens=5000)
+    assert decision.primary["model_id"] == "medium"
+    big = route("quiz_generation", settings(), MODELS, READY, input_tokens=60_000)
+    assert big.primary["model_id"] == "large", "large inputs raise the required quality"
+
+
+def test_vision_routing_excludes_text_only_models() -> None:
+    decision = route("alt_text", settings(), MODELS, READY)
+    assert decision.primary["vision"] is True
+    assert all(m["vision"] for m in decision.fallbacks)
+
+
+def test_strategies() -> None:
+    assert route("text_standard", settings("quality"), MODELS, READY).primary["model_id"] == "large"
+    assert route("quiz_review", settings("low_cost"), MODELS, READY).primary["cost_class"] == 1
+    assert route("text_standard", settings("speed"), MODELS, READY).primary["speed_class"] == 3
+
+
+def test_manual_strategy_and_preferred_provider() -> None:
+    manual = route("text_standard", settings("manual", manual_models={"text_standard": "anthropic/large"}), MODELS, READY)
+    assert manual.primary["model_id"] == "large"
+    missing = route("text_standard", settings("manual"), MODELS, READY)
+    assert missing.primary is None and "Manuell" in missing.reason
+    preferred = route("quiz_review", settings(task_providers={"quiz_review": "anthropic"}), MODELS, READY)
+    assert preferred.primary["provider_id"] == "anthropic"
+
+
+def test_unclassified_and_unready_models_are_never_used() -> None:
+    decision = route("text_simple", settings("low_cost"), MODELS, {"openai": False, "anthropic": False, "local": True})
+    assert decision.primary is None, "an unclassified discovered model must not be used"
+    assert any("ikke klassifisert" in e for e in decision.excluded)
+
+
+def test_fallbacks_are_ordered() -> None:
+    decision = route("text_standard", settings(), MODELS, READY)
+    ids = [decision.primary["model_id"]] + [m["model_id"] for m in decision.fallbacks]
+    assert len(ids) == len(set(ids)) and "large" in ids
+
+
+# ----------------------------------------------------------------------- provider payloads
+
+
+def capture(response: dict) -> tuple[list[httpx.Request], httpx.MockTransport]:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=response)
+
+    return seen, httpx.MockTransport(handler)
+
+
+def request_with_image() -> AIRequest:
+    return AIRequest(model="m", system="sys", json_schema=SCHEMA,
+                     messages=[AIMessage(parts=[TextPart(text="hei"), ImagePart.from_bytes(b"png", "image/png")])])
+
+
+async def test_openai_payload() -> None:
+    seen, transport = capture({"choices": [{"message": {"content": "{\"ok\": true}"}, "finish_reason": "stop"}],
+                               "usage": {"prompt_tokens": 5, "completion_tokens": 2}})
+    provider = OpenAICompatibleProvider("openai", base_url="https://api.openai.com/v1", api_key="sk-test-123456",
+                                        local=False, transport=transport)
+    result = await provider.generate(request_with_image())
+    body = json.loads(seen[0].content)
+    assert "temperature" not in body and body["max_completion_tokens"] == 2000
+    assert body["response_format"]["json_schema"]["strict"] is True
+    assert body["messages"][1]["content"][1]["image_url"]["url"].startswith("data:image/png;base64,")
+    assert seen[0].headers["authorization"] == "Bearer sk-test-123456"
+    assert result.data == {"ok": True} and result.usage.input_tokens == 5
+
+
+async def test_local_payload_uses_max_tokens_and_temperature() -> None:
+    seen, transport = capture({"choices": [{"message": {"content": "{\"ok\": true}"}}]})
+    provider = OpenAICompatibleProvider("local", base_url="http://127.0.0.1:11434/v1", api_key=None, local=True,
+                                        transport=transport)
+    await provider.generate(request_with_image())
+    body = json.loads(seen[0].content)
+    assert body["max_tokens"] == 2000 and body["temperature"] == 0.2 and "max_completion_tokens" not in body
+    assert provider.data_leaves_machine is False
+
+
+async def test_azure_v1_and_classic_urls() -> None:
+    seen, transport = capture({"choices": [{"message": {"content": "{\"ok\": true}"}}]})
+    v1 = AzureOpenAIProvider("azure", endpoint="https://res.openai.azure.com", api_key="k-123456", api_version=None,
+                             transport=transport)
+    await v1.generate(request_with_image())
+    assert str(seen[0].url) == "https://res.openai.azure.com/openai/v1/chat/completions"
+    assert seen[0].headers["api-key"] == "k-123456" and "authorization" not in seen[0].headers
+    classic = AzureOpenAIProvider("azure", endpoint="https://res.openai.azure.com", api_key="k-123456",
+                                  api_version="2024-10-21", transport=transport)
+    await classic.generate(request_with_image())
+    assert "/openai/deployments/m/chat/completions?api-version=2024-10-21" in str(seen[1].url)
+
+
+async def test_anthropic_payload_and_legacy_fallback() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        body = json.loads(request.content)
+        if "output_config" in body and body["model"] == "old-model":
+            return httpx.Response(400, json={"error": {"message": "output_config: not supported"}})
+        if "tools" in body:
+            return httpx.Response(200, json={"content": [{"type": "tool_use", "name": "svar", "input": {"ok": True}}],
+                                             "stop_reason": "tool_use", "usage": {}})
+        return httpx.Response(200, json={"content": [{"type": "thinking", "thinking": ""},
+                                                     {"type": "text", "text": "{\"ok\": true}"}],
+                                         "stop_reason": "end_turn", "usage": {"input_tokens": 3, "output_tokens": 1}})
+
+    provider = AnthropicProvider("anthropic", api_key="sk-ant-test-123456789", transport=httpx.MockTransport(handler))
+    result = await provider.generate(request_with_image())
+    body = json.loads(seen[0].content)
+    assert body["output_config"]["format"]["type"] == "json_schema" and "temperature" not in body
+    assert body["max_tokens"] > 2000, "headroom for adaptive thinking"
+    assert seen[0].headers["anthropic-version"] == "2023-06-01"
+    assert result.data == {"ok": True}
+    legacy = await provider.generate(request_with_image().model_copy(update={"model": "old-model"}))
+    assert legacy.data == {"ok": True}
+
+
+# ---------------------------------------------------------------- service, privacy, secrets
+
+
+def configure(client: TestClient, provider: str = "openai", key: str = "sk-proj-testkey1234567890") -> None:
+    assert client.put(f"/api/ai/providers/{provider}", json={"enabled": True, "api_key": key}).status_code == 200
+
+
+def test_no_ai_configured_core_still_works(canvas_client: TestClient) -> None:
+    providers = canvas_client.get("/api/ai/providers").json()
+    assert "Ingen KI-leverandør" in providers["unavailable_reason"]
+    job = canvas_client.post("/api/analysis", json={"course_id": COURSE_ID, "domains": ["accessibility"]}).json()
+    assert wait_for_job(canvas_client, job["id"])["status"] == "completed"
+
+
+def test_api_keys_are_never_returned(canvas_client: TestClient) -> None:
+    configure(canvas_client)
+    body = canvas_client.get("/api/ai/providers").text
+    assert "sk-proj-testkey1234567890" not in body and '"key_configured":true' in body.replace(" ", "")
+    container = canvas_client.app.state.container  # type: ignore[attr-defined]
+    assert container.secrets.get("ai_key:openai") == "sk-proj-testkey1234567890"
+    assert "sk-proj" not in json.dumps(container.settings.get().model_dump(mode="json"))
+
+
+def test_external_ai_is_off_until_enabled(canvas_client: TestClient) -> None:
+    configure(canvas_client)
+    reason = canvas_client.get("/api/ai/providers").json()["unavailable_reason"]
+    assert "ekstern KI er slått av" in reason
+    canvas_client.app.state.container.settings.update(  # type: ignore[attr-defined]
+        lambda s: setattr(s.privacy, "allow_external_ai", True))
+    assert canvas_client.get("/api/ai/providers").json()["unavailable_reason"] is None
+
+
+def test_local_model_allowed_without_external_sharing(canvas_client: TestClient) -> None:
+    container = canvas_client.app.state.container  # type: ignore[attr-defined]
+    canvas_client.put("/api/ai/providers/local", json={"enabled": True})
+    container.ai.registry.add("local", "llama-lokal", {"quality_class": 2, "speed_class": 2, "cost_class": 0,
+                                                       "vision": True, "structured_output": True, "context_class": 2})
+    decision = canvas_client.get("/api/ai/routing").json()
+    alt = next(t for t in decision["tasks"] if t["key"] == "alt_text")
+    assert alt["decision"]["primary"]["model_id"] == "llama-lokal"
+
+
+def test_external_endpoint_must_use_https(canvas_client: TestClient) -> None:
+    bad = canvas_client.put("/api/ai/providers/openai", json={"endpoint": "http://api.example.org/v1"})
+    assert bad.status_code == 400
+    ok = canvas_client.put("/api/ai/providers/local", json={"endpoint": "http://localhost:1234/v1"})
+    assert ok.status_code == 200
+
+
+def ai_transport(handler):  # type: ignore[no-untyped-def]
+    return httpx.MockTransport(handler)
+
+
+def test_alt_text_suggestion_with_consent_and_fallback(canvas_container, canvas_client: TestClient) -> None:  # type: ignore[no-untyped-def]
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.host)
+        if request.url.host == "api.openai.com":
+            return httpx.Response(503, text="overloaded")
+        return httpx.Response(200, json={"content": [{"type": "text", "text": json.dumps(
+            {"alt_text": "Diagram som sammenligner raster- og vektorgrafikk", "decorative": False,
+             "confidence": "medium", "notes": ""})}], "stop_reason": "end_turn", "usage": {}})
+
+    canvas_container.ai_transport = ai_transport(handler)
+    configure(canvas_client, "openai")
+    configure(canvas_client, "anthropic", "sk-ant-api-test-1234567890")
+    canvas_container.settings.update(lambda s: setattr(s.privacy, "allow_external_ai", True))
+    # Make the OpenAI model the first choice so the fallback is exercised.
+    canvas_container.settings.update(lambda s: s.ai.task_providers.update({"alt_text": "openai"}))
+    job = canvas_client.post("/api/analysis", json={"course_id": COURSE_ID, "domains": ["accessibility"]}).json()
+    wait_for_job(canvas_client, job["id"])
+    finding = next(f for f in canvas_client.get(f"/api/courses/{COURSE_ID}/findings?domain=accessibility&page_size=200")
+                   .json()["items"] if f["rule_id"] == "UU-IMG-MISSING-ALT")
+    plan = canvas_client.post("/api/ai/tasks/alt-text/prepare", json={"finding_id": finding["id"]}).json()
+    assert plan["available"] and plan["needs_confirmation"] and "Ingen studentdata" in plan["payload_summary"]
+    refused = canvas_client.post("/api/ai/tasks/alt-text", json={"finding_id": finding["id"], "confirmed": False})
+    assert refused.status_code == 409 and refused.json()["error"]["code"] == "ai_consent_required"
+    assert calls == [], "nothing is sent before consent"
+    ok = canvas_client.post("/api/ai/tasks/alt-text", json={"finding_id": finding["id"], "confirmed": True})
+    assert ok.status_code == 200, ok.text
+    answer = ok.json()
+    assert answer["label"] == "KI-forslag – må vurderes" and "raster" in answer["suggestion"]
+    assert "api.openai.com" in calls and "api.anthropic.com" in calls, "falls back to the next model"
+    usage = canvas_client.get("/api/ai/usage").json()["items"]
+    assert any(u["fallback_used"] and u["success"] for u in usage)
+    assert all("Diagram" not in json.dumps(u) for u in usage), "usage log holds metadata only"
+
+
+@pytest.mark.parametrize("task", ["text_simple", "alt_text", "quiz_generation", "course_structure"])
+def test_routing_endpoint_explains_decisions(canvas_client: TestClient, task: str) -> None:
+    configure(canvas_client, "anthropic", "sk-ant-api-test-1234567890")
+    canvas_client.app.state.container.settings.update(  # type: ignore[attr-defined]
+        lambda s: setattr(s.privacy, "allow_external_ai", True))
+    tasks = {t["key"]: t for t in canvas_client.get("/api/ai/routing").json()["tasks"]}
+    assert tasks[task]["decision"]["primary"] is not None
+    assert tasks[task]["decision"]["reason"]

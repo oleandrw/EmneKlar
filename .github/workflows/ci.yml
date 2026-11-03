@@ -1,0 +1,210 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  # Node.js LTS. frontend/package-lock.json needs >= 22.22.2 (react-router, jsdom); "22" resolves to the newest 22.x.
+  NODE_VERSION: "22"
+
+jobs:
+  backend:
+    name: Backend (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        python: ["3.12", "3.13"]
+        include:
+          - os: ubuntu-latest
+            python: "3.11" # oldest supported version (requires-python >= 3.11)
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: |
+            backend/constraints.txt
+            backend/pyproject.toml
+      # Every pin in backend/constraints.txt has wheels for CPython 3.11-3.14 on Windows and Linux,
+      # so the tested versions are used on every matrix entry.
+      - name: Install backend with dev tools (pinned versions)
+        run: python -m pip install -c backend/constraints.txt -e "backend[dev]"
+      - name: Ruff
+        working-directory: backend
+        run: python -m ruff check --config pyproject.toml . ../scripts
+      - name: Mypy
+        working-directory: backend
+        run: python -m mypy emneklar ../scripts
+      - name: Pytest (includes the migrations-vs-models check)
+        working-directory: backend
+        run: python -m pytest
+
+  frontend:
+    name: Frontend (typecheck, lint, unit tests, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    name: End-to-end (Playwright + axe)
+    # Windows, like the users and the developers: the Playwright setup starts
+    # backend/tests/fakes/dev_server.py with the Python from backend\.venv.
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/constraints.txt
+      - name: Python environment in backend\.venv (as setup.bat creates it)
+        shell: pwsh
+        run: |
+          python -m venv backend\.venv
+          backend\.venv\Scripts\python.exe -m pip install -c backend\constraints.txt -e backend
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Make "python" resolve to the venv as well, whichever way the Playwright config starts it.
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $PWD 'backend\.venv\Scripts')
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: npm ci
+        working-directory: frontend
+        run: npm ci
+      - name: Install Chromium for Playwright
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Build the user interface (served by the backend)
+        working-directory: frontend
+        run: npm run build
+      - name: Playwright + axe
+        working-directory: frontend
+        run: npm run e2e
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          if-no-files-found: ignore
+
+  dependency-audit:
+    name: Dependency audit (pip-audit, npm audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Resolve the runtime dependencies (pinned, without dev tools)
+        run: |
+          python -m venv "$RUNNER_TEMP/runtime"
+          "$RUNNER_TEMP/runtime/bin/python" -m pip install -c backend/constraints.txt -e backend
+          "$RUNNER_TEMP/runtime/bin/python" -m pip freeze --exclude-editable > "$RUNNER_TEMP/runtime-requirements.txt"
+          cat "$RUNNER_TEMP/runtime-requirements.txt"
+      - name: pip-audit (runtime dependencies)
+        run: |
+          python -m pip install -c backend/constraints.txt pip-audit
+          python -m pip_audit --requirement "$RUNNER_TEMP/runtime-requirements.txt" --no-deps --disable-pip \
+            --progress-spinner off
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: npm audit (runtime dependencies)
+        working-directory: frontend
+        run: npm audit --audit-level=high --omit=dev
+
+  windows-install:
+    name: Windows install (setup.bat, start, health, stop)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      EMNEKLAR_STRICT_PINS: "1" # CI must use the tested versions, never the fallback
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        id: python
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Use a throw-away data folder
+        shell: pwsh
+        run: Add-Content -Path $env:GITHUB_ENV -Value "EMNEKLAR_DATA_DIR=$(Join-Path $env:RUNNER_TEMP 'emneklar-data')"
+      # ".\" also works where NoDefaultCurrentDirectoryInExePath is set (cmd.exe then ignores the current folder).
+      - name: setup.bat (non-interactive)
+        shell: cmd
+        env:
+          EMNEKLAR_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: call .\setup.bat --no-pause
+      - name: setup.bat again (idempotent)
+        shell: cmd
+        env:
+          EMNEKLAR_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: call .\setup.bat --no-pause
+      - name: Start EmneKlar with start.bat, check /api/health, stop it
+        shell: pwsh
+        run: |
+          $py = Join-Path $PWD 'backend\.venv\Scripts\python.exe'
+          $console = Join-Path $env:RUNNER_TEMP 'emneklar-console.txt'  # has the login link: never printed
+          $app = Start-Process -FilePath cmd.exe -ArgumentList '/d', '/c', '.\start.bat', '--no-browser' `
+            -WorkingDirectory $PWD -RedirectStandardOutput $console -RedirectStandardError "$console.err" `
+            -NoNewWindow -PassThru
+          $null = $app.Handle  # keeps ExitCode available after the process has exited
+          & $py -m emneklar.manage health --wait 120
+          if ($LASTEXITCODE -ne 0) {
+            Get-Content "$console.err" -ErrorAction SilentlyContinue
+            Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+            exit 1
+          }
+          & $py -m emneklar.manage stop --timeout 60
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          if (-not $app.WaitForExit(60000)) { Write-Error 'start.bat did not exit after the stop request'; exit 1 }
+          if ($app.ExitCode -ne 0) { Write-Error "start.bat exited with code $($app.ExitCode)"; exit 1 }
+          & $py -m emneklar.manage health
+          if ($LASTEXITCODE -eq 0) { Write-Error 'EmneKlar still answers after stop'; exit 1 }
+          exit 0
+      - name: Upload the setup and app logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-install-logs
+          path: ${{ runner.temp }}/emneklar-data/logs/
+          if-no-files-found: ignore
