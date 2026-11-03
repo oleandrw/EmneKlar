@@ -36,6 +36,7 @@ from emneklar.core.jobs.manager import JobContext
 from emneklar.features.course_rag import engine
 from emneklar.features.course_rag.chunking import ChunkDraft, chunk_blocks, chunk_units
 from emneklar.features.course_rag.convert.documents import group_of
+from emneklar.features.course_rag.images import Deduplicator
 from emneklar.features.course_rag.sources import KIND_LABELS, TEXT_KINDS, Inventory, SourceItem, SourceOptions, discover
 from emneklar.features.course_rag.store import ChunkRecord, IndexStore, ItemRecord
 
@@ -71,7 +72,7 @@ class BuildState:
     skipped: int = 0
     unchanged: int = 0
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    extracted_images: list[dict[str, Any]] = field(default_factory=list)  # images found inside documents
+    images_seen: Deduplicator = field(default_factory=Deduplicator)  # perceptual hashes seen in this build
 
 
 def chunk_records(item: SourceItem, drafts: list[ChunkDraft], *, extra_meta: dict[str, Any] | None = None) -> list[
@@ -247,12 +248,18 @@ async def process_document(state: BuildState, item: SourceItem) -> None:
             meta["ocr"] = True
         drafts = chunk_units(units, title=item.title)
         records = chunk_records(item, drafts, extra_meta={"format": fmt})
-        for image in result.get("images") or []:
-            state.extracted_images.append({**image, "parent": item})
+        if state.request.images and result.get("images"):
+            from emneklar.features.course_rag.images import document_image_records
+
+            state.ctx.progress.set_current(item.title, operation="Beskriver bilder i dokumentet")
+            image_records, notes = await document_image_records(state, item, list(result["images"]), len(records))
+            records += image_records
+            meta["images_described"] = len(image_records)
+            if notes:
+                meta["notes"] = notes
         await store_chunks(state, item, records, content_hash=sha, meta=meta)
     finally:
-        if not state.request.images:
-            shutil.rmtree(work, ignore_errors=True)
+        shutil.rmtree(work, ignore_errors=True)
 
 
 # ------------------------------------------------------------------------------------------- the job

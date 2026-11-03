@@ -80,6 +80,7 @@ function Sources({ hits, title }: { hits: Hit[]; title: string }) {
                 <SourceLink hit={hit}><strong>{hit.citation}</strong></SourceLink>
                 <Badge>{TYPE_LABEL[hit.type] ?? hit.type}</Badge>
                 {hit.cited ? <Badge tone="success">Brukt i svaret</Badge> : null}
+                {hit.meta?.ai_label ? <Badge tone="violet">{hit.meta.ai_label}</Badge> : null}
                 {hit.url ? <ExternalIcon aria-hidden="true" className="ek-muted" /> : null}
               </span>
               {hit.heading_path.length ? <span className="ek-xs ek-muted">{hit.heading_path.join(" › ")}</span> : null}

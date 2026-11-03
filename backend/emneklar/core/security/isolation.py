@@ -36,6 +36,8 @@ ALLOWED_JOBS = {
     "inspect_document": "emneklar.features.accessibility.documents:inspect_document",
     "rag_convert": "emneklar.features.course_rag.convert.documents:convert_document",
     "rag_render_pdf": "emneklar.features.course_rag.convert.ocr:render_pdf_pages",
+    "rag_image_prepare": "emneklar.features.course_rag.convert.imageprep:prepare_image",
+    "rag_keyframes": "emneklar.features.course_rag.convert.imageprep:extract_keyframes",
 }
 
 

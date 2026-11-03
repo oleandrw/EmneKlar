@@ -65,7 +65,7 @@ def test_estimate_counts_and_privacy(rag: TestClient) -> None:
     assert response.status_code == 200, response.text
     data = response.json()
     counts = data["counts"]
-    assert counts["page"] == 4  # unpublished page and block-editor page are not counted
+    assert counts["page"] == 5  # unpublished page and block-editor page are not counted
     assert counts["discussion"] == 1 and counts["assignment"] == 1 and counts["quiz"] == 1 and counts["syllabus"] == 1
     assert counts["file_word"] == 1 and counts["file_powerpoint"] == 1 and counts["file_excel"] == 1
     assert counts["file_pdf"] == 2  # the student's PDF is not included
@@ -271,3 +271,47 @@ def test_video_captions_transcription_cache_and_privacy(rag: TestClient, rag_sta
     # A full rebuild uses the transcript cache (keyed by the file's SHA-256), not the model.
     build(rag, video=True, documents=False, mode="full")
     assert len(FakeTranscriber.calls) == 1
+
+
+def image_answers(body: dict) -> dict:
+    name = (body.get("response_format") or {}).get("json_schema", {}).get("name")
+    if name == "bildebeskrivelse":
+        return {"relevant": True, "kind": "diagram", "description": "Et fargehjul med primærfarger og sekundærfarger.",
+                "text_in_image": "ROD GUL BLA"}
+    return {"answer": "Fargehjulet viser primærfargene [S1].", "coverage": "full", "cited": ["S1"]}
+
+
+def test_images_filtered_described_and_cited(rag: TestClient, rag_container: AppContainer) -> None:
+    calls = enable_ai(rag, rag_container, image_answers)
+    options = {**BASE_OPTIONS, "images": True}
+    estimate = rag.post(f"/api/courses/{RAG_COURSE}/rag/estimate", json=options).json()
+    assert estimate["images"]["candidates"] == 6 and estimate["images"]["after_filter"] == 2
+    image_ai = next(a for a in estimate["ai"] if a["task"] == "rag_image")
+    assert image_ai["available"] and image_ai["external"] and any("bilder fra emnet" in p for p in estimate["privacy"])
+    refused = rag.post(f"/api/courses/{RAG_COURSE}/rag/build", json={**options, "accept_downloads": True})
+    assert refused.status_code == 409 and refused.json()["error"]["code"] == "ai_consent_required"
+    build(rag, images=True, confirmed=True)
+    vision_calls = [c for c in calls if (c.get("response_format") or {}).get("json_schema", {}).get("name")
+                    == "bildebeskrivelse"]
+    assert len(vision_calls) == 1  # icon, logo, decorative, SVG, duplicate and the 1×1 image in the docx are filtered
+    prompt = vision_calls[0]["messages"][-1]["content"][1]["text"]
+    assert "Bilder i emnet" in prompt and "Fargehjul" in prompt and "Fargehjulet viser primærfarger" in prompt
+    assert vision_calls[0]["messages"][-1]["content"][0]["type"] == "image_url"
+    hits = search(rag, "fargehjul primærfarger", types=["image"])["hits"]
+    assert hits and hits[0]["citation"] == "Bilde på «Bilder i emnet»" and "ROD GUL BLA" in hits[0]["text"]
+    assert hits[0]["meta"]["ai_label"].startswith("KI-generert") and hits[0]["url"].endswith("/pages/bilder")
+    reasons = " ".join(s["reason"] for s in rag.get(f"/api/courses/{RAG_COURSE}/rag").json()["index"]["skipped"]
+                       if s["kind"] == "image")
+    assert "Samme bilde som på «Bilder i emnet»" in reasons
+    assert "Samme bilde" in reasons and "dekorativt" in reasons and "lite" in reasons and "SVG" in reasons
+    assert "pynt" in reasons
+    # Unchanged images are not described again on update (and the description cache would be used anyway).
+    build(rag, images=True, confirmed=True)
+    assert len([c for c in calls if (c.get("response_format") or {}).get("json_schema", {}).get("name")
+                == "bildebeskrivelse"]) == 1
+
+
+def test_images_without_ai_are_skipped_with_reason(rag: TestClient) -> None:
+    build(rag, images=True, text=True, documents=False)
+    skipped = rag.get(f"/api/courses/{RAG_COURSE}/rag").json()["index"]["skipped"]
+    assert any(s["kind"] == "image" and "krever en bildemodell" in s["reason"] for s in skipped)

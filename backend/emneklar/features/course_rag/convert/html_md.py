@@ -104,6 +104,11 @@ class _Converter:
         caption = norm_text(figcaption.get_text(" ")) if isinstance(figcaption, Tag) else ""
         container = el.find_parent(["p", "li", "td", "th", "figure", "dd", "blockquote"]) or el.parent
         context = norm_text(container.get_text(" ")) if container else ""
+        if len(context) < 80 and isinstance(container, Tag):
+            # An image in its own paragraph: the text around it is in the neighbouring blocks.
+            before = [norm_text(s.get_text(" ")) for s in container.find_previous_siblings(limit=2) if isinstance(s, Tag)]
+            after = [norm_text(s.get_text(" ")) for s in container.find_next_siblings(limit=1) if isinstance(s, Tag)]
+            context = " ".join(t for t in [*reversed(before), context, *after] if t)
         if caption and caption not in context:
             context = f"{caption} {context}".strip()
         ref = canvas_ref(src, self.host)

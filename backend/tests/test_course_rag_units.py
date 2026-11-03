@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 from pathlib import Path
 
 import numpy as np
@@ -398,3 +399,52 @@ def test_whisper_model_size_follows_hardware(tmp_path: Path, monkeypatch: pytest
     assert nb.id == "NbAiLab/nb-whisper-large" and other.id == "Systran/faster-whisper-large-v3"
     nb, _ = whisper.choose_models(local, "medium", "", "cpu")
     assert nb.id == "NbAiLab/nb-whisper-medium"
+
+
+# ----------------------------------------------------------------------------------------------- images
+
+
+def test_decorative_images_are_filtered_from_metadata() -> None:
+    from emneklar.features.course_rag.images import metadata_reason
+
+    assert metadata_reason({"src": "/courses/1/files/2/preview", "alt": "Diagram"}) is None
+    assert "dekorativt" in (metadata_reason({"src": "/x.png", "alt": ""}) or "")
+    assert "dekorativt" in (metadata_reason({"src": "/x.png", "alt": None, "role": "presentation"}) or "")
+    assert "lite" in (metadata_reason({"src": "/x.png", "alt": "i", "width": 24, "height": 24}) or "")
+    assert "SVG" in (metadata_reason({"src": "https://cdn/figur.svg", "alt": "Figur"}) or "")
+    assert "pynt" in (metadata_reason({"src": "/files/hvl-logo.png", "alt": "Logo"}) or "")
+    assert "pynt" in (metadata_reason({"src": "/files/3/preview", "alt": "x", "classes": "icon-small"}) or "")
+    assert "Canvas" in (metadata_reason({"src": "/images/svg-icons/x.png", "alt": "x"}) or "")
+
+
+def test_image_preparation_pixels_and_duplicates(tmp_path: Path) -> None:
+    from emneklar.features.course_rag.convert.imageprep import prepare_image
+    from emneklar.features.course_rag.images import Deduplicator, pixel_reason
+    from tests.fakes.rag import diagram_png
+
+    def prep(name: str, data: bytes) -> dict:
+        (tmp_path / name).write_bytes(data)
+        return prepare_image(str(tmp_path / name), str(tmp_path / f"{name}-klar"))
+
+    big = prep("a.png", diagram_png((2400, 1800)))
+    assert big["width"] == 2400 and Path(big["path"]).is_file() and big["media_type"] == "image/jpeg"
+    from PIL import Image
+
+    with Image.open(big["path"]) as resized:
+        assert max(resized.size) == 1568
+    assert pixel_reason(prep("b.png", diagram_png())) is None
+    assert "lite" in (pixel_reason(prep("c.png", diagram_png((40, 40)))) or "")
+    assert "banner" in (pixel_reason(prep("d.png", diagram_png((1200, 100)))) or "").lower()
+    plain = io.BytesIO()
+    Image.new("RGB", (400, 300), (255, 255, 255)).save(plain, format="PNG")
+    assert "ensfarget" in (pixel_reason(prep("e.png", plain.getvalue())) or "")
+    assert prep("f.png", b"not an image")["error"] == "not_image"
+    dedupe = Deduplicator()
+    first, again = prep("g.png", diagram_png()), prep("h.png", diagram_png((420, 315)))
+    dedupe.add(first["dhash"], "«Side A»")
+    assert dedupe.duplicate_of(again["dhash"]) == "«Side A»"
+    other = Image.new("RGB", (400, 300), (255, 255, 255))
+    other.paste((0, 0, 0), (0, 0, 200, 300))
+    buf = io.BytesIO()
+    other.save(buf, format="PNG")
+    assert dedupe.duplicate_of(prep("i.png", buf.getvalue())["dhash"]) is None

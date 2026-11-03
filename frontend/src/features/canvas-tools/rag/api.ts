@@ -195,6 +195,7 @@ export interface Hit {
   text: string;
   rank: number;
   cited?: boolean;
+  meta?: { ai_label?: string; image_url?: string; video_title?: string } & Record<string, unknown>;
   scores?: {
     keyword_rank: number | null;
     keyword_score: number | null;

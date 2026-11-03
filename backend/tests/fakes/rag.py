@@ -51,6 +51,26 @@ def _wp(text: str, style: str | None = None, *, numbered: int | None = None) -> 
     return f"<w:p>{ppr}<w:r><w:t xml:space=\"preserve\">{text}</w:t></w:r></w:p>"
 
 
+def diagram_png(size: tuple[int, int] = (400, 300), *, seed: int = 0) -> bytes:
+    """A small but «informative» test image (shapes and a gradient), made with Pillow."""
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", size, (250, 250, 250))
+    draw = ImageDraw.Draw(image)
+    width, height = size
+    for x in range(width):
+        draw.line([(x, 0), (x, height // 4)], fill=(x * 255 // width, 80 + seed, 160))
+    if width >= 120 and height >= 120:
+        draw.ellipse([width // 4, height // 3, width // 2, height - 20], fill=(220, 40, 40))
+        draw.rectangle([width // 2 + 20, height // 3, width - 30, height - 40], fill=(30, 90, 200))
+        draw.text((10, height - 18), "ROD GUL BLA", fill=(0, 0, 0))
+    else:
+        draw.rectangle([0, height // 2, width - 1, height - 1], fill=(30, 90, 200))
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def rich_docx() -> bytes:
     body = [
         _wp("Forelesningsnotater om bildebehandling", "Title"),
@@ -263,6 +283,14 @@ def seed_rag_course(state: FakeCanvasState) -> CourseData:
               "<p>Komplementærfarger ligger rett overfor hverandre i fargehjulet.</p>"),
         _page("utkast", "Utkast til eksamen", "<p>Eksamensoppgaven er hemmelig.</p>", published=False),
         _page("blokk", "Blokkside", None, editor="block_editor"),
+        _page("bilder", "Bilder i emnet",
+              "<h2>Fargehjulet</h2><p>Fargehjulet viser primærfarger og sekundærfarger.</p>"
+              f'<p><img src="/courses/{RAG_COURSE}/files/7201/preview" alt="Fargehjul"></p>'
+              f'<p><img src="/courses/{RAG_COURSE}/files/7202/preview" width="16" height="16" alt="info"></p>'
+              f'<p><img src="/courses/{RAG_COURSE}/files/7203/preview" alt="Høgskolens logo"></p>'
+              f'<p><img src="/courses/{RAG_COURSE}/files/7204/preview" alt="Fargehjul igjen"></p>'
+              f'<p><img src="/courses/{RAG_COURSE}/files/7205/preview" alt=""></p>'
+              '<p><img src="https://cdn.example.org/figur.svg" alt="Figur"></p>'),
         _page("forelesninger", "Forelesninger på video",
               "<h2>Opptak</h2><p>Se forelesningen om fargerom.</p>"
               '<iframe title="Forelesning om fargerom" data-media-id="m-farge1" '
@@ -304,6 +332,11 @@ def seed_rag_course(state: FakeCanvasState) -> CourseData:
         "7006": ("Plan.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", rich_xlsx(), "42"),
         "7007": ("Skannet.pdf", "application/pdf", minimal_pdf(text=None), "42"),
         "7101": ("Lab-demo.mp4", "video/mp4", b"\x00\x00\x00\x18ftypmp42fakevideo", "42"),
+        "7201": ("fargehjul.png", "image/png", diagram_png(), "42"),
+        "7202": ("lite.png", "image/png", diagram_png((16, 16)), "42"),
+        "7203": ("hvl-logo.png", "image/png", diagram_png((300, 200), seed=40), "42"),
+        "7204": ("fargehjul-kopi.png", "image/png", diagram_png(), "42"),
+        "7205": ("pynt.png", "image/png", diagram_png((300, 200), seed=80), "42"),
         "7102": ("Lab-demo.vtt", "text/vtt", VTT_LAB.encode(), "42"),
     }
     for fid, (name, ctype, data, uploader) in files.items():
@@ -335,6 +368,7 @@ def seed_rag_course(state: FakeCanvasState) -> CourseData:
                    item("3014", "Panopto-opptak", "ExternalTool", content_id="5")]},
         {"id": "303", "name": "Modul 3 – Video", "position": 3, "published": True,
          "items": [item("3031", "Forelesninger på video", "Page", page_url="forelesninger"),
+                   item("3033", "Bilder i emnet", "Page", page_url="bilder"),
                    item("3032", "Ekstra video", "ExternalUrl", external_url="https://youtu.be/zyxwvutsrqp")]},
         {"id": "302", "name": "Modul 2 – Farger", "position": 2, "published": True,
          "items": [item("3021", "Fargelære", "Page", page_url="fargelaere"),

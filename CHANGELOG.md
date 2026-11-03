@@ -22,6 +22,12 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   sekunder med overlapp og får tidsstempel i kildehenvisningen. YouTube- og Vimeo-lenker åpnes på riktig tidspunkt.
   Bare medier som lærerens innhold peker på, tas med. Panopto, Kaltura og andre LTI-videoer vises som hoppet over med
   forklaring.
+- Emne-RAG → bilder: bilder på sider, bildefiler og bilder i Office-dokumenter beskrives av bildemodellen i KI-laget
+  (Claude-API eller lokal bildemodell), med sidetittel, overskrift, tekst rundt bildet og alt-tekst som ekstra input.
+  Beskrivelsen gjengir tekst i bildet og forklarer diagrammer og figurer, og lagres som eget utdrag med lenke til siden.
+  Pynt filtreres bort før noe sendes (dekorative bilder, ikoner, logoer, bannere, svært små og ensfargede bilder, SVG og
+  duplikater med perceptuell hash), og beskrivelsene bufres på bildets SHA-256. Valgfritt: nøkkelbilder ved
+  sceneskifte i video, koblet til tidspunktet. Bildene leses i de isolerte parserprosessene.
 - Innholdskvalitet → Media: «Standardiser videoavspillere» for YouTube. Finner innebygde videoer, forklarer avvik
   fra én responsiv og Canvas-trygg standard (16:9, maks bredde, sentrert, `allowfullscreen`, `loading="lazy"`),
   foreslår beskrivende title med synlig kilde (eksisterende title, YouTube-metadata, Canvas-kontekst, KI-forslag på

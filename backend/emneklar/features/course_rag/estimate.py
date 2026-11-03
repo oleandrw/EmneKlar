@@ -129,6 +129,10 @@ async def estimate(c: AppContainer, course_id: str, options: SourceOptions) -> d
                    "input_tokens": int(tokens), "available": plan["available"], "reason": plan["reason"],
                    "route": plan["route"], "external": plan["external"]})
         seconds += calls * ENRICH_PER_CALL
+    registry = engine.registry(c, course_id)
+    privacy = ["Bare lærerprodusert innhold leses: sider, oppgave- og quizbeskrivelser, emneplan, lærerens "
+               "diskusjonsinnlegg og lærerens filer.",
+               "Innleveringer, karakterer, meldinger, studentinnlegg og svar i diskusjoner hentes aldri."]
     downloads = []
     video = None
     assumptions_extra: list[str] = []
@@ -140,14 +144,30 @@ async def estimate(c: AppContainer, course_id: str, options: SourceOptions) -> d
         assumptions_extra.append(f"Transkripsjon med {video['model']} på {'GPU' if device == 'cuda' else 'CPU'}; "
                                  f"videoer med ukjent varighet er anslått ut fra filstørrelsen "
                                  f"({ASSUMED_BITRATE_MBIT:g} Mbit/s).")
+    images = None
+    if options.images:
+        from emneklar.features.course_rag.images import metadata_reason
+
+        candidates = [i for i in inv.items if i.kind == "image" or (i.kind == "file" and
+                      i.meta.get("category") == "image_file")]
+        likely = [i for i in candidates if metadata_reason(i.meta) is None]
+        images = {"candidates": len(candidates), "after_filter": len(likely),
+                  "documents_note": "bilder inne i dokumenter telles under byggingen"}
+        plan = c.ai.plan("rag_image", input_chars=1500, images=1, summary="")
+        ai.append({"task": "rag_image", "label": "Bildebeskrivelser", "calls": len(likely), "images": len(likely),
+                   "input_tokens": len(likely) * 2100, "available": plan["available"], "reason": plan["reason"],
+                   "route": plan["route"], "external": plan["external"]})
+        if plan["available"]:
+            seconds += len(likely) * IMAGE_SECONDS / 2
+        else:
+            inv.limitations.append(f"Bildene kan ikke beskrives: {plan['reason']}")
+        if plan["external"]:
+            privacy.append(f"Opptil {len(likely)} bilder fra emnet (og bilder i dokumenter) sendes til KI-leverandøren "
+                           "med sidetittel og tekst rundt bildet. Pynt og duplikater filtreres bort først.")
     if embedding.needs_download:
         downloads.append({"label": embedding.label, "size_mb": embedding.download_mb, "kind": "embedding"})
     if reranker.available and reranker.needs_download:
         downloads.append({"label": reranker.label, "size_mb": reranker.download_mb, "kind": "reranker"})
-    registry = engine.registry(c, course_id)
-    privacy = ["Bare lærerprodusert innhold leses: sider, oppgave- og quizbeskrivelser, emneplan, lærerens "
-               "diskusjonsinnlegg og lærerens filer.",
-               "Innleveringer, karakterer, meldinger, studentinnlegg og svar i diskusjoner hentes aldri."]
     if embedding.external:
         privacy.append(f"Utdragene sendes til {embedding.label} for embedding (ekstern leverandør).")
     return {
@@ -168,6 +188,7 @@ async def estimate(c: AppContainer, course_id: str, options: SourceOptions) -> d
                      *assumptions_extra,
                      "Første nedlasting av modeller er ikke regnet med."]},
         "video": video,
+        "images": images,
         "downloads": downloads,
         "ai": ai,
         "embedding": embedding.as_dict(),

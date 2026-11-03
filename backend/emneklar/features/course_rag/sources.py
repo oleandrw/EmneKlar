@@ -374,6 +374,8 @@ async def discover(api: CanvasAPI, course_id: str, options: SourceOptions, base_
 
     if options.video:
         _add_media(inv, data.get("media") or [], external, member, base)
+    if options.images:
+        _add_images(inv, files)
 
     # -- external links / tools in modules ---------------------------------------------------------
     for item, mod in external:
@@ -467,6 +469,32 @@ def _add_media(inv: Inventory, media_objects: list[Any], external: list[tuple[di
         entry.title = entry.title or ("YouTube-video" if entry.kind == "youtube" else "Video")
         entry.modules = entry.modules or member.get(key, [])
         inv.items.append(entry)
+
+
+def _add_images(inv: Inventory, files: dict[str, dict[str, Any]]) -> None:
+    """Images on teacher pages (one element per image address; the pages it appears on are its parents)."""
+    found: dict[str, SourceItem] = {}
+    for parent in list(inv.items):
+        if parent.parsed is None:
+            continue
+        for image in parent.parsed.images:
+            key = f"image:{_hash(image.src)[:16]}"
+            if key in found:
+                found[key].parents.append(parent.key)
+                _merge_modules(found[key].modules, parent.modules)
+                continue
+            name = image.src.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1]
+            file = files.get(image.file_id or "") or {}
+            file_name = str(file.get("display_name") or file.get("filename") or "")
+            found[key] = SourceItem(key, "image", image.file_id or key.split(":", 1)[1], f"Bilde på «{parent.title}»",
+                                    parent.url, None, modules=list(parent.modules),
+                                    meta={**image.as_dict(), "name": name, "file_name": file_name,
+                                          "page_title": parent.title, "page_url": parent.url},
+                                    content_hash=_hash(image.src, image.alt, image.context), parents=[parent.key])
+    embedded = {item.meta.get("file_id") for item in found.values() if item.meta.get("file_id")}
+    inv.items = [i for i in inv.items if not (i.kind == "file" and i.meta.get("category") == "image_file" and
+                                              i.canvas_id in embedded)]
+    inv.items.extend(found.values())
 
 
 def media_duration(item: SourceItem) -> float | None:

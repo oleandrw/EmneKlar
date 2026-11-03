@@ -27,8 +27,6 @@ router = APIRouter(prefix="/api")
 CHUNK_TYPE_LABELS = {"text": "Tekst", "table": "Tabeller", "image": "Bilder", "transcript": "Video og lyd",
                      "slide": "Lysbilder"}
 NOT_YET: dict[str, str] = {  # options that are not available in this version (key → explanation)
-    "keyframes": "Nøkkelbilder fra video kommer i neste versjon av Emne-RAG.",
-    "images": "Bilder kommer i neste versjon av Emne-RAG.",
     "contextual_enrichment": "Kontekstuell berikelse kommer i neste versjon av Emne-RAG.",
 }
 
