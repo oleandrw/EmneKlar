@@ -58,6 +58,11 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   titler. «YouTube video», «Embedded video» og titler med kolon eller punktum til slutt regnes nå også som generelle.
 
 ### Rettet
+- Emne-RAG: YouTube-teksting virket bare med de lokale modellene installert, og ellers sto det misvisende «Fant
+  ingen teksting» for hver YouTube-video. `youtube-transcript-api` (liten, ren Python) er nå en fast avhengighet, så
+  `update.bat` installerer den. Finnes ikke teksting på norsk eller engelsk, brukes tekstingen videoen har på et
+  annet språk. Grunnen vises når tekstingen mangler (ingen teksting, slettet eller privat video, aldersgrense,
+  avvist av YouTube); avviste forespørsler prøves igjen ved neste oppdatering.
 - Emne-RAG: upublisert innhold forsvant ut av estimatet uten forklaring, slik at for eksempel et Blueprint-emne der
   ingenting er publisert ennå, ga «Fant ikke noe innhold». Nå tas alt i modulene du velger under «Valgte moduler»
   med, publisert eller ikke, og estimatet sier hvor mange upubliserte elementer som er med. For hele emnet trengs

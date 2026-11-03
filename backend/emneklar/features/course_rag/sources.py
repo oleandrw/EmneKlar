@@ -93,6 +93,11 @@ class Waiting(str):
     __slots__ = ()
 
 
+# Bump when the handling of a kind changes, so «Oppdater indeks» processes those elements again (2: YouTube captions
+# without the local-model install, other languages, clear reasons).
+HANDLER_VERSIONS = {"youtube": 2}
+
+
 @dataclass
 class SourceItem:
     key: str
@@ -115,6 +120,8 @@ class SourceItem:
     def signature(self, options: SourceOptions) -> str:
         data = [self.kind, self.updated_at, self.content_hash, self.meta.get("size"),
                 sorted(m["id"] for m in self.modules), self.title, options.signature()]
+        if self.kind in HANDLER_VERSIONS:  # only these kinds: other elements keep their signature
+            data.append(HANDLER_VERSIONS[self.kind])
         return hashlib.sha256(json.dumps(data, sort_keys=True, default=str).encode()).hexdigest()
 
 

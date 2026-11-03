@@ -189,24 +189,52 @@ async def canvas_captions(state: BuildState, item: SourceItem) -> Transcript | N
                       notes=["Teksting fra Canvas" + (" (automatisk generert)" if track.get("asr") else "") + " er brukt."])
 
 
-async def youtube_captions(state: BuildState, item: SourceItem) -> Transcript | None:
+YOUTUBE_LANGUAGES = ("no", "nb", "nn", "en", "en-US", "en-GB", "sv", "da")
+NO_AUDIO = "Lyd fra YouTube lastes ikke ned (YouTubes vilkår), så videoen er ikke med."
+YOUTUBE_REASONS = {
+    "TranscriptsDisabled": f"YouTube-videoen har ingen teksting. {NO_AUDIO}",
+    "NoTranscriptFound": f"YouTube-videoen har ingen teksting. {NO_AUDIO}",
+    "VideoUnavailable": "YouTube-videoen er ikke tilgjengelig (slettet, privat eller feil lenke) – sjekk lenken i emnet.",
+    "InvalidVideoId": "Lenken peker ikke på en gyldig YouTube-video – sjekk lenken i emnet.",
+    "VideoUnplayable": ("YouTube-videoen kan ikke spilles av her (for eksempel begrenset av opplasteren eller blokkert i "
+                        "regionen)."),
+    "AgeRestricted": "YouTube-videoen har aldersgrense, og tekstingen kan ikke hentes uten innlogging.",
+}
+
+
+def _youtube_rows(item: SourceItem) -> tuple[list[Any], str | None, bool]:
+    """Captions in a preferred language (manual before automatic), else any captions the video has."""
+    from youtube_transcript_api import NoTranscriptFound, YouTubeTranscriptApi
+
+    listing = YouTubeTranscriptApi().list(item.canvas_id)
     try:
-        from youtube_transcript_api import YouTubeTranscriptApi
+        chosen = listing.find_transcript(YOUTUBE_LANGUAGES)
+    except NoTranscriptFound:
+        available = list(listing)  # manually created first, then automatic
+        if not available:
+            raise
+        chosen = available[0]
+    fetched = chosen.fetch()
+    return list(fetched), str(chosen.language_code or "") or None, bool(chosen.is_generated)
+
+
+async def youtube_captions(state: BuildState, item: SourceItem) -> tuple[Transcript | None, str | None]:
+    """YouTube captions via youtube-transcript-api (only the video id is sent). Returns (transcript, reason)."""
+    if not state.c.settings.get().rag.youtube_captions:
+        return None, Waiting(f"Henting av YouTube-teksting er slått av (Emne-RAG → Innstillinger). {NO_AUDIO}")
+    try:
+        import youtube_transcript_api  # noqa: F401
     except ImportError:
-        return None
-
-    def fetch() -> list[Any]:
-        client: Any = YouTubeTranscriptApi()
-        languages = ["no", "nb", "nn", "en", "en-US", "en-GB"]
-        if hasattr(client, "fetch"):
-            return list(client.fetch(item.canvas_id, languages=languages))
-        return list(getattr(YouTubeTranscriptApi, "get_transcript")(item.canvas_id, languages=languages))  # noqa: B009
-
+        return None, Waiting("YouTube-teksting krever pakken youtube-transcript-api. Lukk EmneKlar og kjør update.bat.")
     try:
-        rows = await asyncio.to_thread(fetch)
-    except Exception as exc:  # noqa: BLE001 - no captions, video unavailable, network …
-        log.info("Emne-RAG: ingen YouTube-teksting for %s (%s)", item.canvas_id, type(exc).__name__)
-        return None
+        rows, language, generated = await asyncio.to_thread(_youtube_rows, item)
+    except Exception as exc:  # noqa: BLE001 - every failure of the unofficial interface becomes a clear reason
+        name = type(exc).__name__
+        log.info("Emne-RAG: ingen YouTube-teksting for %s (%s)", item.canvas_id, name)
+        if name in YOUTUBE_REASONS:
+            return None, YOUTUBE_REASONS[name]
+        return None, Waiting("YouTube svarte ikke på forespørselen om teksting (blokkert nettverk, for mange "
+                             f"forespørsler eller en endring hos YouTube: {name}). Prøves igjen ved neste oppdatering.")
     segments = []
     for row in rows:
         text = str(getattr(row, "text", None) or (row.get("text") if isinstance(row, dict) else "") or "").strip()
@@ -215,8 +243,10 @@ async def youtube_captions(state: BuildState, item: SourceItem) -> Transcript | 
         if text:
             segments.append(Segment(start, start + duration, re.sub(r"\s+", " ", text)))
     if not segments:
-        return None
-    return Transcript(segments, None, "youtube", "youtube", notes=["Teksting fra YouTube er brukt."])
+        return None, f"YouTube-tekstingen er tom. {NO_AUDIO}"
+    kind = "automatisk generert teksting" if generated else "teksting"
+    return Transcript(segments, language, "youtube", "youtube",
+                      notes=[f"YouTube-{kind}{f' ({language})' if language else ''} er brukt."]), None
 
 
 def media_download_url(item: SourceItem) -> str | None:
@@ -391,10 +421,7 @@ async def process_media(state: BuildState, item: SourceItem) -> None:
         transcript = Transcript(segments, None, "file", "captions") if segments else None
         reason = None if segments else "Undertekstfilen inneholder ingen tekst."
     elif item.kind == "youtube":
-        if state.c.settings.get().rag.youtube_captions:
-            transcript = await youtube_captions(state, item)
-        reason = None if transcript else ("Fant ingen teksting for YouTube-videoen. Lyd fra YouTube lastes ikke ned "
-                                          "(YouTubes vilkår), så videoen er ikke med.")
+        transcript, reason = await youtube_captions(state, item)
     elif item.kind == "vimeo":
         reason = "Teksting fra Vimeo kan ikke hentes."
     else:

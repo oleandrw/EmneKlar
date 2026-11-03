@@ -17,9 +17,33 @@ from emneklar.main import create_app
 from tests.conftest import CANVAS_BASE, ORIGIN, fake_internet, login, wait_for_job
 from tests.fakes.fake_canvas import TOKEN as FAKE_TOKEN
 from tests.fakes.fake_canvas import FakeCanvasState, create_fake_canvas, now
-from tests.fakes.rag import RAG_COURSE, FakeLocalModels, seed_rag_course
+from tests.fakes.rag import (
+    RAG_COURSE,
+    FakeLocalModels,
+    FakeYouTubeApi,
+    FakeYouTubeSnippet,
+    FakeYouTubeTranscript,
+    seed_rag_course,
+)
 
 BASE_OPTIONS: dict[str, Any] = {"scope": "course", "text": True, "documents": True}
+
+
+@pytest.fixture(autouse=True)
+def fake_youtube(monkeypatch: pytest.MonkeyPatch) -> type[FakeYouTubeApi]:
+    """YouTube captions without network: the guest lecture has automatic English captions, the extra video none."""
+    import youtube_transcript_api
+    from youtube_transcript_api import TranscriptsDisabled
+
+    FakeYouTubeApi.calls = []
+    FakeYouTubeApi.videos = {
+        "abcdefghijk": [FakeYouTubeTranscript("en", True, [
+            FakeYouTubeSnippet("Welcome to this guest lecture on colour grading.", 0.0, 4.0),
+            FakeYouTubeSnippet("Skin tones need a calibrated monitor.", 95.2, 5.0)])],
+        "zyxwvutsrqp": TranscriptsDisabled("zyxwvutsrqp"),
+    }
+    monkeypatch.setattr(youtube_transcript_api, "YouTubeTranscriptApi", FakeYouTubeApi)
+    return FakeYouTubeApi
 
 
 @pytest.fixture
@@ -290,7 +314,11 @@ def test_video_captions_transcription_cache_and_privacy(rag: TestClient, rag_sta
     assert {"Lab-demo.mp4", "Lab-demo.vtt"} <= {h["title"] for h in lab} and len(FakeTranscriber.calls) == 1
     status = rag.get(f"/api/courses/{RAG_COURSE}/rag").json()
     reasons = " ".join(s["reason"] for s in status["index"]["skipped"])
-    assert "Panopto" in reasons and "YouTube" in reasons
+    assert "Panopto" in reasons and "YouTube-videoen har ingen teksting" in reasons
+    youtube = search(rag, "calibrated monitor skin tones", types=["transcript"])["hits"]
+    assert youtube and youtube[0]["title"] == "Gjesteforelesning" and youtube[0]["item_kind"] == "youtube"
+    assert youtube[0]["url"].startswith("https://www.youtube.com/watch?v=abcdefghijk&t=")
+    assert sorted(FakeYouTubeApi.calls) == ["abcdefghijk", "zyxwvutsrqp"]  # only the video ids are sent
     assert status["stats"]["video_minutes"] > 1
     assert not any("m-student" in s["key"] for s in status["index"]["skipped"])
     assert search(rag, "Studentopptak")["hits"] == [] or all(

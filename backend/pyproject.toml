@@ -30,6 +30,8 @@ dependencies = [
     "Pillow>=10.4",
     "pypdfium2>=4.30",
     "fpdf2>=2.8",
+    # Emne-RAG: captions of YouTube videos linked in the course (small, pure Python; sends only the video id).
+    "youtube-transcript-api>=1.2",
 ]
 
 [project.optional-dependencies]
@@ -38,7 +40,6 @@ dependencies = [
 rag = [
     "sentence-transformers>=5.0",
     "faster-whisper>=1.1",
-    "youtube-transcript-api>=1.0",
 ]
 dev = [
     "pytest>=8.2",

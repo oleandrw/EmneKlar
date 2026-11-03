@@ -378,3 +378,49 @@ def seed_rag_course(state: FakeCanvasState) -> CourseData:
     ]
     state.courses[RAG_COURSE] = c
     return c
+
+
+# -- YouTube captions (stands in for youtube_transcript_api.YouTubeTranscriptApi; no network) -------------------
+
+
+class FakeYouTubeSnippet:
+    def __init__(self, text: str, start: float, duration: float) -> None:
+        self.text, self.start, self.duration = text, start, duration
+
+
+class FakeYouTubeTranscript:
+    def __init__(self, language_code: str, is_generated: bool, snippets: list[FakeYouTubeSnippet]) -> None:
+        self.language_code, self.is_generated, self.snippets = language_code, is_generated, snippets
+
+    def fetch(self) -> list[FakeYouTubeSnippet]:
+        return list(self.snippets)
+
+
+class FakeYouTubeListing:
+    def __init__(self, video_id: str, transcripts: list[FakeYouTubeTranscript]) -> None:
+        self.video_id, self.transcripts = video_id, transcripts
+
+    def __iter__(self) -> Any:
+        return iter(sorted(self.transcripts, key=lambda t: t.is_generated))  # manually created first
+
+    def find_transcript(self, language_codes: Any) -> FakeYouTubeTranscript:
+        from youtube_transcript_api import NoTranscriptFound
+
+        codes = list(language_codes)
+        for code in codes:
+            for transcript in self:
+                if transcript.language_code == code:
+                    return transcript
+        raise NoTranscriptFound(self.video_id, codes, self)  # type: ignore[arg-type]
+
+
+class FakeYouTubeApi:
+    videos: dict[str, list[FakeYouTubeTranscript] | Exception] = {}
+    calls: list[str] = []
+
+    def list(self, video_id: str) -> FakeYouTubeListing:
+        self.calls.append(video_id)
+        entry = self.videos.get(video_id, [])
+        if isinstance(entry, Exception):
+            raise entry
+        return FakeYouTubeListing(video_id, entry)

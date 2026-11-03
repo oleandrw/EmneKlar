@@ -156,8 +156,8 @@ export function SettingsPanel({ status, courseId }: { status: RagStatus; courseI
           <Switch label="Hent teksting fra YouTube" checked={form.youtube_captions}
             onChange={(youtube_captions) => set({ youtube_captions })} />
           <p className="ek-xs ek-muted">
-            YouTube-teksting hentes med et uoffisielt grensesnitt. Lyd fra YouTube lastes aldri ned; videoer uten teksting
-            hoppes over.
+            YouTube-teksting hentes med et uoffisielt grensesnitt som bare sender video-id-en: norsk eller engelsk først,
+            ellers den tekstingen videoen har. Lyd fra YouTube lastes aldri ned; videoer uten teksting hoppes over.
           </p>
         </div>
       </Card>

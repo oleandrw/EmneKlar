@@ -63,11 +63,12 @@ backend/tests/test_course_rag_*.py         enhetstester + integrasjonstest mot f
 
 * **Alltid installert** (små hjul for Windows og Linux, CPython 3.11–3.14): `numpy` (vektorsøk), `Pillow`
   (bildefilter, perceptuell hash), `pypdfium2` (gjengi skannede PDF-sider for OCR), `fpdf2` (PDF-eksport),
-  `av` (PyAV med FFmpeg innebygd: henter ut lyden for transkripsjon via KI-leverandør og nøkkelbilder).
+  `av` (PyAV med FFmpeg innebygd: henter ut lyden for transkripsjon via KI-leverandør og nøkkelbilder),
+  `youtube-transcript-api` (teksting til YouTube-videoer; ren Python, MIT, sender bare video-id-en).
   Låses i `backend/constraints.txt`.
 * **Valgfritt, «lokale modeller»** (`pip install -e "backend[rag]"`): `sentence-transformers` (BGE-M3,
   bge-reranker-v2-m3; drar med PyTorch), `faster-whisper` (CTranslate2 + PyAV, som har FFmpeg innebygd – ingen
-  egen ffmpeg-installasjon), `youtube-transcript-api`. Installeres med `setup.bat --rag` eller dobbeltklikk på
+  egen ffmpeg-installasjon). Installeres med `setup.bat --rag` eller dobbeltklikk på
   `setup-emne-rag.bat`. Valget huskes i `backend\.venv\emneklar-extras.txt`, så `update.bat` beholder det.
   Grunnen til at dette er valgfritt: PyTorch og modellene er flere GB; resten av EmneKlar skal fortsatt
   installeres raskt.
@@ -140,6 +141,9 @@ backend/tests/test_course_rag_*.py         enhetstester + integrasjonstest mot f
   bestemt tidspunkt via lenke; lenken går til siden/filen, og tidsstempelet vises i kildehenvisningen.
 * Panopto, Kaltura (LTI) og Vimeo uten offentlig teksting kan ikke leses via Canvas-API-et og vises som hoppet over
   med forklaring. Lyd fra YouTube lastes ikke ned (YouTubes vilkår); uten teksting hoppes videoen over.
+  YouTube-teksting velges i rekkefølgen norsk, engelsk, svensk, dansk (laget av opplasteren før automatisk), ellers
+  den tekstingen videoen har. Grunnen vises når den mangler: ingen teksting, videoen er slettet/privat, aldersgrense,
+  eller at YouTube avviste forespørselen (da prøves videoen igjen ved neste oppdatering).
 * Skannede PDF-er: OCR med Tesseract hvis det er installert (norsk språkpakke), ellers med bildemodell via KI
   hvis bilder er slått på og KI er tillatt; ellers hoppes filen over med forklaring.
 * Evalueringen måler om søket finner tilbake utdraget et testspørsmål ble laget fra (gjenfinning), ikke hvor

@@ -641,3 +641,70 @@ def test_openai_transcription_request_and_fallbacks() -> None:
     assert default is not None and default.id == "gpt-transcribe" and default.segments is False
     assert resolve("openai_compatible", "") is None and resolve("azure_openai", "dep").segments is None  # type: ignore[union-attr]
     assert seen[0].headers["content-type"].startswith("multipart/form-data")
+
+
+# -- YouTube captions ---------------------------------------------------------------------------------------------
+
+
+def _youtube_state(enabled: bool = True) -> object:
+    from types import SimpleNamespace
+
+    settings = SimpleNamespace(rag=SimpleNamespace(youtube_captions=enabled))
+    return SimpleNamespace(c=SimpleNamespace(settings=SimpleNamespace(get=lambda: settings)))
+
+
+def _youtube(state: object, video_id: str) -> tuple[object, str | None]:
+    from emneklar.features.course_rag.media import youtube_captions
+    from emneklar.features.course_rag.sources import SourceItem
+
+    item = SourceItem(f"youtube:{video_id}", "youtube", video_id, "Video", f"https://www.youtube.com/watch?v={video_id}",
+                      None)
+    return asyncio.run(youtube_captions(state, item))  # type: ignore[arg-type]
+
+
+def test_youtube_captions_fall_back_to_any_language_and_explain_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+    import youtube_transcript_api
+    from youtube_transcript_api import IpBlocked, TranscriptsDisabled, VideoUnavailable
+
+    from emneklar.features.course_rag.sources import Waiting
+    from tests.fakes.rag import FakeYouTubeApi, FakeYouTubeSnippet, FakeYouTubeTranscript
+
+    FakeYouTubeApi.calls = []
+    FakeYouTubeApi.videos = {
+        "deutsch": [FakeYouTubeTranscript("de", True, [FakeYouTubeSnippet("Automatisch", 0, 2)]),
+                    FakeYouTubeTranscript("de-DE", False, [FakeYouTubeSnippet("Willkommen  zur\nVorlesung", 1.5, 3)])],
+        "norsk": [FakeYouTubeTranscript("en", False, [FakeYouTubeSnippet("Hello", 0, 1)]),
+                  FakeYouTubeTranscript("no", True, [FakeYouTubeSnippet("Hei og velkommen", 0, 2)])],
+        "off": TranscriptsDisabled("off"), "gone": VideoUnavailable("gone"), "blocked": IpBlocked("blocked"),
+    }
+    monkeypatch.setattr(youtube_transcript_api, "YouTubeTranscriptApi", FakeYouTubeApi)
+    state = _youtube_state()
+    transcript, reason = _youtube(state, "deutsch")  # no preferred language: the manually created one wins
+    assert reason is None and transcript.language == "de-DE"  # type: ignore[attr-defined]
+    assert [s.text for s in transcript.segments] == ["Willkommen zur Vorlesung"]  # type: ignore[attr-defined]
+    assert transcript.notes == ["YouTube-teksting (de-DE) er brukt."]  # type: ignore[attr-defined]
+    transcript, _ = _youtube(state, "norsk")  # Norwegian (even automatic) comes before English
+    assert transcript.language == "no" and "automatisk generert" in transcript.notes[0]  # type: ignore[attr-defined]
+    _, reason = _youtube(state, "off")
+    assert reason and reason.startswith("YouTube-videoen har ingen teksting") and not isinstance(reason, Waiting)
+    _, reason = _youtube(state, "gone")
+    assert reason and "ikke tilgjengelig" in reason and not isinstance(reason, Waiting)
+    _, reason = _youtube(state, "blocked")
+    assert isinstance(reason, Waiting) and "IpBlocked" in reason  # tried again on the next update
+    _, reason = _youtube(_youtube_state(enabled=False), "norsk")
+    assert isinstance(reason, Waiting) and "slått av" in reason
+    calls = len(FakeYouTubeApi.calls)
+    monkeypatch.setitem(__import__("sys").modules, "youtube_transcript_api", None)  # package missing
+    _, reason = _youtube(state, "norsk")
+    assert isinstance(reason, Waiting) and "update.bat" in reason and len(FakeYouTubeApi.calls) == calls
+
+
+def test_handler_version_retries_only_that_kind(monkeypatch: pytest.MonkeyPatch) -> None:
+    from emneklar.features.course_rag import sources
+
+    options = sources.SourceOptions()
+    youtube = sources.SourceItem("youtube:abc", "youtube", "abc", "Video", None, None)
+    page = sources.SourceItem("page:a", "page", "a", "Side", None, "2026-09-01T10:00:00Z", content_hash="x")
+    before = youtube.signature(options), page.signature(options)
+    monkeypatch.setitem(sources.HANDLER_VERSIONS, "youtube", sources.HANDLER_VERSIONS["youtube"] + 1)
+    assert youtube.signature(options) != before[0] and page.signature(options) == before[1]
