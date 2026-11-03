@@ -24,13 +24,16 @@ import logging
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urljoin, urlsplit
+
+import httpx
 
 from emneklar.core.ai.local.whisper import Segment, Transcriber, Transcript, TranscriptionStopped, choose_models
 from emneklar.core.canvas.client import CanvasError
 from emneklar.core.errors import AppError
 from emneklar.features.course_rag.chunking import ChunkDraft
 from emneklar.features.course_rag.convert.documents import decode_text
-from emneklar.features.course_rag.sources import SourceItem, Waiting
+from emneklar.features.course_rag.sources import SourceItem, Waiting, vimeo_url
 
 if TYPE_CHECKING:
     from emneklar.features.course_rag.builder import BuildState
@@ -115,7 +118,7 @@ def timestamp_url(item: SourceItem, seconds: float | None) -> str | None:
     if item.kind == "youtube":
         return f"https://www.youtube.com/watch?v={item.canvas_id}&t={whole}s"
     if item.kind == "vimeo":
-        return f"https://vimeo.com/{item.canvas_id}#t={whole}s"
+        return f"{vimeo_url(item.canvas_id, item.meta.get('hash'))}#t={whole}s"
     return item.url
 
 
@@ -191,9 +194,11 @@ async def canvas_captions(state: BuildState, item: SourceItem) -> Transcript | N
 
 YOUTUBE_LANGUAGES = ("no", "nb", "nn", "en", "en-US", "en-GB", "sv", "da")
 NO_AUDIO = "Lyd fra YouTube lastes ikke ned (YouTubes vilkår), så videoen er ikke med."
+# No captions is a Waiting reason: captions can be added on YouTube/Vimeo without anything changing in Canvas.
+YOUTUBE_NO_CAPTIONS = Waiting(f"YouTube-videoen har ingen teksting ennå. {NO_AUDIO}")
 YOUTUBE_REASONS = {
-    "TranscriptsDisabled": f"YouTube-videoen har ingen teksting. {NO_AUDIO}",
-    "NoTranscriptFound": f"YouTube-videoen har ingen teksting. {NO_AUDIO}",
+    "TranscriptsDisabled": YOUTUBE_NO_CAPTIONS,
+    "NoTranscriptFound": YOUTUBE_NO_CAPTIONS,
     "VideoUnavailable": "YouTube-videoen er ikke tilgjengelig (slettet, privat eller feil lenke) – sjekk lenken i emnet.",
     "InvalidVideoId": "Lenken peker ikke på en gyldig YouTube-video – sjekk lenken i emnet.",
     "VideoUnplayable": ("YouTube-videoen kan ikke spilles av her (for eksempel begrenset av opplasteren eller blokkert i "
@@ -243,10 +248,96 @@ async def youtube_captions(state: BuildState, item: SourceItem) -> tuple[Transcr
         if text:
             segments.append(Segment(start, start + duration, re.sub(r"\s+", " ", text)))
     if not segments:
-        return None, f"YouTube-tekstingen er tom. {NO_AUDIO}"
+        return None, YOUTUBE_NO_CAPTIONS
     kind = "automatisk generert teksting" if generated else "teksting"
     return Transcript(segments, language, "youtube", "youtube",
                       notes=[f"YouTube-{kind}{f' ({language})' if language else ''} er brukt."]), None
+
+
+VIMEO_PLAYER = "https://player.vimeo.com"
+VIMEO_CAPTION_HOSTS = ("vimeo.com", "vimeocdn.com")
+VIMEO_NO_AUDIO = "Lyd fra Vimeo lastes ikke ned, så videoen er ikke med."
+VIMEO_MAX_BYTES = 5 * 1024 * 1024
+
+
+def _vimeo_auto(track: dict[str, Any]) -> bool:
+    text = " ".join(str(track.get(k) or "") for k in ("lang", "label", "provenance")).lower()
+    return "auto" in text or "ai_generated" in text
+
+
+def choose_vimeo_track(tracks: list[Any]) -> dict[str, Any] | None:
+    """Same rule as YouTube: language order first (uploaded before automatic), else any track the video has."""
+    order = list(dict.fromkeys(code.split("-")[0] for code in YOUTUBE_LANGUAGES))
+
+    def rank(track: dict[str, Any]) -> tuple[int, int]:
+        base = str(track.get("lang") or "").split("-")[0].lower()
+        return (order.index(base) if base in order else len(order), int(_vimeo_auto(track)))
+
+    usable = [t for t in tracks if isinstance(t, dict) and t.get("url")]
+    return min(usable, key=rank) if usable else None
+
+
+def _vimeo_client(state: BuildState) -> httpx.AsyncClient:
+    from emneklar.core.security.guarded_http import build_guarded_client
+
+    transport = state.c.link_transport
+    return httpx.AsyncClient(transport=transport, timeout=20.0) if transport is not None else build_guarded_client(20.0)
+
+
+async def vimeo_captions(state: BuildState, item: SourceItem) -> tuple[Transcript | None, str | None]:
+    """Vimeo captions the way the embedded Vimeo player loads them (its public config, then the WebVTT file).
+
+    Unofficial, like the YouTube route: only the video id (and the privacy hash of an unlisted link) is sent, no
+    Referer or anything from the course. Videos restricted to certain sites or with a password cannot be read.
+    """
+    if not state.c.settings.get().rag.vimeo_captions:
+        return None, Waiting(f"Henting av Vimeo-teksting er slått av (Emne-RAG → Innstillinger). {VIMEO_NO_AUDIO}")
+    hash_ = item.meta.get("hash")
+    params = {"h": str(hash_)} if hash_ else None
+    async with _vimeo_client(state) as http:
+        try:
+            response = await http.get(f"{VIMEO_PLAYER}/video/{item.canvas_id}/config", params=params,
+                                      headers={"Accept": "application/json"})
+        except httpx.HTTPError as exc:
+            return None, Waiting(f"Vimeo svarte ikke ({type(exc).__name__}). Prøves igjen ved neste oppdatering.")
+        if response.status_code in (401, 403):
+            return None, ("Vimeo-videoen kan bare spilles av på bestemte nettsteder eller er passordbeskyttet "
+                          "(eierens personvernvalg), så tekstingen kan ikke hentes.")
+        if response.status_code == 404:
+            return None, "Vimeo-videoen finnes ikke eller er privat – sjekk lenken i emnet."
+        if response.status_code != 200:
+            return None, Waiting(f"Vimeo svarte med HTTP {response.status_code}. Prøves igjen ved neste oppdatering.")
+        try:
+            config = response.json()
+        except ValueError:
+            return None, Waiting("Vimeo ga et uventet svar (avspilleren kan være endret). Prøves igjen ved neste "
+                                 "oppdatering.")
+        request = config.get("request") if isinstance(config, dict) else None
+        tracks = request.get("text_tracks") if isinstance(request, dict) else None
+        track = choose_vimeo_track(tracks if isinstance(tracks, list) else [])
+        if track is None:
+            return None, Waiting(f"Vimeo-videoen har ingen teksting ennå. {VIMEO_NO_AUDIO}")
+        url = urljoin(VIMEO_PLAYER + "/", str(track["url"]))
+        host = (urlsplit(url).hostname or "").lower()
+        if urlsplit(url).scheme != "https" or not any(host == h or host.endswith("." + h) for h in VIMEO_CAPTION_HOSTS):
+            return None, f"Vimeo pekte på teksting et uventet sted ({host or 'ukjent'}), så den ble ikke hentet."
+        try:
+            vtt = await http.get(url)
+        except httpx.HTTPError as exc:
+            return None, Waiting(f"Tekstingen fra Vimeo kunne ikke lastes ned ({type(exc).__name__}). Prøves igjen ved "
+                                 "neste oppdatering.")
+    if vtt.status_code != 200 or len(vtt.content) > VIMEO_MAX_BYTES:
+        return None, Waiting(f"Tekstingen fra Vimeo kunne ikke lastes ned (HTTP {vtt.status_code}). Prøves igjen ved "
+                             "neste oppdatering.")
+    segments = parse_captions(decode_text(vtt.content))
+    if not segments:
+        return None, Waiting(f"Vimeo-tekstingen er tom. {VIMEO_NO_AUDIO}")
+    language = str(track.get("lang") or "") or None
+    kind = "automatisk generert teksting" if _vimeo_auto(track) else "teksting"
+    video = config.get("video") if isinstance(config.get("video"), dict) else {}
+    duration = float(video.get("duration") or 0) or None
+    return Transcript(segments, language, "vimeo", "vimeo", duration,
+                      notes=[f"Vimeo-{kind}{f' ({language})' if language else ''} er brukt."]), None
 
 
 def media_download_url(item: SourceItem) -> str | None:
@@ -423,7 +514,7 @@ async def process_media(state: BuildState, item: SourceItem) -> None:
     elif item.kind == "youtube":
         transcript, reason = await youtube_captions(state, item)
     elif item.kind == "vimeo":
-        reason = "Teksting fra Vimeo kan ikke hentes."
+        transcript, reason = await vimeo_captions(state, item)
     else:
         transcript = await canvas_captions(state, item)
         if transcript is None:

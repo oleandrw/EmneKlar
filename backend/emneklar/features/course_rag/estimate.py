@@ -57,7 +57,7 @@ def _text_chunks(inv: Inventory) -> tuple[int, int]:
 
 async def _video(c: AppContainer, api: CanvasAPI, inv: Inventory, device: str) -> tuple[
         dict[str, Any], float, list[dict[str, Any]], list[str], list[dict[str, Any]], list[str]]:
-    items: list[SourceItem] = [i for i in inv.items if i.kind in ("media", "youtube") or (i.kind == "file" and
+    items: list[SourceItem] = [i for i in inv.items if i.kind in ("media", "youtube", "vimeo") or (i.kind == "file" and
                                i.meta.get("category") in ("video_file", "subtitle"))]
     files = [i for i in items if i.kind == "file" and i.meta.get("category") == "video_file"][:MAX_TRACK_LOOKUPS]
     tracks = await asyncio.gather(*(api.media_attachment_tracks(i.canvas_id) for i in files), return_exceptions=True)
@@ -68,16 +68,17 @@ async def _video(c: AppContainer, api: CanvasAPI, inv: Inventory, device: str) -
     nb, other = choose_models(local, settings.rag.whisper_model, settings.rag.whisper_other_language_model, device)
     worker = Transcriber(local, nb, other, device)
     mode = settings.rag.transcription
-    with_captions = to_transcribe = unknown = youtube = 0
+    with_captions = to_transcribe = unknown = youtube = vimeo = 0
     known = transcribe_seconds = audio_seconds = 0.0
     for item in items:
         duration = media_duration(item) if item.kind == "media" else None
         if duration:
             known += duration
-        elif item.kind != "youtube":
+        elif item.kind not in ("youtube", "vimeo"):
             unknown += 1
-        if item.kind == "youtube":
-            youtube += 1
+        if item.kind in ("youtube", "vimeo"):  # captions are fetched online if the video has them
+            youtube += item.kind == "youtube"
+            vimeo += item.kind == "vimeo"
             continue
         captioned = item.meta.get("category") == "subtitle" or (
             choose_track(list(item.meta.get("tracks") or [])) is not None if item.kind == "media"
@@ -130,9 +131,15 @@ async def _video(c: AppContainer, api: CanvasAPI, inv: Inventory, device: str) -
                               "kind": "whisper"})
             notes.append(f"{other.label} (ca. {other.size_mb} MB) lastes ned bare hvis det finnes tale på et annet språk "
                          "enn norsk.")
+    rag_settings = settings.rag
+    for count, enabled, name in ((youtube, rag_settings.youtube_captions, "YouTube"),
+                                 (vimeo, rag_settings.vimeo_captions, "Vimeo")):
+        if count and enabled:
+            privacy.append(f"Video-id-en til {count} {name}-video(er) sendes til {name} for å hente teksting (uoffisielt "
+                           f"grensesnitt, kan slås av). Lyd fra {name} lastes aldri ned.")
     summary = {"count": len(items), "with_captions": with_captions, "to_transcribe": to_transcribe,
-               "youtube": youtube, "minutes_known": round(known / 60, 1), "unknown_duration": unknown,
-               "unavailable": sum(1 for s in inv.skipped if s.kind in ("tool", "vimeo")), "model": model_label,
+               "youtube": youtube, "vimeo": vimeo, "minutes_known": round(known / 60, 1), "unknown_duration": unknown,
+               "unavailable": sum(1 for s in inv.skipped if s.kind == "tool"), "model": model_label,
                "transcription": mode, "minutes_to_transcribe": round(audio_seconds / 60, 1)}
     return summary, transcribe_seconds, downloads, notes, ai, privacy
 

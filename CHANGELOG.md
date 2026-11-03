@@ -46,6 +46,12 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   Elementer som venter på samtykke, modeller eller en innstilling, merkes «Prøves igjen ved neste oppdatering» og
   tas med av «Oppdater indeks» når det er på plass. `av` (PyAV, FFmpeg innebygd) er nå en fast avhengighet for å
   hente ut lyden.
+- Emne-RAG → Vimeo-teksting: innebygde Vimeo-videoer og Vimeo-lenker i moduler tas med når videoen har teksting.
+  Tekstingen hentes slik den innebygde Vimeo-avspilleren gjør det (uoffisielt; bare video-id-en og eventuelt
+  tilgangskoden fra en skjult lenke sendes, aldri noe fra emnet), med samme språkrekkefølge som for YouTube og
+  opplastet teksting før automatisk. Kildehenvisningen åpner videoen på riktig tidspunkt, også for skjulte lenker.
+  Videoer som bare kan vises på bestemte nettsteder eller er passordbeskyttet, vises som hoppet over med forklaring.
+  Kan slås av under Emne-RAG → Innstillinger (på som standard). Estimatet viser hva som sendes til YouTube og Vimeo.
 - Innholdskvalitet → Media: «Standardiser videoavspillere» for YouTube. Finner innebygde videoer, forklarer avvik
   fra én responsiv og Canvas-trygg standard (16:9, maks bredde, sentrert, `allowfullscreen`, `loading="lazy"`),
   foreslår beskrivende title med synlig kilde (eksisterende title, YouTube-metadata, Canvas-kontekst, KI-forslag på
@@ -62,7 +68,8 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   ingen teksting» for hver YouTube-video. `youtube-transcript-api` (liten, ren Python) er nå en fast avhengighet, så
   `update.bat` installerer den. Finnes ikke teksting på norsk eller engelsk, brukes tekstingen videoen har på et
   annet språk. Grunnen vises når tekstingen mangler (ingen teksting, slettet eller privat video, aldersgrense,
-  avvist av YouTube); avviste forespørsler prøves igjen ved neste oppdatering.
+  avvist av YouTube); avviste forespørsler prøves igjen ved neste oppdatering. YouTube- og Vimeo-videoer uten
+  teksting prøves også igjen ved hver «Oppdater indeks», siden teksting kan legges til der uten at noe endres i Canvas.
 - Emne-RAG: upublisert innhold forsvant ut av estimatet uten forklaring, slik at for eksempel et Blueprint-emne der
   ingenting er publisert ennå, ga «Fant ikke noe innhold». Nå tas alt i modulene du velger under «Valgte moduler»
   med, publisert eller ikke, og estimatet sier hvor mange upubliserte elementer som er med. For hele emnet trengs

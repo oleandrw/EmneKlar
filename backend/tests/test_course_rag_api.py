@@ -23,8 +23,15 @@ from tests.fakes.rag import (
     FakeYouTubeApi,
     FakeYouTubeSnippet,
     FakeYouTubeTranscript,
+    fake_vimeo,
     seed_rag_course,
 )
+
+VIMEO_REQUESTS: list[httpx.Request] = []
+
+
+def rag_internet(request: httpx.Request) -> httpx.Response:
+    return fake_vimeo(request, VIMEO_REQUESTS) or fake_internet(request)
 
 BASE_OPTIONS: dict[str, Any] = {"scope": "course", "text": True, "documents": True}
 
@@ -36,6 +43,7 @@ def fake_youtube(monkeypatch: pytest.MonkeyPatch) -> type[FakeYouTubeApi]:
     from youtube_transcript_api import TranscriptsDisabled
 
     FakeYouTubeApi.calls = []
+    VIMEO_REQUESTS.clear()
     FakeYouTubeApi.videos = {
         "abcdefghijk": [FakeYouTubeTranscript("en", True, [
             FakeYouTubeSnippet("Welcome to this guest lecture on colour grading.", 0.0, 4.0),
@@ -56,7 +64,7 @@ def rag_state(fake_state: FakeCanvasState) -> FakeCanvasState:
 def rag_container(config: RuntimeConfig, rag_state: FakeCanvasState) -> AppContainer:
     return AppContainer(config, secret_store=MemorySecretStore(),
                         canvas_transport=httpx.ASGITransport(app=create_fake_canvas(rag_state)),
-                        link_transport=httpx.MockTransport(fake_internet),
+                        link_transport=httpx.MockTransport(rag_internet),
                         local_models=FakeLocalModels(config.models_dir))
 
 
@@ -319,6 +327,18 @@ def test_video_captions_transcription_cache_and_privacy(rag: TestClient, rag_sta
     assert youtube and youtube[0]["title"] == "Gjesteforelesning" and youtube[0]["item_kind"] == "youtube"
     assert youtube[0]["url"].startswith("https://www.youtube.com/watch?v=abcdefghijk&t=")
     assert sorted(FakeYouTubeApi.calls) == ["abcdefghijk", "zyxwvutsrqp"]  # only the video ids are sent
+    waiting = {s["title"]: s for s in status["index"]["skipped"] if s.get("waiting")}
+    assert "ingen teksting ennå" in waiting["Ekstra video"]["reason"]  # tried again: captions can be added later
+    # Vimeo: the Norwegian uploaded track (not the automatic English one), cited with the unlisted link and time.
+    vimeo = search(rag, "gamut kartlegging målrommet", types=["transcript"])["hits"]
+    assert vimeo and vimeo[0]["title"] == "Fargerom på Vimeo" and vimeo[0]["item_kind"] == "vimeo"
+    assert vimeo[0]["url"].startswith("https://vimeo.com/123456789/abc123def4#t=")
+    assert "Vimeo-videoen har ingen teksting ennå" in waiting["Vimeo uten teksting"]["reason"]
+    sent = [str(r.url) for r in VIMEO_REQUESTS]
+    assert "https://player.vimeo.com/video/123456789/config?h=abc123def4" in sent
+    assert not any("texttrack/1.vtt" in u for u in sent)  # only the chosen track is downloaded
+    assert all("referer" not in r.headers and "cookie" not in r.headers for r in VIMEO_REQUESTS)
+    assert any("Vimeo" in p and "Video-id-en" in p for p in estimate["privacy"])
     assert status["stats"]["video_minutes"] > 1
     assert not any("m-student" in s["key"] for s in status["index"]["skipped"])
     assert search(rag, "Studentopptak")["hits"] == [] or all(

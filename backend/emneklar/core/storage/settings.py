@@ -149,6 +149,7 @@ class RagSettings(_Section):
     whisper_model: Literal["auto", "tiny", "base", "small", "medium", "large"] = "auto"
     whisper_other_language_model: str = Field("", max_length=200)
     youtube_captions: bool = True
+    vimeo_captions: bool = True
     candidates: int = Field(40, ge=10, le=100)
     top_k: int = Field(6, ge=3, le=10)
     query_rewrite: bool = False

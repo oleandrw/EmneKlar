@@ -31,7 +31,7 @@ from pydantic import BaseModel, Field
 
 from emneklar.core.canvas.api import CanvasAPI, is_block_editor_page
 from emneklar.core.canvas.client import CanvasError
-from emneklar.core.canvas.html import YOUTUBE_RE
+from emneklar.core.canvas.html import VIMEO_RE, YOUTUBE_RE
 from emneklar.features.course_rag.chunking import CHUNKER_VERSION
 from emneklar.features.course_rag.convert.documents import (
     AUDIO_FORMATS,
@@ -93,9 +93,9 @@ class Waiting(str):
     __slots__ = ()
 
 
-# Bump when the handling of a kind changes, so «Oppdater indeks» processes those elements again (2: YouTube captions
-# without the local-model install, other languages, clear reasons).
-HANDLER_VERSIONS = {"youtube": 2}
+# Bump when the handling of a kind changes, so «Oppdater indeks» processes those elements again (YouTube 2: captions
+# without the local-model install, other languages, clear reasons; 3: videos without captions are tried again).
+HANDLER_VERSIONS = {"youtube": 3}
 
 
 @dataclass
@@ -432,9 +432,11 @@ async def discover(api: CanvasAPI, course_id: str, options: SourceOptions, base_
         title = str(item.get("title") or "")
         url = str(item.get("external_url") or "")
         key = f"{'external' if item.get('type') == 'ExternalUrl' else 'tool'}:{item.get('id')}"
-        if item.get("type") == "ExternalUrl" and YOUTUBE_RE.search(url):
+        platform = "youtube" if YOUTUBE_RE.search(url) else "vimeo" if VIMEO_RE.search(url) else None
+        if item.get("type") == "ExternalUrl" and platform:
             if not options.video:
-                inv.skipped.append(Skip(key, "youtube", f"{title} ({mod['name']})", "YouTube-video. Velg «Video og lyd» "
+                inv.skipped.append(Skip(key, platform, f"{title} ({mod['name']})",
+                                        f"{'YouTube' if platform == 'youtube' else 'Vimeo'}-video. Velg «Video og lyd» "
                                         "for å ta med tekstingen.", url))
             continue
         if item.get("type") == "ExternalUrl":
@@ -445,6 +447,19 @@ async def discover(api: CanvasAPI, course_id: str, options: SourceOptions, base_
         inv.skipped.append(Skip(key, "external" if item.get("type") == "ExternalUrl" else "tool",
                                 f"{title} ({mod['name']})", reason, url or _abs(base, item.get("html_url"))))
     return inv
+
+
+_VIMEO_HASH = re.compile(r"vimeo\.com/(?:video/)?\d+/([0-9a-f]{6,})|[?&]h=([0-9a-f]{6,})", re.IGNORECASE)
+
+
+def vimeo_hash(url: str) -> str | None:
+    """The privacy hash of an unlisted Vimeo link (``vimeo.com/123/abc`` or ``player.vimeo.com/video/123?h=abc``)."""
+    match = _VIMEO_HASH.search(url or "")
+    return (match.group(1) or match.group(2)).lower() if match else None
+
+
+def vimeo_url(video_id: str, hash_: str | None) -> str:
+    return f"https://vimeo.com/{video_id}/{hash_}" if hash_ else f"https://vimeo.com/{video_id}"
 
 
 _EMBED_SRC = re.compile(r"<iframe[^>]+src=[\"']([^\"']+)", re.IGNORECASE)
@@ -474,10 +489,11 @@ def _add_media(inv: Inventory, media_objects: list[Any], external: list[tuple[di
             key = f"{kind}:{ref.ident}"
             label = parent.parsed.media_titles.get(ref.ident) or ""
             if key not in found:
+                hash_ = vimeo_hash(ref.src) if kind == "vimeo" else None
                 url = f"https://www.youtube.com/watch?v={ref.ident}" if kind == "youtube" else \
-                    f"https://vimeo.com/{ref.ident}" if kind == "vimeo" else parent.url
+                    vimeo_url(ref.ident, hash_) if kind == "vimeo" else parent.url
                 found[key] = SourceItem(key, kind, ref.ident, label, url, None, content_hash=_hash(kind, ref.ident),
-                                        meta={"page_title": parent.title})
+                                        meta={"page_title": parent.title, **({"hash": hash_} if hash_ else {})})
             entry = found[key]
             if not entry.title and label:
                 entry.title = label
@@ -492,19 +508,24 @@ def _add_media(inv: Inventory, media_objects: list[Any], external: list[tuple[di
                                         "Canvas-API-et.", parent.url))
     for item, mod in external:
         url = str(item.get("external_url") or "")
-        match = YOUTUBE_RE.search(url) if item.get("type") == "ExternalUrl" else None
-        if not match:
+        if item.get("type") != "ExternalUrl":
             continue
-        key = f"youtube:{match.group(1)}"
-        entry = found.setdefault(key, SourceItem(key, "youtube", match.group(1), str(item.get("title") or ""),
-                                                 f"https://www.youtube.com/watch?v={match.group(1)}", None,
-                                                 content_hash=_hash("youtube", match.group(1))))
+        youtube, vimeo = YOUTUBE_RE.search(url), VIMEO_RE.search(url)
+        if youtube:
+            key = f"youtube:{youtube.group(1)}"
+            entry = found.setdefault(key, SourceItem(key, "youtube", youtube.group(1), str(item.get("title") or ""),
+                                                     f"https://www.youtube.com/watch?v={youtube.group(1)}", None,
+                                                     content_hash=_hash("youtube", youtube.group(1))))
+        elif vimeo:
+            key, hash_ = f"vimeo:{vimeo.group(1)}", vimeo_hash(url)
+            entry = found.setdefault(key, SourceItem(key, "vimeo", vimeo.group(1), str(item.get("title") or ""),
+                                                     vimeo_url(vimeo.group(1), hash_), None,
+                                                     content_hash=_hash("vimeo", vimeo.group(1)),
+                                                     meta={"hash": hash_} if hash_ else {}))
+        else:
+            continue
         _merge_modules(entry.modules, [mod])
     for key, entry in found.items():
-        if entry.kind == "vimeo":
-            inv.skipped.append(Skip(key, "vimeo", entry.title or "Vimeo-video", "Teksting fra Vimeo kan ikke hentes.",
-                                    entry.url))
-            continue
         if entry.kind == "media":
             obj = objects.get(entry.canvas_id)
             if obj is None:
@@ -516,7 +537,7 @@ def _add_media(inv: Inventory, media_objects: list[Any], external: list[tuple[di
                                "sources": obj.get("media_sources") or []})
             entry.content_hash = _hash("media", entry.canvas_id, [(t.get("id"), t.get("updated_at"))
                                                                   for t in obj.get("media_tracks") or []])
-        entry.title = entry.title or ("YouTube-video" if entry.kind == "youtube" else "Video")
+        entry.title = entry.title or {"youtube": "YouTube-video", "vimeo": "Vimeo-video"}.get(entry.kind, "Video")
         entry.modules = entry.modules or member.get(key, [])
         inv.items.append(entry)
 

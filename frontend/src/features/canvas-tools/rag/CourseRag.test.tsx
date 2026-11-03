@@ -60,7 +60,7 @@ const status = (partial: Partial<RagStatus> = {}): RagStatus => ({
   settings: { embedding_backend: "local", embedding_model: "", embedding_provider_id: "local", embedding_provider_model: "",
     reranker_enabled: true, reranker_model: "", device: "auto", transcription: "local", transcription_provider_id: "openai",
     transcription_model: "", transcription_language: "", whisper_model: "auto", whisper_other_language_model: "",
-    youtube_captions: true, candidates: 40, top_k: 6, query_rewrite: false, max_file_mb: 50, max_video_mb: 2000 },
+    youtube_captions: true, vimeo_captions: true, candidates: 40, top_k: 6, query_rewrite: false, max_file_mb: 50, max_video_mb: 2000 },
   file_groups: [{ key: "pdf", label: "PDF" }, { key: "word", label: "Word" }],
   chunk_types: [{ key: "text", label: "Tekst" }, { key: "table", label: "Tabeller" }],
   not_available: { video: "Video og lyd kommer i neste versjon av Emne-RAG." },

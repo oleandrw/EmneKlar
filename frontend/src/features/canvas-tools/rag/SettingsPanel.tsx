@@ -157,7 +157,15 @@ export function SettingsPanel({ status, courseId }: { status: RagStatus; courseI
             onChange={(youtube_captions) => set({ youtube_captions })} />
           <p className="ek-xs ek-muted">
             YouTube-teksting hentes med et uoffisielt grensesnitt som bare sender video-id-en: norsk eller engelsk først,
-            ellers den tekstingen videoen har. Lyd fra YouTube lastes aldri ned; videoer uten teksting hoppes over.
+            ellers den tekstingen videoen har. Lyd fra YouTube lastes aldri ned; videoer uten teksting hoppes over og
+            prøves igjen ved neste oppdatering.
+          </p>
+          <Switch label="Hent teksting fra Vimeo" checked={form.vimeo_captions}
+            onChange={(vimeo_captions) => set({ vimeo_captions })} />
+          <p className="ek-xs ek-muted">
+            Vimeo-teksting hentes slik den innebygde Vimeo-avspilleren gjør det (uoffisielt). Bare video-id-en og
+            eventuelt tilgangskoden fra en skjult lenke sendes. Videoer som bare kan vises på bestemte nettsteder eller
+            er passordbeskyttet, kan ikke leses. Lyd fra Vimeo lastes aldri ned.
           </p>
         </div>
       </Card>

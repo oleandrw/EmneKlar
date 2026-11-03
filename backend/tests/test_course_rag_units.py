@@ -685,8 +685,8 @@ def test_youtube_captions_fall_back_to_any_language_and_explain_failures(monkeyp
     assert transcript.notes == ["YouTube-teksting (de-DE) er brukt."]  # type: ignore[attr-defined]
     transcript, _ = _youtube(state, "norsk")  # Norwegian (even automatic) comes before English
     assert transcript.language == "no" and "automatisk generert" in transcript.notes[0]  # type: ignore[attr-defined]
-    _, reason = _youtube(state, "off")
-    assert reason and reason.startswith("YouTube-videoen har ingen teksting") and not isinstance(reason, Waiting)
+    _, reason = _youtube(state, "off")  # no captions: tried again, they can be added on YouTube later
+    assert reason and reason.startswith("YouTube-videoen har ingen teksting") and isinstance(reason, Waiting)
     _, reason = _youtube(state, "gone")
     assert reason and "ikke tilgjengelig" in reason and not isinstance(reason, Waiting)
     _, reason = _youtube(state, "blocked")
@@ -708,3 +708,59 @@ def test_handler_version_retries_only_that_kind(monkeypatch: pytest.MonkeyPatch)
     before = youtube.signature(options), page.signature(options)
     monkeypatch.setitem(sources.HANDLER_VERSIONS, "youtube", sources.HANDLER_VERSIONS["youtube"] + 1)
     assert youtube.signature(options) != before[0] and page.signature(options) == before[1]
+
+
+
+# -- Vimeo captions -----------------------------------------------------------------------------------------------
+
+
+def test_vimeo_links_and_track_choice() -> None:
+    from emneklar.features.course_rag.media import choose_vimeo_track
+    from emneklar.features.course_rag.sources import vimeo_hash
+
+    assert vimeo_hash("https://player.vimeo.com/video/123?h=AbC123def4&title=0") == "abc123def4"
+    assert vimeo_hash("https://vimeo.com/123/abc123def4") == "abc123def4"
+    assert vimeo_hash("https://vimeo.com/123") is None and vimeo_hash("https://vimeo.com/channels/staff/123") is None
+    tracks = [{"lang": "de", "url": "/d.vtt"}, {"lang": "en-x-autogen", "label": "English (auto)", "url": "/a.vtt"},
+              {"lang": "en", "label": "English", "url": "/e.vtt"}, {"lang": "no", "label": "Norsk", "url": None}]
+    assert choose_vimeo_track(tracks)["url"] == "/e.vtt"  # type: ignore[index]  # uploaded before automatic
+    assert choose_vimeo_track([{"lang": "de-x-autogen", "url": "/a"}, {"lang": "fr", "url": "/f"}])["url"] == "/f"  # type: ignore[index]
+    assert choose_vimeo_track([]) is None
+
+
+def _vimeo(handler: object, *, enabled: bool = True) -> tuple[object, str | None]:
+    from types import SimpleNamespace
+
+    import httpx
+
+    from emneklar.features.course_rag.media import vimeo_captions
+    from emneklar.features.course_rag.sources import SourceItem
+
+    settings = SimpleNamespace(rag=SimpleNamespace(vimeo_captions=enabled))
+    state = SimpleNamespace(c=SimpleNamespace(settings=SimpleNamespace(get=lambda: settings),
+                                              link_transport=httpx.MockTransport(handler)))  # type: ignore[arg-type]
+    item = SourceItem("vimeo:9", "vimeo", "9", "Video", "https://vimeo.com/9", None)
+    return asyncio.run(vimeo_captions(state, item))  # type: ignore[arg-type]
+
+
+def test_vimeo_failures_are_explained() -> None:
+    import httpx
+
+    from emneklar.features.course_rag.sources import Waiting
+
+    def status(code: int) -> object:
+        return lambda _request: httpx.Response(code)
+
+    _, reason = _vimeo(status(403))
+    assert reason and "bestemte nettsteder" in reason and not isinstance(reason, Waiting)
+    _, reason = _vimeo(status(404))
+    assert reason and "finnes ikke eller er privat" in reason
+    _, reason = _vimeo(status(503))
+    assert isinstance(reason, Waiting) and "503" in reason
+    _, reason = _vimeo(lambda _r: httpx.Response(200, text="<html>"))
+    assert isinstance(reason, Waiting) and "uventet svar" in reason
+    elsewhere = {"request": {"text_tracks": [{"lang": "no", "url": "https://evil.example/x.vtt"}]}}
+    _, reason = _vimeo(lambda _r: httpx.Response(200, json=elsewhere))
+    assert reason and "uventet sted (evil.example)" in reason  # captions are only fetched from Vimeo's own hosts
+    _, reason = _vimeo(status(200), enabled=False)
+    assert isinstance(reason, Waiting) and "slått av" in reason

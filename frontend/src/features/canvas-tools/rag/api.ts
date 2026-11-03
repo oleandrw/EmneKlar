@@ -80,6 +80,7 @@ export interface RagSettings {
   whisper_model: "auto" | "tiny" | "base" | "small" | "medium" | "large";
   whisper_other_language_model: string;
   youtube_captions: boolean;
+  vimeo_captions: boolean;
   candidates: number;
   top_k: number;
   query_rewrite: boolean;
@@ -172,7 +173,8 @@ export interface Estimate {
   counts: Record<string, number>;
   words: number;
   documents: { count: number; size_mb: number; too_large: { title: string; size_mb: number }[] };
-  video?: { count: number; with_captions: number; minutes_known: number; unknown_duration: number;
+  video?: { count: number; with_captions: number; youtube: number; vimeo: number; minutes_known: number;
+    unknown_duration: number;
     to_transcribe: number; unavailable: number; transcription: RagSettings["transcription"]; model: string;
     minutes_to_transcribe: number };
   images?: { candidates: number; documents_note: string };

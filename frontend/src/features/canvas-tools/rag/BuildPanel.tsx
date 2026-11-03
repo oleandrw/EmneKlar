@@ -82,7 +82,10 @@ function EstimateView({ estimate, accept, setAccept, consent, setConsent }: {
         Omtrent {formatNumber(estimate.words)} ord tekst og {formatNumber(estimate.documents.count)} dokumenter
         ({formatMb(estimate.documents.size_mb)}), anslagsvis {formatNumber(estimate.chunks_estimate)} utdrag.
         {estimate.video ? ` Video og lyd: ${estimate.video.count} (${estimate.video.with_captions} med teksting, ` +
-          `${estimate.video.to_transcribe} transkriberes lokalt, ${estimate.video.unavailable} kan ikke leses). ` +
+          `${estimate.video.to_transcribe} transkriberes ${estimate.video.transcription === "provider"
+            ? "via KI-leverandør" : estimate.video.transcription === "off" ? "ikke (slått av)" : "lokalt"}, ` +
+          `${estimate.video.youtube + estimate.video.vimeo} fra YouTube eller Vimeo der teksting hentes hvis den finnes, ` +
+          `${estimate.video.unavailable} kan ikke leses). ` +
           `Kjent varighet: ca. ${Math.round(estimate.video.minutes_known)} minutter` +
           (estimate.video.unknown_duration ? `, ${estimate.video.unknown_duration} med ukjent varighet.` : ".") : ""}
         {estimate.images ? ` Bilder: ${estimate.images.candidates} kandidater (${estimate.images.documents_note}).` : ""}

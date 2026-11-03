@@ -139,8 +139,14 @@ backend/tests/test_course_rag_*.py         enhetstester + integrasjonstest mot f
   «ukjent varighet».
 * Tidsstempel-lenker: YouTube (`&t=`) og Vimeo (`#t=`) åpnes på riktig sted. Canvas-video kan ikke åpnes på et
   bestemt tidspunkt via lenke; lenken går til siden/filen, og tidsstempelet vises i kildehenvisningen.
-* Panopto, Kaltura (LTI) og Vimeo uten offentlig teksting kan ikke leses via Canvas-API-et og vises som hoppet over
-  med forklaring. Lyd fra YouTube lastes ikke ned (YouTubes vilkår); uten teksting hoppes videoen over.
+* Panopto, Kaltura (LTI) og andre eksterne verktøy kan ikke leses via Canvas-API-et og vises som hoppet over med
+  forklaring. Lyd fra YouTube og Vimeo lastes ikke ned (YouTubes vilkår); uten teksting hoppes videoen over og
+  prøves igjen ved neste oppdatering (teksting kan legges til der uten at noe endres i Canvas).
+* Vimeo-teksting hentes slik den innebygde avspilleren gjør det: `player.vimeo.com/video/:id/config` (med `h=` for
+  skjulte lenker) gir `request.text_tracks`, og den valgte WebVTT-filen lastes ned – bare fra Vimeos egne domener,
+  gjennom SSRF-vernet, uten Referer eller informasjonskapsler. Uoffisielt og kan endres av Vimeo; Vimeos offisielle
+  API krever en nøkkel fra kontoen som eier videoene. Videoer begrenset til bestemte nettsteder (403) eller private
+  (404) hoppes over med forklaring. Kan slås av i innstillingene.
   YouTube-teksting velges i rekkefølgen norsk, engelsk, svensk, dansk (laget av opplasteren før automatisk), ellers
   den tekstingen videoen har. Grunnen vises når den mangler: ingen teksting, videoen er slettet/privat, aldersgrense,
   eller at YouTube avviste forespørselen (da prøves videoen igjen ved neste oppdatering).

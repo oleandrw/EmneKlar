@@ -297,6 +297,7 @@ def seed_rag_course(state: FakeCanvasState) -> CourseData:
               'src="/media_objects_iframe/m-farge1?type=video"></iframe>'
               '<iframe title="Lab-demo" src="/media_attachments_iframe/7101?type=video&amp;embedded=true"></iframe>'
               '<iframe title="Gjesteforelesning" src="https://www.youtube.com/embed/abcdefghijk"></iframe>'
+              '<iframe title="Fargerom på Vimeo" src="https://player.vimeo.com/video/123456789?h=abc123def4"></iframe>'
               '<iframe title="Opptak" src="https://hvl.cloud.panopto.eu/Panopto/Pages/Embed.aspx?id=1"></iframe>'),
     ]
     c.pages = {p["url"]: p for p in pages}
@@ -369,7 +370,8 @@ def seed_rag_course(state: FakeCanvasState) -> CourseData:
         {"id": "303", "name": "Modul 3 – Video", "position": 3, "published": True,
          "items": [item("3031", "Forelesninger på video", "Page", page_url="forelesninger"),
                    item("3033", "Bilder i emnet", "Page", page_url="bilder"),
-                   item("3032", "Ekstra video", "ExternalUrl", external_url="https://youtu.be/zyxwvutsrqp")]},
+                   item("3032", "Ekstra video", "ExternalUrl", external_url="https://youtu.be/zyxwvutsrqp"),
+                   item("3034", "Vimeo uten teksting", "ExternalUrl", external_url="https://vimeo.com/555555555")]},
         {"id": "302", "name": "Modul 2 – Farger", "position": 2, "published": True,
          "items": [item("3021", "Fargelære", "Page", page_url="fargelaere"),
                    item("3022", "Fargemodeller", "File", content_id="7002"),
@@ -424,3 +426,35 @@ class FakeYouTubeApi:
         if isinstance(entry, Exception):
             raise entry
         return FakeYouTubeListing(video_id, entry)
+
+
+# -- Vimeo (the public player config and WebVTT files, as the embedded player loads them) ------------------------
+
+VIMEO_VTT = ("WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nFargerom bestemmer hvilke farger en skjerm kan vise.\n\n"
+             "00:01:02.000 --> 00:01:08.000\nGamut-kartlegging flytter farger inn i målrommet.\n")
+
+
+def fake_vimeo(request: Any, requests: list[Any]) -> Any:
+    """Answers for player.vimeo.com and the caption host, or None for other addresses."""
+    import httpx
+
+    url = request.url
+    if url.host == "player.vimeo.com" and url.path == "/video/123456789/config":
+        requests.append(request)
+        if url.params.get("h") != "abc123def4":
+            return httpx.Response(404, json={"message": "not found"})
+        return httpx.Response(200, json={"video": {"id": 123456789, "duration": 130}, "request": {"text_tracks": [
+            {"id": 1, "lang": "en-x-autogen", "label": "English (auto-generated)", "kind": "subtitles",
+             "url": "/texttrack/1.vtt?token=x"},
+            {"id": 2, "lang": "no", "label": "Norsk", "kind": "subtitles",
+             "url": "https://captions.cloud.vimeo.com/captions/2.vtt?sig=y"}]}})
+    if url.host == "player.vimeo.com" and url.path == "/video/555555555/config":
+        requests.append(request)
+        return httpx.Response(200, json={"video": {"id": 555555555}, "request": {"text_tracks": []}})
+    if url.host == "captions.cloud.vimeo.com" and url.path == "/captions/2.vtt":
+        requests.append(request)
+        return httpx.Response(200, text=VIMEO_VTT, headers={"Content-Type": "text/vtt"})
+    if url.host in ("player.vimeo.com", "captions.cloud.vimeo.com"):
+        requests.append(request)
+        return httpx.Response(404)
+    return None
