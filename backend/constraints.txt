@@ -13,7 +13,7 @@
 #   backend\.venv\Scripts\python -m pip freeze --all --exclude-editable -r backend\constraints.txt > constraints.new
 #   move /y constraints.new backend\constraints.txt
 
-alembic==1.20.0
+alembic==1.20.1
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.15.1
