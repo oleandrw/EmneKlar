@@ -265,6 +265,42 @@ async def process_document(state: BuildState, item: SourceItem) -> None:
 # ------------------------------------------------------------------------------------------- the job
 
 
+def evaluation_may_use_ai(c: AppContainer, request: BuildRequest) -> bool:
+    """AI writes the test questions only when it is local, or when this build already sends content to AI with consent."""
+    plan = c.ai.plan("rag_eval", input_chars=6000, images=0, summary="")
+    if not plan["available"]:
+        return False
+    return not plan["external"] or (request.confirmed and (request.contextual_enrichment or request.images))
+
+
+async def run_evaluation(state: BuildState, reranker_def: Any, device: str) -> None:
+    from emneklar.features.course_rag.evaluation import evaluate
+
+    progress = state.ctx.progress
+    progress.add_tasks("evaluation", 1)
+    started = progress.start("evaluation", item="Testspørsmål", operation="Måler søket med testspørsmål")
+    failed = False
+    try:
+        reranker = None
+        if reranker_def.available and not reranker_def.needs_download:
+            reranker = await open_reranker(reranker_def, state.c.local_models, device=device)
+        result = await evaluate(state.store, embedder=state.embedder, reranker=reranker, ai=state.c.ai,
+                                use_ai=evaluation_may_use_ai(state.c, state.request), confirmed=state.request.confirmed,
+                                course_id=state.course_id, candidates=state.c.settings.get().rag.candidates)
+        if result:
+            engine.update_registry(state.c, state.course_id, evaluation=result)
+            progress.note(f"Helsescore for søket: {result['health']} av 100 ({result['health_label'].lower()}).")
+    except (AppError, CanvasError) as exc:
+        failed = True
+        progress.note(f"Evalueringen kunne ikke kjøres: {exc.message}")
+    except Exception:  # the index is usable without an evaluation
+        failed = True
+        log.exception("Emne-RAG: evalueringen feilet")
+        progress.note("Evalueringen kunne ikke kjøres.")
+    finally:
+        progress.finish("evaluation", started, failed=failed)
+
+
 def plan_items(inv: Inventory, store: IndexStore, options: SourceOptions) -> tuple[list[SourceItem], int, list[str]]:
     existing = store.items()
     todo: list[SourceItem] = []
@@ -330,7 +366,8 @@ async def run_build(ctx: JobContext, c: AppContainer, course_id: str, request: B
     status = "partial"
     engine.update_registry(c, course_id, status="building", options=request.model_dump(
         exclude={"confirmed", "accept_downloads", "mode"}), last_job_id=ctx.job_id,
-        embedding={"identity": identity, "label": embedding.label, "backend": embedding.backend})
+        embedding={"identity": identity, "label": embedding.label if identity else "Bare nøkkelordsøk (BM25)",
+                   "backend": embedding.backend if identity else "none"})
     try:
         if identity is not None:
             progress.set_current("Laster embedding-modell", operation=embedding.label)
@@ -391,6 +428,7 @@ async def run_build(ctx: JobContext, c: AppContainer, course_id: str, request: B
             await process_images(state, image_items, inv)
         phase += 1
         progress.set_phase("finish", "Ferdigstiller indeksen", index=phase, count=total, determinate=True)
+        await run_evaluation(state, reranker_def, device)
         status = "ready"
     finally:
         stats = store.stats()

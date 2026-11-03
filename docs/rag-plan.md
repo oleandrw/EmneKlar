@@ -139,6 +139,13 @@ backend/tests/test_course_rag_*.py         enhetstester + integrasjonstest mot f
 * Evalueringen måler om søket finner tilbake utdraget et testspørsmål ble laget fra (gjenfinning), ikke hvor
   gode svarene er. Uten KI lages testspørsmål av utdragets mest særpregede ord, og det står i rapporten.
 
+## GPU
+
+`setup.bat --rag` installerer PyTorch fra PyPI, som på Windows er CPU-utgaven. EmneKlar oppdager CUDA automatisk
+(`torch.cuda.is_available()` for embedding og rerangering, `ctranslate2.get_cuda_device_count()` for Whisper), så
+GPU brukes når CUDA-utgaven av PyTorch og CUDA-bibliotekene er installert i `backend\.venv`. Valget kan overstyres
+(Automatisk / Bare CPU / NVIDIA-GPU).
+
 ## Testing
 
 Enhetstester for HTML → Markdown, dokumentparsere, chunking, norsk stemming, RRF, lagring, inkrementell

@@ -1,6 +1,6 @@
 // Canvas-verktøy → Emne-RAG: a local knowledge base of the course with cited answers.
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { BookOpenText, Hammer, MessageSquareText, Settings2, ShieldCheck, Trash2 } from "lucide-react";
+import { BookOpenText, Download, Gauge, Hammer, MessageSquareText, RefreshCw, Settings2, ShieldCheck, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { api } from "../../../core/api/client";
@@ -26,12 +26,15 @@ import {
   type Tone,
 } from "../../../design-system";
 import { BackToTools } from "../shared";
-import { STATUS_LABEL, useRagStatus, type RagStatus, type SkippedItem } from "./api";
+import { JobRunner } from "../../analysis/JobRunner";
+import { DEFAULT_OPTIONS, STATUS_LABEL, useRagStatus, type RagStatus, type SkippedItem } from "./api";
 import { AskPanel } from "./AskPanel";
 import { BuildPanel } from "./BuildPanel";
+import { ExportPanel } from "./ExportPanel";
+import { QualityPanel } from "./QualityPanel";
 import { SettingsPanel } from "./SettingsPanel";
 
-type TabId = "bygg" | "spor" | "innstillinger";
+type TabId = "bygg" | "spor" | "kvalitet" | "eksport" | "innstillinger";
 
 const STATUS_TONE: Record<string, Tone> = { ready: "success", partial: "warning", building: "info", failed: "danger",
   empty: "neutral" };
@@ -68,6 +71,12 @@ function IndexCard({ status, courseId }: { status: RagStatus; courseId: string }
   const client = useQueryClient();
   const toast = useToast();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [updateJob, setUpdateJob] = useState<string | null>(null);
+  const update = useMutation({
+    mutationFn: () => api.post<{ id: string }>(`/api/courses/${courseId}/rag/build`, {
+      ...DEFAULT_OPTIONS, ...(status.index?.options ?? {}), mode: "update" }),
+    onSuccess: (job) => setUpdateJob(job.id),
+  });
   const remove = useMutation({
     mutationFn: () => api.delete(`/api/courses/${courseId}/rag`),
     onSuccess: () => {
@@ -91,8 +100,8 @@ function IndexCard({ status, courseId }: { status: RagStatus; courseId: string }
       <div className="ek-stack" data-gap="4">
         <p className="ek-small">
           {index.built_at ? `Sist bygget eller oppdatert: ${formatDateTime(index.built_at)}.` : "Ikke ferdig bygget ennå."}{" "}
-          Søkemodell: {index.embedding?.label ?? "ukjent"}
-          {status.index_embedding ? "" : " (bare nøkkelordsøk)"}.
+          Søk: {status.index_embedding ? `${index.embedding?.label ?? "ukjent modell"} og nøkkelord` : "bare nøkkelord (BM25)"}.
+          {"health" in (index.evaluation ?? {}) ? ` Helsescore for søket: ${(index.evaluation as { health: number }).health} av 100.` : ""}
         </p>
         {index.status === "partial" ? (
           <Alert tone="warning" title="Indeksen er ufullstendig">
@@ -124,12 +133,28 @@ function IndexCard({ status, courseId }: { status: RagStatus; courseId: string }
             <ul>{index.limitations.map((l) => <li key={l}>{l}</li>)}</ul>
           </Alert>
         ) : null}
+        {updateJob ? (
+          <JobRunner jobId={updateJob} onDone={(job) => {
+            setUpdateJob(null);
+            void client.invalidateQueries({ queryKey: ["rag", courseId] });
+            if (job.status === "completed") toast.show({ tone: "success", title: "Indeksen er oppdatert" });
+          }} />
+        ) : null}
         <div className="ek-cluster">
+          <Button variant="primary" icon={<RefreshCw aria-hidden="true" />} onClick={() => update.mutate()}
+            loading={update.isPending} disabled={Boolean(status.busy_job || updateJob)}>
+            Oppdater indeks
+          </Button>
           <Button variant="danger" icon={<Trash2 aria-hidden="true" />} onClick={() => setConfirmDelete(true)}
-            disabled={Boolean(status.busy_job)}>
+            disabled={Boolean(status.busy_job || updateJob)}>
             Slett indeks
           </Button>
         </div>
+        <p className="ek-xs ek-muted">
+          «Oppdater indeks» bruker de samme valgene som sist og behandler bare nye og endrede elementer. Trenger den å laste
+          ned modeller eller sende noe til KI, får du beskjed om å gå via «Oppdater indeks»-fanen med estimat.
+        </p>
+        {update.error ? <Alert tone="warning" role="alert">{(update.error as Error).message}</Alert> : null}
       </div>
       <ConfirmDialog open={confirmDelete} onClose={() => setConfirmDelete(false)} danger
         title="Slette indeksen?" confirmLabel="Slett indeksen" cancelLabel="Behold indeksen"
@@ -164,11 +189,15 @@ export function CourseRag() {
             <Tabs<TabId> label="Emne-RAG" selected={current} onSelect={setTab} tabs={[
               { id: "bygg", label: ready ? "Oppdater indeks" : "Bygg indeks", icon: <Hammer aria-hidden="true" /> },
               { id: "spor", label: "Spør emnet", icon: <MessageSquareText aria-hidden="true" /> },
+              { id: "kvalitet", label: "Kvalitet", icon: <Gauge aria-hidden="true" /> },
+              { id: "eksport", label: "Eksport", icon: <Download aria-hidden="true" /> },
               { id: "innstillinger", label: "Innstillinger", icon: <Settings2 aria-hidden="true" /> },
             ]}>
               <div className="ek-stack ek-mt-6" data-gap="6">
                 {current === "bygg" ? <BuildPanel courseId={courseId} status={status.data} /> : null}
                 {current === "spor" ? <AskPanel courseId={courseId} status={status.data} /> : null}
+                {current === "kvalitet" ? <QualityPanel courseId={courseId} status={status.data} /> : null}
+                {current === "eksport" ? <ExportPanel courseId={courseId} status={status.data} /> : null}
                 {current === "innstillinger" ? <SettingsPanel status={status.data} courseId={courseId} /> : null}
               </div>
             </Tabs>

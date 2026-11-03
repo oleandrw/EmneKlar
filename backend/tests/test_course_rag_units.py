@@ -448,3 +448,89 @@ def test_image_preparation_pixels_and_duplicates(tmp_path: Path) -> None:
     buf = io.BytesIO()
     other.save(buf, format="PNG")
     assert dedupe.duplicate_of(prep("i.png", buf.getvalue())["dhash"]) is None
+
+
+# ------------------------------------------------------------------------- enrichment, evaluation, export
+
+
+def test_anthropic_prompt_cache_breakpoint() -> None:
+    from emneklar.core.ai.base import AIMessage, AIRequest, TextPart
+    from emneklar.core.ai.providers.anthropic import AnthropicProvider
+
+    provider = AnthropicProvider("anthropic", api_key="sk-ant-test")
+    request = AIRequest(model="m", system="s", messages=[AIMessage(parts=[TextPart(text="dokument", cache=True),
+                                                                         TextPart(text="utdrag")])])
+    content = provider.payload(request, legacy_tool=False)["messages"][0]["content"]
+    assert content[0]["cache_control"] == {"type": "ephemeral"} and "cache_control" not in content[1]
+
+
+def test_export_removes_chunk_overlap() -> None:
+    from emneklar.features.course_rag.export import without_overlap
+
+    previous = "Første setning er her. Andre setning følger. Tredje setning avslutter."
+    assert without_overlap(previous, "Tredje setning avslutter. Fjerde setning er ny.") == "Fjerde setning er ny."
+    assert without_overlap(previous, "Helt ny tekst.") == "Helt ny tekst."
+
+
+def test_keyword_questions_pick_distinctive_words() -> None:
+    from collections import Counter
+
+    from emneklar.features.course_rag.evaluation import health_label, keyword_question
+
+    record = _record(1, "Komplementærfarger ligger rett overfor hverandre i fargehjulet, og det er viktig.")
+    df = Counter({stem("komplementærfarger"): 1, stem("fargehjulet"): 2, stem("ligger"): 30, stem("viktig"): 49,
+                  stem("rett"): 20, stem("overfor"): 20, stem("hverandre"): 20})
+    question = keyword_question(record, df, 50)
+    assert question.split()[0] == "komplementærfarger" and "viktig" not in question.split()
+    assert not {"og", "i", "det", "er"} & set(question.split())
+    assert (health_label(85), health_label(70), health_label(10)) == ("God", "Middels", "Svak")
+
+
+def test_export_formats_are_valid(tmp_path: Path) -> None:
+    import json
+    import zipfile
+
+    from pypdf import PdfReader
+
+    from emneklar.features.course_rag.export import export
+
+    store = IndexStore(tmp_path / "i.sqlite")
+    store.reset("test:model")
+    records = [_record(1, "## Farger\n\nRGB brukes på skjerm. CMYK brukes på trykk."),
+               _record(2, "| Farge | Kode |\n| --- | --- |\n| Rød | #ff0000 |", type_="table")]
+    for record in records:
+        store.put_item(ItemRecord(key=record.item_key, kind="page", title=record.title, url=record.url), [record],
+                       _vectors([record]))
+    course = {"id": "104", "name": "Bildebehandling 1 – «test»", "course_code": "BIB1"}
+    zip_path = export(store, course, "zip", tmp_path / "e.zip")
+    with zipfile.ZipFile(zip_path) as zf:
+        lines = [json.loads(line) for line in zf.read("chunks.jsonl").decode().splitlines()]
+        manifest = json.loads(zf.read("manifest.json"))
+    assert len(lines) == 2 and len(lines[0]["vector"]) == 64 and lines[0]["citation"] == "Side 1 – Modul 1"
+    assert manifest["embedding_model"] == "test:model" and manifest["dimensions"] == 64 and "LESMEG.md" in zipfile.ZipFile(
+        zip_path).namelist()
+    md = export(store, course, "md", tmp_path / "e.md").read_text(encoding="utf-8")
+    assert md.startswith("# Bildebehandling 1") and "## Side 1" in md and "| Rød | #ff0000 |" in md
+    docx = export(store, course, "docx", tmp_path / "e.docx")
+    units = convert_document(str(docx), "docx")["units"]
+    kinds = [Block.from_dict(b).kind for b in units[0]["blocks"]]
+    assert kinds.count("heading") >= 3 and "table" in kinds
+    pdf = export(store, course, "pdf", tmp_path / "e.pdf")
+    text = "".join(page.extract_text() for page in PdfReader(str(pdf)).pages)
+    assert "Bildebehandling 1" in text and "CMYK brukes på trykk" in text
+    txt = export(store, course, "txt", tmp_path / "e.txt").read_text(encoding="utf-8")
+    assert "RGB brukes på skjerm" in txt
+    store.close()
+
+
+def test_keyword_search_finds_norwegian_compounds(tmp_path: Path) -> None:
+    store = IndexStore(tmp_path / "i.sqlite")
+    store.reset(None)
+    record = _record(1, "Hva er et bildeformat? JPEG for fotografier, PNG for grafikk.")
+    store.put_item(ItemRecord(key=record.item_key, kind="page", title=record.title), [record])
+    assert store.trigram  # SQLite with the trigram tokenizer (3.34+)
+    assert [cid for cid, _ in store.substring_search("Hvilket format passer?")] == [record.id]
+    assert store.keyword_search("foto") != []  # prefix of «fotografier»
+    outcome = asyncio.run(search(store, "Hvilket format passer for bilder?", embedder=None, reranker=None))
+    assert outcome.hits and outcome.hits[0].chunk.id == record.id
+    store.close()

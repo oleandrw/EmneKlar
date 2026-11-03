@@ -26,8 +26,8 @@ function SourceLink({ hit, children }: { hit: Hit; children: ReactNode }) {
   if (!hit.url) return <>{children}</>;
   return (
     <a href={hit.url} target="_blank" rel="noreferrer">
-      {children}
-      <span className="ek-visually-hidden"> (åpnes i ny fane)</span>
+      {children}{" "}
+      <span className="ek-visually-hidden">(åpnes i ny fane)</span>
     </a>
   );
 }

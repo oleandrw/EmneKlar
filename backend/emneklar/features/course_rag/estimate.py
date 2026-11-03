@@ -164,6 +164,12 @@ async def estimate(c: AppContainer, course_id: str, options: SourceOptions) -> d
         if plan["external"]:
             privacy.append(f"Opptil {len(likely)} bilder fra emnet (og bilder i dokumenter) sendes til KI-leverandøren "
                            "med sidetittel og tekst rundt bildet. Pynt og duplikater filtreres bort først.")
+    from emneklar.features.course_rag.builder import BuildRequest, evaluation_may_use_ai
+
+    if evaluation_may_use_ai(c, BuildRequest(**options.model_dump(), confirmed=True)):
+        plan = c.ai.plan("rag_eval", input_chars=6000, images=0, summary="")
+        ai.append({"task": "rag_eval", "label": "Testspørsmål til evalueringen", "calls": 3, "input_tokens": 6000,
+                   "available": True, "reason": None, "route": plan["route"], "external": plan["external"]})
     if embedding.needs_download:
         downloads.append({"label": embedding.label, "size_mb": embedding.download_mb, "kind": "embedding"})
     if reranker.available and reranker.needs_download:

@@ -28,10 +28,11 @@ from typing import Any
 import numpy as np
 
 from emneklar.core.errors import AppError
+from emneklar.features.course_rag.markdown import plain_text
 from emneklar.features.course_rag.text import stem_string, stems
 
 APPLICATION_ID = 0x456B5247  # "EkRG"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -53,7 +54,11 @@ CREATE INDEX IF NOT EXISTS ix_chunks_item ON chunks(item_key);
 """
 FTS_SCHEMA = ("CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(title, body, "
               "tokenize = 'unicode61 remove_diacritics 0')")
+# Substring search for Norwegian compounds («format» finds «bildeformat»). Needs SQLite ≥ 3.34; optional.
+TRIGRAM_SCHEMA = "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_tri USING fts5(body, tokenize = 'trigram')"
 CHUNK_TYPES = ("text", "table", "image", "transcript", "slide")
+SUBSTRING_SQL = ("SELECT t.rowid AS id, bm25(chunks_tri) AS score FROM chunks_tri t JOIN chunks c ON c.id = t.rowid "
+                 "WHERE chunks_tri MATCH ?{where} ORDER BY score LIMIT ?")
 KEYWORD_SQL = ("SELECT f.rowid AS id, bm25(chunks_fts, 2.0, 1.0) AS score FROM chunks_fts f JOIN chunks c ON "
                "c.id = f.rowid WHERE chunks_fts MATCH ?{where} ORDER BY score LIMIT ?")
 
@@ -104,6 +109,10 @@ class ChunkRecord:
         parts = [self.context, self.header(), self.text]
         return "\n\n".join(p for p in parts if p)
 
+    def index_text(self) -> str:
+        """What the keyword indexes see: the search text without Markdown markup and link addresses."""
+        return plain_text(self.search_text())
+
     def as_dict(self) -> dict[str, Any]:
         return {"id": self.id, "uid": self.uid, "item_key": self.item_key, "type": self.type,
                 "item_kind": self.item_kind, "title": self.title, "heading_path": self.heading_path,
@@ -151,12 +160,18 @@ class IndexStore:
         self.conn.execute(f"PRAGMA application_id = {APPLICATION_ID}")
         self.conn.executescript(SCHEMA)
         self.fts = False
+        self.trigram = False
         if not force_python_bm25:
             try:
                 self.conn.execute(FTS_SCHEMA)
                 self.fts = True
             except sqlite3.OperationalError:
                 self.fts = False
+            try:
+                self.conn.execute(TRIGRAM_SCHEMA)
+                self.trigram = True
+            except sqlite3.OperationalError:
+                self.trigram = False
         version = self.meta("schema_version")
         if version is None:
             self.set_meta("schema_version", str(SCHEMA_VERSION))
@@ -200,6 +215,8 @@ class IndexStore:
             self.conn.execute("DELETE FROM items")
             if self.fts:
                 self.conn.execute("DELETE FROM chunks_fts")
+            if self.trigram:
+                self.conn.execute("DELETE FROM chunks_tri")
             self.conn.execute("INSERT INTO meta(key, value) VALUES('embedding', ?) ON CONFLICT(key) DO UPDATE SET "
                               "value = excluded.value", (embedding or "",))
             self._bump()
@@ -233,12 +250,15 @@ class IndexStore:
                              json.dumps(chunk.heading_path, ensure_ascii=False), chunk.text, chunk.context,
                              "," + ",".join(chunk.module_ids) + ",", chunk.module_name, chunk.url, chunk.page,
                              chunk.page_end, chunk.start, chunk.end, chunk.updated_at, chunk.tokens,
-                             json.dumps(chunk.meta, ensure_ascii=False), stem_string(chunk.search_text()),
+                             json.dumps(chunk.meta, ensure_ascii=False), stem_string(chunk.index_text()),
                              stem_string(chunk.header()), vector))
                         chunk.id = cursor.lastrowid
                         if self.fts:
                             self.conn.execute("INSERT INTO chunks_fts(rowid, title, body) VALUES (?, ?, ?)",
-                                              (chunk.id, stem_string(chunk.header()), stem_string(chunk.search_text())))
+                                              (chunk.id, stem_string(chunk.header()), stem_string(chunk.index_text())))
+                        if self.trigram:
+                            self.conn.execute("INSERT INTO chunks_tri(rowid, body) VALUES (?, ?)",
+                                              (chunk.id, chunk.index_text().lower()))
                 count = len(chunks) if chunks is not None else 0
                 self.conn.execute(
                     "INSERT INTO items(item_key, kind, canvas_id, title, url, modules, updated_at, content_hash, "
@@ -261,6 +281,9 @@ class IndexStore:
     def _delete_chunks(self, item_key: str) -> None:
         if self.fts:
             self.conn.execute("DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE item_key = ?)",
+                              (item_key,))
+        if self.trigram:
+            self.conn.execute("DELETE FROM chunks_tri WHERE rowid IN (SELECT id FROM chunks WHERE item_key = ?)",
                               (item_key,))
         self.conn.execute("DELETE FROM chunks WHERE item_key = ?", (item_key,))
 
@@ -301,7 +324,7 @@ class IndexStore:
             "SELECT MAX(t_end) FROM chunks WHERE type = 'transcript' GROUP BY item_key")) / 60
         return {"chunks": sum(types.values()), "chunk_types": types, "items": kinds, "item_status": status,
                 "vectors": vectors, "tokens": tokens, "video_minutes": round(minutes, 1),
-                "keyword_engine": "fts5" if self.fts else "python"}
+                "keyword_engine": "fts5" if self.fts else "python", "substring_search": self.trigram}
 
     def modules(self) -> list[dict[str, str]]:
         seen: dict[str, str] = {}
@@ -339,6 +362,18 @@ class IndexStore:
             rows = self.conn.execute(sql, [expression, *params, limit]).fetchall()
             return [(int(r["id"]), -float(r["score"])) for r in rows]
         return self._python_bm25(query, where, params, limit)
+
+    def substring_search(self, query: str, *, module_ids: list[str] | None = None, types: list[str] | None = None,
+                         limit: int = 40) -> list[tuple[int, float]]:
+        """Chunks that contain the query words anywhere, also inside compounds (trigram index)."""
+        from emneklar.features.course_rag.text import substring_query
+
+        expression = substring_query(query)
+        if not self.trigram or expression is None:
+            return []
+        where, params = self._filters(module_ids, types)
+        rows = self.conn.execute(SUBSTRING_SQL.format(where=where), [expression, *params, limit]).fetchall()
+        return [(int(r["id"]), -float(r["score"])) for r in rows]
 
     def _python_bm25(self, query: str, where: str, params: list[Any], limit: int) -> list[tuple[int, float]]:
         terms = list(dict.fromkeys(stems(query)))

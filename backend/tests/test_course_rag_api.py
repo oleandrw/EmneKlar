@@ -315,3 +315,61 @@ def test_images_without_ai_are_skipped_with_reason(rag: TestClient) -> None:
     build(rag, images=True, text=True, documents=False)
     skipped = rag.get(f"/api/courses/{RAG_COURSE}/rag").json()["index"]["skipped"]
     assert any(s["kind"] == "image" and "krever en bildemodell" in s["reason"] for s in skipped)
+
+
+def test_evaluation_runs_after_build_and_on_demand(rag: TestClient) -> None:
+    build(rag)
+    evaluation = rag.get(f"/api/courses/{RAG_COURSE}/rag").json()["index"]["evaluation"]
+    # 15–20 questions in a normal course; this tiny test course has fewer chunks that qualify.
+    assert evaluation["method"] == "keywords" and 5 <= len(evaluation["questions"]) <= 18
+    assert 0 <= evaluation["health"] <= 100 and evaluation["health_label"] in ("God", "Middels", "Svak")
+    assert evaluation["recall_at_5"] >= 0.5  # keyword questions from the chunk itself are usually found
+    assert "gjenfinning" in evaluation["explanation"]
+    job = rag.post(f"/api/courses/{RAG_COURSE}/rag/evaluate", json={}).json()
+    assert wait_for_job(rag, job["id"])["status"] == "completed"
+    refused = rag.post(f"/api/courses/{RAG_COURSE}/rag/evaluate", json={"use_ai": True})
+    assert refused.status_code == 409
+
+
+def test_export_endpoints(rag: TestClient) -> None:
+    from emneklar.features.course_rag.export import jsonl_lines
+
+    build(rag)
+    response = rag.get(f"/api/courses/{RAG_COURSE}/rag/export?format=zip")
+    assert response.status_code == 200 and response.headers["content-type"] == "application/zip"
+    assert "attachment" in response.headers["content-disposition"]
+    lines = jsonl_lines(response.content)
+    assert lines and all(line["vector"] is not None for line in lines)
+    assert not any("Studentens egen rapport" in line["text"] for line in lines)
+    for fmt, kind in (("md", "text/markdown"), ("docx", "officedocument"), ("pdf", "application/pdf"),
+                      ("txt", "text/plain")):
+        exported = rag.get(f"/api/courses/{RAG_COURSE}/rag/export?format={fmt}")
+        assert exported.status_code == 200 and kind in exported.headers["content-type"], fmt
+        assert len(exported.content) > 200
+    assert rag.get(f"/api/courses/{RAG_COURSE}/rag/export?format=exe").status_code == 400
+
+
+def test_contextual_enrichment_is_cached(rag: TestClient, rag_container: AppContainer) -> None:
+    def answers(body: dict) -> dict:
+        name = (body.get("response_format") or {}).get("json_schema", {}).get("name")
+        if name == "kontekst":
+            listing = body["messages"][-1]["content"][1]["text"]
+            ids = [line.strip("[]") for line in listing.splitlines() if line.startswith("[U")]
+            return {"contexts": [{"id": i, "context": "Dette er fra emnet om fargelære."} for i in ids]}
+        if name == "testsporsmal":
+            listing = body["messages"][-1]["content"][0]["text"]
+            ids = [line.split("]")[0].strip("[") for line in listing.splitlines() if line.startswith("[U")]
+            return {"questions": [{"id": i, "question": "Hva handler dette om?"} for i in ids]}
+        return {}
+
+    calls = enable_ai(rag, rag_container, answers)
+    build(rag, contextual_enrichment=True, documents=False, confirmed=True)
+    context_calls = [c for c in calls if c["response_format"]["json_schema"]["name"] == "kontekst"]
+    assert context_calls and "Dokument (data)" in context_calls[0]["messages"][-1]["content"][0]["text"]
+    hits = search(rag, "fargelære")["hits"]
+    status = rag.get(f"/api/courses/{RAG_COURSE}/rag").json()
+    assert status["index"]["evaluation"]["method"] == "ai"  # consented build that already uses AI
+    assert hits
+    before = len(context_calls)
+    build(rag, contextual_enrichment=True, documents=False, confirmed=True, mode="full")
+    assert len([c for c in calls if c["response_format"]["json_schema"]["name"] == "kontekst"]) == before

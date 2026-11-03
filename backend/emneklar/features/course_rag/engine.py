@@ -22,6 +22,7 @@ from emneklar.core.storage.models import RagIndex
 from emneklar.features.course_rag.store import IndexStore, index_path
 
 JOB_KIND = "rag_build"
+EVAL_JOB_KIND = "rag_eval"
 
 
 def store_for(c: AppContainer, course_id: str, *, create: bool = True) -> IndexStore:
@@ -34,7 +35,7 @@ def has_index(c: AppContainer, course_id: str) -> bool:
 
 def busy_job(c: AppContainer, course_id: str) -> str | None:
     for job in c.jobs.list(course_id=course_id, active_only=True):
-        if job.kind == JOB_KIND and job.status in ACTIVE:
+        if job.kind in (JOB_KIND, EVAL_JOB_KIND) and job.status in ACTIVE:
             return job.id
     return None
 

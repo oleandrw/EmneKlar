@@ -122,3 +122,31 @@ describe("BuildPanel", () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 });
+
+describe("QualityPanel and ExportPanel", () => {
+  it("shows the health score with an honest explanation and download links", async () => {
+    const { QualityPanel } = await import("./QualityPanel");
+    const { ExportPanel } = await import("./ExportPanel");
+    const evaluated = status({
+      index: {
+        status: "ready", options: {}, embedding: { identity: "local:BAAI/bge-m3", label: "BGE-M3", backend: "local" },
+        stats: {}, skipped: [], limitations: [], last_job_id: null, built_at: "2026-11-03T10:00:00Z", updated_at: null,
+        evaluation: {
+          method: "keywords", method_label: "Nøkkelordspørsmål (uten KI)", recall_at_5: 0.8, mrr: 0.7, health: 75,
+          health_label: "Middels", created_at: "2026-11-03T10:00:00Z", explanation: "Helsescoren måler gjenfinning.",
+          questions: [{ question: "fargehjul primærfarger", chunk_id: 3, citation: "Fargelære – Modul 2", rank: 1 },
+            { question: "pensum kapittel", chunk_id: 4, citation: "Pensum.pdf s. 1", rank: null }],
+        },
+      },
+    });
+    const { container } = render(wrap(<><QualityPanel courseId="104" status={evaluated} /><ExportPanel courseId="104" status={evaluated} /></>));
+    expect(screen.getByText("Middels")).toBeInTheDocument();
+    expect(screen.getByText("Ikke funnet")).toBeInTheDocument();
+    expect(screen.getByText(/måler gjenfinning/)).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /La KI lage testspørsmålene/ })).toBeDisabled();
+    const zip = screen.getByRole("link", { name: /Last ned ZIP for andre RAG-verktøy/ });
+    expect(zip).toHaveAttribute("href", "/api/courses/104/rag/export?format=zip");
+    expect(screen.getAllByRole("link", { name: /Last ned/ })).toHaveLength(5);
+    expect(await axeViolations(container)).toEqual([]);
+  });
+});

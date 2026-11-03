@@ -28,6 +28,12 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   Pynt filtreres bort før noe sendes (dekorative bilder, ikoner, logoer, bannere, svært små og ensfargede bilder, SVG og
   duplikater med perceptuell hash), og beskrivelsene bufres på bildets SHA-256. Valgfritt: nøkkelbilder ved
   sceneskifte i video, koblet til tidspunktet. Bildene leses i de isolerte parserprosessene.
+- Emne-RAG → kontekstuell berikelse (valgfritt, krever KI): én til to setninger foran hvert utdrag som plasserer det i
+  dokumentet og modulen, med prompt caching per dokument og buffer. **Kvalitet**: etter hver bygging lages 15–20
+  testspørsmål (av KI når det er tillatt, ellers av utdragenes særpregede ord), og recall@5, MRR og en helsescore
+  lagres og vises sammen med hvert spørsmål. **Eksport**: ZIP med `chunks.jsonl` (metadata og vektorer), manifest og
+  formatbeskrivelse, eller kunnskapsbasen som Word, PDF, Markdown eller ren tekst. Knappen «Oppdater indeks»
+  behandler bare nye og endrede elementer og fjerner slettede.
 - Innholdskvalitet → Media: «Standardiser videoavspillere» for YouTube. Finner innebygde videoer, forklarer avvik
   fra én responsiv og Canvas-trygg standard (16:9, maks bredde, sentrert, `allowfullscreen`, `loading="lazy"`),
   foreslår beskrivende title med synlig kilde (eksisterende title, YouTube-metadata, Canvas-kontekst, KI-forslag på

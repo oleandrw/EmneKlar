@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 
 from emneklar.api.deps import get_container, require_course_id
 from emneklar.core import flags
@@ -26,9 +29,7 @@ router = APIRouter(prefix="/api")
 
 CHUNK_TYPE_LABELS = {"text": "Tekst", "table": "Tabeller", "image": "Bilder", "transcript": "Video og lyd",
                      "slide": "Lysbilder"}
-NOT_YET: dict[str, str] = {  # options that are not available in this version (key → explanation)
-    "contextual_enrichment": "Kontekstuell berikelse kommer i neste versjon av Emne-RAG.",
-}
+NOT_YET: dict[str, str] = {}  # options that are not available in this version (key → explanation)
 
 
 def _flag(c: AppContainer) -> None:
@@ -203,3 +204,88 @@ async def ask(course_id: str, body: QueryBody, c: AppContainer = Depends(get_con
         source["cited"] = source["id"] in result["cited"]
     return {**result, "sources": sources, "search": outcome.as_dict(debug=body.debug),
             "payload_summary": payload_summary(query, outcome.hits)}
+
+
+class EvaluateBody(BaseModel):
+    use_ai: bool = False
+    confirmed: bool = False
+
+
+@router.post("/courses/{course_id}/rag/evaluate")
+async def run_evaluate(course_id: str, body: EvaluateBody, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
+    """Run the retrieval evaluation again (also done automatically after every build)."""
+    from emneklar.features.course_rag.evaluation import evaluate
+
+    _flag(c)
+    course_id = require_course_id(course_id)
+    if engine.busy_job(c, course_id):
+        raise AppError("rag_index_busy", status=409)
+    engine.store_for(c, course_id, create=False).close()  # 404 before the job starts
+    if body.use_ai:
+        plan = c.ai.plan("rag_eval", input_chars=6000, images=0, summary="")
+        if not plan["available"]:
+            raise AppError("ai_not_configured", status=409, message=plan["reason"])
+        if plan["needs_confirmation"] and not body.confirmed:
+            raise AppError("ai_consent_required", status=409)
+
+    async def runner(ctx: JobContext) -> dict[str, Any]:
+        progress = ctx.progress
+        progress.set_phase("evaluate", "Måler søket med testspørsmål", index=1, count=1, determinate=True)
+        progress.add_tasks("evaluation", 1)
+        started = progress.start("evaluation", item="Testspørsmål", operation="Søker med testspørsmål")
+        store = engine.store_for(c, course_id, create=False)
+        try:
+            embedder, reranker, _notes = await engine.load_search_models(c, course_id=course_id, confirmed=body.confirmed)
+            result = await evaluate(store, embedder=embedder, reranker=reranker, ai=c.ai, use_ai=body.use_ai,
+                                    confirmed=body.confirmed, course_id=course_id,
+                                    candidates=c.settings.get().rag.candidates)
+        finally:
+            store.close()
+            progress.finish("evaluation", started)
+        engine.update_registry(c, course_id, evaluation=result)
+        return {"health": result.get("health"), "recall_at_5": result.get("recall_at_5"), "mrr": result.get("mrr")}
+
+    state = c.jobs.submit(kind=engine.EVAL_JOB_KIND, title="Emne-RAG: evaluering av søket", runner=runner,
+                          course_id=course_id, params=body.model_dump(), supports_pause=False, hard_cancel=True)
+    return state.public()
+
+
+@router.get("/courses/{course_id}/rag/export")
+async def export_index(course_id: str, format: str = "zip", c: AppContainer = Depends(get_container)) -> FileResponse:
+    import tempfile
+    from datetime import UTC, datetime
+    from pathlib import Path
+    from urllib.parse import quote
+
+    from emneklar.core.storage.models import Course
+    from emneklar.features.course_rag.export import FORMATS, export
+
+    _flag(c)
+    course_id = require_course_id(course_id)
+    if format not in FORMATS:
+        raise AppError("validation_error", detail="Ukjent eksportformat")
+    with c.db.session() as session:
+        row = session.get(Course, course_id)
+        course = {"id": course_id, "name": row.name if row else f"Emne {course_id}",
+                  "course_code": row.course_code if row else None}
+    store = engine.store_for(c, course_id, create=False)
+    c.config.tmp_dir.mkdir(parents=True, exist_ok=True)
+    handle, name = tempfile.mkstemp(prefix="rag-eksport-", dir=c.config.tmp_dir)
+    import os
+
+    os.close(handle)
+    target = Path(name)
+    try:
+        await asyncio.to_thread(export, store, course, format, target)  # type: ignore[arg-type]
+    except BaseException:
+        target.unlink(missing_ok=True)
+        raise
+    finally:
+        store.close()
+    media_type, ext = FORMATS[format]
+    code = re.sub(r"[^A-Za-z0-9æøåÆØÅ_-]+", "-", str(course.get("course_code") or course_id)).strip("-") or course_id
+    filename = f"emne-rag-{code}-{datetime.now(UTC).strftime('%Y%m%d')}.{ext}"
+    ascii_name = filename.encode("ascii", "replace").decode()
+    disposition = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}"
+    return FileResponse(target, media_type=media_type, background=BackgroundTask(target.unlink, missing_ok=True),
+                        headers={"Content-Disposition": disposition})

@@ -105,11 +105,14 @@ async def search(store: IndexStore, query: str, *, embedder: Embedder | None, re
     keyword: dict[int, tuple[int, float]] = {}
     vector: dict[int, tuple[int, float]] = {}
     for q in queries:
-        hits = store.keyword_search(q, module_ids=module_ids, types=types, limit=candidates)
-        rankings.append([cid for cid, _ in hits])
-        for rank, (cid, score) in enumerate(hits, start=1):
-            if cid not in keyword or rank < keyword[cid][0]:
-                keyword[cid] = (rank, round(score, 4))
+        for hits in (store.keyword_search(q, module_ids=module_ids, types=types, limit=candidates),
+                     store.substring_search(q, module_ids=module_ids, types=types, limit=candidates)):
+            if not hits:
+                continue
+            rankings.append([cid for cid, _ in hits])
+            for rank, (cid, score) in enumerate(hits, start=1):
+                if cid not in keyword or rank < keyword[cid][0]:
+                    keyword[cid] = (rank, round(score, 4))
     use_vectors = embedder is not None and store.embedding_identity == embedder.identity
     if embedder is not None and not use_vectors:
         notes.append("Indeksen er laget med en annen embedding-modell enn den som er valgt nå. Bare nøkkelordsøk er "

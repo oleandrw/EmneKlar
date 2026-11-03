@@ -74,11 +74,19 @@ def stem_string(text: str) -> str:
 
 
 def fts_query(text: str) -> str | None:
-    """A safe FTS5 MATCH expression (OR of quoted stems), or None when nothing searchable remains."""
+    """A safe FTS5 MATCH expression (OR of quoted stems, longer stems also as prefixes), or None."""
     terms = list(dict.fromkeys(stems(text)))
     if not terms:
         return None
-    return " OR ".join('"' + t.replace('"', "") + '"' for t in terms[:40])
+    return " OR ".join('"' + t.replace('"', "") + '"' + ("*" if len(t) >= 4 else "") for t in terms[:40])
+
+
+def substring_query(text: str) -> str | None:
+    """FTS5 trigram MATCH expression: the query words (≥ 4 letters, no stop words) as substrings."""
+    terms = list(dict.fromkeys(w for w in words(text) if len(w) >= 4 and w not in STOPWORDS))
+    if not terms:
+        return None
+    return " OR ".join('"' + t.replace('"', "") + '"' for t in terms[:20])
 
 
 def estimate_tokens(text: str) -> int:

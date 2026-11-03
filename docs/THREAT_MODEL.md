@@ -31,6 +31,8 @@ KI-leverandører (dataminimering), utilsiktede feil fra brukeren eller fra EmneK
 | 20 | **Fjerning av innhold i quizspørsmål** | Canvas erstatter et spørsmål i sin helhet ved oppdatering. EmneKlar sender tilbake tilbakemeldingstekster og formatering, beholder original HTML når teksten er uendret og nekter å erstatte rik spørsmålstekst (bilder, tabeller) med ren tekst. | `test_quiz_assistant` |
 | 21 | **Personvern ved oppdateringssjekk** | Bare én forespørsel om siste versjon til GitHub (ingen emnedata), høyst én gang i døgnet, og kan slås av. | `test_settings_updates` |
 | 22 | **Andre programmer med samme navn eller mappe** | Et annet EmneKlar-program bruker `%LOCALAPPDATA%\EmneKlar`, `database.db`, Alembic-revisjon «0001», nøkkelringtjenesten «EmneKlar», informasjonskapselen `emneklar_session` og port 8765. EmneKlar har egen datamappe, egen nøkkelringtjeneste, en informasjonskapsel per port og standardport 8770. Databasen merkes med `PRAGMA application_id`; før noe åpnes for skriving, leses filhodet direkte, og en database som tilhører et annet program, blir verken migrert eller endret (heller ikke med -wal/-shm-filer). | `test_coexistence` |
+| 23 | **Emne-RAG: studentdata og lekkasje** | Bare lærerinnhold leses: diskusjonstemaer og filer kontrolleres mot lærer-/assistent-/designer-id-er i emnet, svar i diskusjoner (`entries`/`view`) og innleveringer hentes aldri, og medier tas bare med når lærerens innhold peker på dem. Indeksen ligger i datamappen (`rag\course-<id>.sqlite`, egen `application_id`), og ingenting skrives til Canvas. Embedding, rerangering og transkripsjon kjører lokalt; KI (berikelse, bilder, svar, testspørsmål) går gjennom personvernporten. Svarene får bare sitere utdrag de fikk, ukjente kildehenvisninger fjernes. Kurs-, bilde- og dokumentfiler leses i de isolerte parserprosessene; eksterne bilder hentes gjennom SSRF-vernet. | `test_course_rag_api`, `test_course_rag_units` |
+| 24 | **Emne-RAG: nedlasting av modeller** | Lokale modeller lastes ned fra Hugging Face bare etter at brukeren har sett størrelsen og godtatt nedlastingen, til `models\` i datamappen. NB-Whisper hentes fra Nasjonalbibliotekets offisielle modellsider og konverteres lokalt. YouTube-teksting hentes med et uoffisielt grensesnitt som bare sender video-id-en (kan slås av); lyd fra YouTube lastes aldri ned. | `test_course_rag_api` |
 
 ## Restrisiko
 
@@ -39,3 +41,6 @@ KI-leverandører (dataminimering), utilsiktede feil fra brukeren eller fra EmneK
 * En lokal prosess som kjører som samme bruker kan lese nøkkelringen og datamappen. Dette er utenfor det
   EmneKlar kan beskytte mot.
 * Lenkesjekken avslører lærerens IP-adresse for eksterne nettsteder (som ved vanlig nettlesing).
+* Emne-RAG: modellfiler fra Hugging Face og bibliotekene i det valgfrie `backend[rag]`-tillegget (PyTorch,
+  transformers, faster-whisper) kjører i EmneKlar-prosessen. De installeres bare når brukeren velger det.
+* En eksportert Emne-RAG-indeks er en kopi av emneinnholdet. Den som får filen, kan lese innholdet.

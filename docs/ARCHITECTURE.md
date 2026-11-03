@@ -45,7 +45,8 @@ backend/emneklar/
     jobs/              manager.py (bakgrunnsjobber), progress.py, eta.py
     changes/           engine.py (endringskø, konflikt, backup, logg, angre), appliers.py
     backup/            store.py (sikkerhetskopier av Canvas-objekter)
-    ai/                providers/, catalog.py (modellregister), router.py, service.py (personvern, logg)
+    ai/                providers/, catalog.py (modellregister), router.py, service.py (personvern, logg),
+                       local/ (lokale modeller for Emne-RAG: embedding, rerangering, NB-Whisper; local_models.json)
     updates/           versjonssjekk mot GitHub Releases
     flags.py           funksjonsflagg
   features/
@@ -58,6 +59,7 @@ backend/emneklar/
     homepage_builder/  stiler, seksjoner, Canvas-trygg HTML
     module_requirements/, blueprint/, canvas_settings/
     reporting/         HTML/CSV-rapporter
+    course_rag/        Emne-RAG (Canvas-verktøy): innhenting, konvertering, chunking, indeks, hybridsøk, svar, eksport
     overview/          domenekort og anbefalte neste steg
 frontend/src/
   core/                API-klient, økt, global emnekontekst, layout (navigasjon, topplinje)
@@ -120,6 +122,21 @@ angre (der snapshot + API gjør det mulig, med ny konfliktsjekk)
 Se [THREAT_MODEL.md](THREAT_MODEL.md). Kort: kun 127.0.0.1, Host-sjekk (DNS-rebinding), øktcookie
 (HttpOnly, SameSite=Strict), CSRF-token og Origin-sjekk, streng CSP, sandkasset forhåndsvisning av Canvas-HTML,
 SSRF-vern for lenkesjekk, hemmeligheter i nøkkelring, sensurering av logger, isolerte dokumentparsere.
+
+## Emne-RAG
+
+Canvas-verktøy → Emne-RAG bygger en lokal kunnskapsbase av ett emne og leser bare fra Canvas (se
+[rag-plan.md](rag-plan.md)):
+
+```
+innhenting (lærerinnhold) ─► konvertering til Markdown-blokker (isolerte parserprosesser)
+   ─► video: teksting → NB-Whisper ─► bilder: pyntfilter → bildemodell ─► chunking (struktur først)
+   ─► (kontekstuell berikelse) ─► embedding (lokalt/leverandør) ─► rag\course-<id>.sqlite (FTS5 + vektorer)
+spørsmål ─► BM25 + vektorsøk ─► RRF ─► rerangering ─► svar med kildehenvisninger (KI) eller treff (uten KI)
+```
+
+Bakgrunnsjobben lagrer hvert element når det er ferdig, så avbrutte bygg kan fortsettes, og oppdateringer
+behandler bare elementer med endret signatur. Etter hver bygging måles søket med testspørsmål (recall@5, MRR).
 
 ## Oppdatering og drift
 
