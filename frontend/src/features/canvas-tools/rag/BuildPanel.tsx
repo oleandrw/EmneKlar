@@ -230,8 +230,8 @@ export function BuildPanel({ courseId, status }: { courseId: string; status: Rag
               hint={unavailable.contextual_enrichment ?? "En til to setninger foran hvert utdrag som sier hvor det hører hjemme. Gir bedre treff, men krever KI."} />
             {options.video ? (
               <Checkbox label="Nøkkelbilder fra video (lysbilder i opptak)" checked={options.keyframes}
-                onChange={(e) => set({ keyframes: e.target.checked })}
-                hint="Av som standard. Bilder ved sceneskifte beskrives med bildemodellen og kobles til tidspunktet." />
+                disabled={Boolean(unavailable.keyframes)} onChange={(e) => set({ keyframes: e.target.checked })}
+                hint={unavailable.keyframes ?? "Av som standard. Bilder ved sceneskifte beskrives med bildemodellen og kobles til tidspunktet."} />
             ) : null}
           </Fieldset>
           <div className="ek-cluster">

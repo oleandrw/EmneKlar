@@ -21,6 +21,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -226,6 +227,8 @@ async def discover(api: CanvasAPI, course_id: str, options: SourceOptions, base_
         calls["teachers"] = ("Lærere i emnet", api.list_teaching_user_ids(course_id))
     if need_files:
         calls["files"] = ("Filer", api.list_files(course_id, include_user=True))
+    if options.video:
+        calls["media"] = ("Video og lyd", api.list_media_objects(course_id, include_sources=True))
     results = await asyncio.gather(*(_fetch(name, label, call, on_list, inv.limitations)
                                      for name, (label, call) in calls.items()))
     data = dict(zip(calls, results, strict=True))
@@ -346,6 +349,10 @@ async def discover(api: CanvasAPI, course_id: str, options: SourceOptions, base_
     for item in inv.items:
         for fid in item.parsed.file_ids if item.parsed else []:
             linked.setdefault(fid, []).append(item.key)
+        if options.video and item.parsed:
+            for ref in item.parsed.media:  # uploaded media files embedded with the Canvas media player
+                if ref.kind == "canvas_attachment" and ref.ident:
+                    linked.setdefault(ref.ident, []).append(item.key)
     if need_files:
         wanted_files: list[str] = []
         if options.scope == "course":
@@ -362,7 +369,11 @@ async def discover(api: CanvasAPI, course_id: str, options: SourceOptions, base_
             raw = files.get(fid)
             if raw is None:
                 continue
-            _add_file(inv, raw, options, teacher_ids, member, linked.get(fid, []), base, course_id)
+            parent_modules = [m for item in inv.items if item.key in linked.get(fid, []) for m in item.modules]
+            _add_file(inv, raw, options, teacher_ids, member, linked.get(fid, []), base, course_id, parent_modules)
+
+    if options.video:
+        _add_media(inv, data.get("media") or [], external, member, base)
 
     # -- external links / tools in modules ---------------------------------------------------------
     for item, mod in external:
@@ -370,7 +381,10 @@ async def discover(api: CanvasAPI, course_id: str, options: SourceOptions, base_
         url = str(item.get("external_url") or "")
         key = f"{'external' if item.get('type') == 'ExternalUrl' else 'tool'}:{item.get('id')}"
         if item.get("type") == "ExternalUrl" and YOUTUBE_RE.search(url):
-            continue  # YouTube links are video sources (handled when «Video og lyd» is chosen)
+            if not options.video:
+                inv.skipped.append(Skip(key, "youtube", f"{title} ({mod['name']})", "YouTube-video. Velg «Video og lyd» "
+                                        "for å ta med tekstingen.", url))
+            continue
         if item.get("type") == "ExternalUrl":
             reason = "Ekstern lenke. Nettsider utenfor Canvas hentes ikke."
         else:
@@ -381,8 +395,95 @@ async def discover(api: CanvasAPI, course_id: str, options: SourceOptions, base_
     return inv
 
 
+_EMBED_SRC = re.compile(r"<iframe[^>]+src=[\"']([^\"']+)", re.IGNORECASE)
+_PLATFORMS = {"panopto": "Panopto", "kaltura": "Kaltura", "mediasite": "Mediasite", "instructuremedia": "Canvas Studio",
+              "vimeo": "Vimeo"}
+
+
+def _merge_modules(target: list[dict[str, str]], extra: list[dict[str, str]]) -> None:
+    for module in extra:
+        if module not in target:
+            target.append(module)
+
+
+def _add_media(inv: Inventory, media_objects: list[Any], external: list[tuple[dict[str, Any], dict[str, str]]],
+               member: dict[str, list[dict[str, str]]], base: str) -> None:
+    """Media that teacher content points to (never the whole course media list – it can hold student recordings)."""
+    objects = {str(m.get("media_id")): m for m in media_objects if isinstance(m, dict)}
+    found: dict[str, SourceItem] = {}
+    parents = list(inv.items)
+    for parent in parents:
+        if parent.parsed is None:
+            continue
+        for ref in parent.parsed.media:
+            if ref.kind not in ("canvas_media", "youtube", "vimeo") or not ref.ident:
+                continue
+            kind = "media" if ref.kind == "canvas_media" else ref.kind
+            key = f"{kind}:{ref.ident}"
+            label = parent.parsed.media_titles.get(ref.ident) or ""
+            if key not in found:
+                url = f"https://www.youtube.com/watch?v={ref.ident}" if kind == "youtube" else \
+                    f"https://vimeo.com/{ref.ident}" if kind == "vimeo" else parent.url
+                found[key] = SourceItem(key, kind, ref.ident, label, url, None, content_hash=_hash(kind, ref.ident),
+                                        meta={"page_title": parent.title})
+            entry = found[key]
+            if not entry.title and label:
+                entry.title = label
+            entry.parents.append(parent.key)
+            _merge_modules(entry.modules, parent.modules)
+        for src in _EMBED_SRC.findall(parent.body or ""):
+            platform = next((name for host, name in _PLATFORMS.items() if host in src.lower() and host != "vimeo"),
+                            None)
+            if platform:
+                inv.skipped.append(Skip(f"embed:{_hash(src)[:12]}", "tool", f"{platform}-video på «{parent.title}»",
+                                        f"{platform} er et eksternt verktøy. Videoen og tekstingen kan ikke hentes via "
+                                        "Canvas-API-et.", parent.url))
+    for item, mod in external:
+        url = str(item.get("external_url") or "")
+        match = YOUTUBE_RE.search(url) if item.get("type") == "ExternalUrl" else None
+        if not match:
+            continue
+        key = f"youtube:{match.group(1)}"
+        entry = found.setdefault(key, SourceItem(key, "youtube", match.group(1), str(item.get("title") or ""),
+                                                 f"https://www.youtube.com/watch?v={match.group(1)}", None,
+                                                 content_hash=_hash("youtube", match.group(1))))
+        _merge_modules(entry.modules, [mod])
+    for key, entry in found.items():
+        if entry.kind == "vimeo":
+            inv.skipped.append(Skip(key, "vimeo", entry.title or "Vimeo-video", "Teksting fra Vimeo kan ikke hentes.",
+                                    entry.url))
+            continue
+        if entry.kind == "media":
+            obj = objects.get(entry.canvas_id)
+            if obj is None:
+                inv.skipped.append(Skip(key, "media", entry.title or "Video i Canvas", "Fant ikke mediet i emnets "
+                                        "medieliste. Det kan tilhøre et annet emne.", entry.url))
+                continue
+            entry.title = entry.title or str(obj.get("title") or "Video")
+            entry.meta.update({"media_type": obj.get("media_type"), "tracks": obj.get("media_tracks") or [],
+                               "sources": obj.get("media_sources") or []})
+            entry.content_hash = _hash("media", entry.canvas_id, [(t.get("id"), t.get("updated_at"))
+                                                                  for t in obj.get("media_tracks") or []])
+        entry.title = entry.title or ("YouTube-video" if entry.kind == "youtube" else "Video")
+        entry.modules = entry.modules or member.get(key, [])
+        inv.items.append(entry)
+
+
+def media_duration(item: SourceItem) -> float | None:
+    """Seconds, from the media source with the most information (size in KB × 8 / bitrate in kbit/s)."""
+    for source in item.meta.get("sources") or []:
+        try:
+            size_kb, bitrate = float(source.get("size") or 0), float(source.get("bitrate") or 0)
+        except (TypeError, ValueError):
+            continue
+        if size_kb and bitrate:
+            return size_kb * 8 / bitrate
+    return None
+
+
 def _add_file(inv: Inventory, raw: dict[str, Any], options: SourceOptions, teacher_ids: set[str] | None,
-              member: dict[str, list[dict[str, str]]], parents: list[str], base: str, course_id: str) -> None:
+              member: dict[str, list[dict[str, str]]], parents: list[str], base: str, course_id: str,
+              parent_modules: list[dict[str, str]] | None = None) -> None:
     fid = str(raw.get("id"))
     key = f"file:{fid}"
     name = str(raw.get("display_name") or raw.get("filename") or "")
@@ -418,8 +519,10 @@ def _add_file(inv: Inventory, raw: dict[str, Any], options: SourceOptions, teach
         return
     if category is None:
         return
+    modules = list(member.get(key, []))
+    _merge_modules(modules, parent_modules or [])
     inv.items.append(SourceItem(
-        key, "file", fid, name, url, raw.get("updated_at") or raw.get("modified_at"), modules=member.get(key, []),
+        key, "file", fid, name, url, raw.get("updated_at") or raw.get("modified_at"), modules=modules,
         meta={"format": fmt, "category": category, "size": raw.get("size"), "content_type": raw.get("content-type"),
               "download_url": raw.get("url"), "media_entry_id": raw.get("media_entry_id")},
         parents=parents))

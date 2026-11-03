@@ -16,6 +16,12 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   og kildetype, og en feilsøkingsvisning med poeng før og etter rerangering. Estimat før bygging, bakgrunnsjobb med
   fremdrift, pause, avbryt og gjenopptak, og liste over hoppede elementer. Valgfrie lokale modeller (BGE-M3 og
   bge-reranker-v2-m3) installeres med `setup-emne-rag.bat`; uten dem brukes nøkkelordsøk.
+- Emne-RAG → video og lyd: eksisterende teksting brukes først (Canvas-mediespor, undertekstfiler og YouTube-teksting),
+  ellers transkriberes Canvas-video og opplastede lyd- og videofiler lokalt med NB-Whisper (modellstørrelse etter
+  GPU/CPU, Whisper large-v3 for annet språk). Transkripsjoner bufres på filens SHA-256, deles i biter på 60–120
+  sekunder med overlapp og får tidsstempel i kildehenvisningen. YouTube- og Vimeo-lenker åpnes på riktig tidspunkt.
+  Bare medier som lærerens innhold peker på, tas med. Panopto, Kaltura og andre LTI-videoer vises som hoppet over med
+  forklaring.
 - Innholdskvalitet → Media: «Standardiser videoavspillere» for YouTube. Finner innebygde videoer, forklarer avvik
   fra én responsiv og Canvas-trygg standard (16:9, maks bredde, sentrert, `allowfullscreen`, `loading="lazy"`),
   foreslår beskrivende title med synlig kilde (eksisterende title, YouTube-metadata, Canvas-kontekst, KI-forslag på

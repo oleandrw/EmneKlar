@@ -174,12 +174,20 @@ class CanvasAPI:
             return await self.client.fetch_bytes(target, max_bytes=max_bytes)
         return await self.client.fetch_bytes(url, max_bytes=max_bytes)
 
-    async def list_media_objects(self, course_id: str) -> list[dict[str, Any]]:
-        return await self.client.get_paginated(f"/api/v1/courses/{course_id}/media_objects", [("exclude[]", "sources")])
+    async def list_media_objects(self, course_id: str, *, include_sources: bool = False) -> list[dict[str, Any]]:
+        params = [] if include_sources else [("exclude[]", "sources")]
+        return await self.client.get_paginated(f"/api/v1/courses/{course_id}/media_objects", params)
 
-    async def media_attachment_tracks(self, attachment_id: str) -> list[dict[str, Any]]:
-        data = await self.client.get_json(f"/api/v1/media_attachments/{attachment_id}/media_tracks")
+    async def media_attachment_tracks(self, attachment_id: str, *, include_content: bool = False) -> list[dict[str, Any]]:
+        """Caption tracks of an uploaded media file. ``include[]=webvtt_content`` adds the text as WebVTT."""
+        params = [("include[]", "webvtt_content")] if include_content else None
+        data = await self.client.get_json(f"/api/v1/media_attachments/{attachment_id}/media_tracks", params)
         return data if isinstance(data, list) else []
+
+    async def media_track_text(self, url: str) -> str:
+        """The WebVTT text behind a ``media_tracks[].url`` (``/media_objects/:id/media_tracks/:track_id``)."""
+        response = await self.client.request("GET", url)
+        return response.text
 
     # -- classic quizzes -----------------------------------------------------------------------
 

@@ -16,6 +16,11 @@ from tests.fakes.documents import minimal_pdf
 from tests.fakes.fake_canvas import CourseData, FakeCanvasState
 
 RAG_COURSE = "104"
+VTT_FARGE = ("WEBVTT\n\nNOTE generert\n\n1\n00:00:00.000 --> 00:00:04.000\nVelkommen til forelesningen om fargerom.\n\n"
+             + "".join(f"{i + 2}\n00:{(i * 10 + 5) // 60:02d}:{(i * 10 + 5) % 60:02d}.000 --> "
+                       f"00:{(i * 10 + 14) // 60:02d}:{(i * 10 + 14) % 60:02d}.000\n"
+                       f"<v Lærer>Del {i}: sRGB og Adobe RGB har ulike fargerom og gamma.</v>\n\n" for i in range(20)))
+VTT_LAB = "WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nI laben viser vi hvitbalanse.\n"
 PNG_1X1 = bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010806000000"
                         "1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082")
 
@@ -258,6 +263,13 @@ def seed_rag_course(state: FakeCanvasState) -> CourseData:
               "<p>Komplementærfarger ligger rett overfor hverandre i fargehjulet.</p>"),
         _page("utkast", "Utkast til eksamen", "<p>Eksamensoppgaven er hemmelig.</p>", published=False),
         _page("blokk", "Blokkside", None, editor="block_editor"),
+        _page("forelesninger", "Forelesninger på video",
+              "<h2>Opptak</h2><p>Se forelesningen om fargerom.</p>"
+              '<iframe title="Forelesning om fargerom" data-media-id="m-farge1" '
+              'src="/media_objects_iframe/m-farge1?type=video"></iframe>'
+              '<iframe title="Lab-demo" src="/media_attachments_iframe/7101?type=video&amp;embedded=true"></iframe>'
+              '<iframe title="Gjesteforelesning" src="https://www.youtube.com/embed/abcdefghijk"></iframe>'
+              '<iframe title="Opptak" src="https://hvl.cloud.panopto.eu/Panopto/Pages/Embed.aspx?id=1"></iframe>'),
     ]
     c.pages = {p["url"]: p for p in pages}
     c.assignments = {
@@ -291,12 +303,25 @@ def seed_rag_course(state: FakeCanvasState) -> CourseData:
         "7005": ("Gammel.doc", "application/msword", b"\xd0\xcf\x11\xe0", "42"),
         "7006": ("Plan.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", rich_xlsx(), "42"),
         "7007": ("Skannet.pdf", "application/pdf", minimal_pdf(text=None), "42"),
+        "7101": ("Lab-demo.mp4", "video/mp4", b"\x00\x00\x00\x18ftypmp42fakevideo", "42"),
+        "7102": ("Lab-demo.vtt", "text/vtt", VTT_LAB.encode(), "42"),
     }
     for fid, (name, ctype, data, uploader) in files.items():
         c.files[fid] = {"id": fid, "display_name": name, "filename": name, "content-type": ctype, "size": len(data),
                         "url": f"{origin}/files/{fid}/download?download_frd=1", "updated_at": "2026-09-01T10:00:00Z",
                         "folder_id": "1", "user": {"id": uploader, "display_name": "x"}}
         state.file_bytes[fid] = (data, ctype)
+
+    c.media_objects = [
+        {"media_id": "m-farge1", "title": "fargerom.mp4", "media_type": "video",
+         "media_tracks": [{"id": "11", "kind": "subtitles", "locale": "nb", "workflow_state": "ready", "asr": False,
+                           "url": f"{origin}/media_objects/m-farge1/media_tracks/11", "webvtt_content": VTT_FARGE}],
+         "media_sources": [{"url": f"{origin}/files/7101/download", "content_type": "video/mp4", "bitrate": "800",
+                            "size": "30000"}]},
+        {"media_id": "m-student", "title": "Studentopptak", "media_type": "video", "media_tracks": [],
+         "media_sources": []},
+    ]
+    state.attachment_tracks["7101"] = []
 
     def item(item_id: str, title: str, type_: str, **extra: Any) -> dict[str, Any]:
         return {"id": item_id, "title": title, "type": type_, "position": int(item_id[-1]), "indent": 0,
@@ -308,6 +333,9 @@ def seed_rag_course(state: FakeCanvasState) -> CourseData:
                    item("3012", "Forelesningsnotater", "File", content_id="7001"),
                    item("3013", "Ekstern ressurs", "ExternalUrl", external_url="https://www.example.org/ressurs"),
                    item("3014", "Panopto-opptak", "ExternalTool", content_id="5")]},
+        {"id": "303", "name": "Modul 3 – Video", "position": 3, "published": True,
+         "items": [item("3031", "Forelesninger på video", "Page", page_url="forelesninger"),
+                   item("3032", "Ekstra video", "ExternalUrl", external_url="https://youtu.be/zyxwvutsrqp")]},
         {"id": "302", "name": "Modul 2 – Farger", "position": 2, "published": True,
          "items": [item("3021", "Fargelære", "Page", page_url="fargelaere"),
                    item("3022", "Fargemodeller", "File", content_id="7002"),

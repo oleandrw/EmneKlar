@@ -339,3 +339,62 @@ def test_answer_citations_to_unknown_sources_are_removed() -> None:
     text, cited = clean_answer("RGB brukes på skjerm [S1]. CMYK på trykk [S9][S2].", {"S1", "S2"})
     assert text == "RGB brukes på skjerm [S1]. CMYK på trykk [S2]."
     assert cited == ["S1", "S2"]
+
+
+# ------------------------------------------------------------------------------------------ video/audio
+
+
+def test_parse_webvtt_and_srt_captions() -> None:
+    from emneklar.features.course_rag.media import parse_captions
+
+    vtt = ("WEBVTT\n\nNOTE en kommentar\n\nSTYLE\n::cue { color: red }\n\n00:01.000 --> 00:03.500 align:start\n"
+           "<v Kari>Hei og <b>velkommen</b></v>\n\n00:03.500 --> 00:05.000\nHei og velkommen til emnet\n\n"
+           "01:02:03.250 --> 01:02:05.000\nSiste &amp; beste\n")
+    segments = parse_captions(vtt)
+    assert [(s.start, s.text) for s in segments] == [(1.0, "Hei og velkommen til emnet"), (3723.25, "Siste & beste")]
+    srt = "1\n00:00:01,000 --> 00:00:02,500\nFørste linje\nandre linje\n\n2\n00:00:03,000 --> 00:00:04,000\nNeste\n"
+    assert [(s.end, s.text) for s in parse_captions(srt)] == [(2.5, "Første linje andre linje"), (4.0, "Neste")]
+    assert parse_captions("ikke teksting") == []
+
+
+def test_transcript_chunks_cut_at_sentences_with_overlap() -> None:
+    from emneklar.core.ai.local.whisper import Segment
+    from emneklar.features.course_rag.media import chunk_transcript
+
+    segments = [Segment(i * 8.0, i * 8.0 + 7.5, f"Setning {i}{'.' if i % 3 == 2 else ''}") for i in range(60)]
+    chunks = chunk_transcript(segments, title="Forelesning")
+    assert all(c.type == "transcript" and c.heading_path == ["Forelesning"] for c in chunks)
+    assert all(60 <= (c.end or 0) - (c.start or 0) <= 130 for c in chunks[:-1])
+    assert all(c.text.rstrip().endswith(".") or (c.end or 0) - (c.start or 0) >= 120 for c in chunks[:-1])
+    assert chunks[1].start is not None and chunks[0].end is not None and chunks[1].start < chunks[0].end  # overlap
+    assert chunks[-1].end == segments[-1].end
+
+
+def test_track_choice_timestamps_and_duration() -> None:
+    from emneklar.features.course_rag.media import choose_track, timestamp_url
+    from emneklar.features.course_rag.sources import SourceItem, media_duration
+
+    tracks = [{"kind": "subtitles", "locale": "en", "workflow_state": "ready"},
+              {"kind": "captions", "locale": "nb", "workflow_state": "ready", "asr": True},
+              {"kind": "subtitles", "locale": "nb", "workflow_state": "ready"},
+              {"kind": "descriptions", "locale": "nb"}, {"kind": "subtitles", "locale": "nn", "workflow_state": "pending"}]
+    assert choose_track(tracks) == tracks[2]
+    youtube = SourceItem("youtube:abc", "youtube", "abc", "Video", "https://www.youtube.com/watch?v=abc", None)
+    assert timestamp_url(youtube, 754.6) == "https://www.youtube.com/watch?v=abc&t=754s"
+    canvas = SourceItem("media:m1", "media", "m1", "Video", "https://c/courses/1/pages/p", None,
+                        meta={"sources": [{"size": "204", "bitrate": "382"}]})
+    assert timestamp_url(canvas, 10) == "https://c/courses/1/pages/p"
+    assert media_duration(canvas) == pytest.approx(204 * 8 / 382)
+
+
+def test_whisper_model_size_follows_hardware(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from emneklar.core.ai.local import LocalModels, whisper
+
+    local = LocalModels(tmp_path)
+    assert whisper.auto_size("cuda") == "large"
+    monkeypatch.setattr(whisper, "memory_gb", lambda: 8.0)
+    assert whisper.auto_size("cpu") == "small"
+    nb, other = whisper.choose_models(local, "auto", "", "cuda")
+    assert nb.id == "NbAiLab/nb-whisper-large" and other.id == "Systran/faster-whisper-large-v3"
+    nb, _ = whisper.choose_models(local, "medium", "", "cpu")
+    assert nb.id == "NbAiLab/nb-whisper-medium"

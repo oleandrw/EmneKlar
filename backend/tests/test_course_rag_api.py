@@ -65,7 +65,7 @@ def test_estimate_counts_and_privacy(rag: TestClient) -> None:
     assert response.status_code == 200, response.text
     data = response.json()
     counts = data["counts"]
-    assert counts["page"] == 3  # unpublished page and block-editor page are not counted
+    assert counts["page"] == 4  # unpublished page and block-editor page are not counted
     assert counts["discussion"] == 1 and counts["assignment"] == 1 and counts["quiz"] == 1 and counts["syllabus"] == 1
     assert counts["file_word"] == 1 and counts["file_powerpoint"] == 1 and counts["file_excel"] == 1
     assert counts["file_pdf"] == 2  # the student's PDF is not included
@@ -83,7 +83,7 @@ def test_build_search_and_privacy(rag: TestClient, rag_state: FakeCanvasState) -
     assert status["index"]["status"] == "ready" and status["index"]["built_at"]
     assert status["stats"]["vectors"] == status["stats"]["chunks"]
     assert status["stats"]["chunk_types"].get("table", 0) >= 3 and status["stats"]["chunk_types"].get("slide") == 2
-    assert {m["name"] for m in status["modules"]} == {"Modul 1 – Grunnlag", "Modul 2 – Farger"}
+    assert {m["name"] for m in status["modules"]} == {"Modul 1 – Grunnlag", "Modul 2 – Farger", "Modul 3 – Video"}
     skipped = status["index"]["skipped"]
     assert any("skannet" in s["reason"] for s in skipped)  # scanned PDF without an OCR route
     # Privacy: no student content, no discussion replies or submissions requested.
@@ -222,3 +222,52 @@ def test_flag_and_validation(rag: TestClient, rag_container: AppContainer) -> No
     assert nothing.status_code == 400 and nothing.json()["error"]["code"] == "rag_nothing_selected"
     rag_container.settings.update(lambda s: s.advanced.feature_flags.__setitem__("course_rag", False))
     assert rag.get(f"/api/courses/{RAG_COURSE}/rag").status_code == 403
+
+
+class FakeTranscriber:
+    calls: list[str] = []
+
+    def available(self) -> bool:
+        return True
+
+    def downloads_needed(self) -> list:
+        return []
+
+    def transcribe(self, path: Any, *, stop: Any, progress: Any) -> Any:
+        from emneklar.core.ai.local.whisper import Segment, Transcript
+
+        FakeTranscriber.calls.append(str(path))
+        progress(1.0)
+        return Transcript([Segment(0.0, 6.0, "I laben viser vi hvordan hvitbalansen justeres."),
+                           Segment(70.0, 75.0, "Til slutt eksporterer vi bildet.")], "no", "NbAiLab/nb-whisper-small",
+                          "whisper", 75.0)
+
+
+def test_video_captions_transcription_cache_and_privacy(rag: TestClient, rag_state: FakeCanvasState,
+                                                        monkeypatch: pytest.MonkeyPatch) -> None:
+    from emneklar.features.course_rag import media
+
+    FakeTranscriber.calls = []
+    monkeypatch.setattr(media, "transcriber", lambda _state: FakeTranscriber())
+    estimate = rag.post(f"/api/courses/{RAG_COURSE}/rag/estimate", json={**BASE_OPTIONS, "video": True}).json()
+    assert estimate["video"]["with_captions"] >= 2 and estimate["video"]["to_transcribe"] == 1
+    assert estimate["video"]["youtube"] == 2
+    job = build(rag, video=True, documents=False)
+    assert job["status"] == "completed"
+    farge = search(rag, "sRGB Adobe RGB gamma", types=["transcript"])["hits"]
+    assert farge and farge[0]["citation"].startswith("Video «Forelesning om fargerom» – ")
+    assert {h["start"] for h in farge if h["title"] == "Forelesning om fargerom"} >= {0.0, 55.0}
+    assert farge[0]["url"].endswith("/courses/104/pages/forelesninger")
+    assert farge[0]["module"] == "Modul 3 – Video"
+    lab = search(rag, "hvitbalanse", types=["transcript"])["hits"]
+    assert {"Lab-demo.mp4", "Lab-demo.vtt"} <= {h["title"] for h in lab} and len(FakeTranscriber.calls) == 1
+    status = rag.get(f"/api/courses/{RAG_COURSE}/rag").json()
+    reasons = " ".join(s["reason"] for s in status["index"]["skipped"])
+    assert "Panopto" in reasons and "YouTube" in reasons
+    assert status["stats"]["video_minutes"] > 1
+    assert not any("m-student" in s["key"] for s in status["index"]["skipped"])
+    assert search(rag, "Studentopptak")["hits"] == [] or all(
+        h["title"] != "Studentopptak" for h in search(rag, "Studentopptak")["hits"])
+    # A full rebuild uses the transcript cache (keyed by the file's SHA-256), not the model.
+    build(rag, video=True, documents=False, mode="full")
+    assert len(FakeTranscriber.calls) == 1
