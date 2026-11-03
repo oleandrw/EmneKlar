@@ -46,7 +46,7 @@ export function QualityPanel({ courseId, status }: { courseId: string; status: R
     onSuccess: (job) => setJobId(job.id),
   });
   const evaluation = status.index?.evaluation;
-  if (!status.stats?.chunks) return <Alert tone="info">Bygg indeksen først. Evalueringen kjøres automatisk etterpå.</Alert>;
+  if (!status.stats?.chunks) return <Alert tone="info">Opprett kunnskapsbasen først. Evalueringen kjøres automatisk etterpå.</Alert>;
   const columns: Column<Evaluation["questions"][number]>[] = [
     { key: "question", header: "Testspørsmål", rowHeader: true, cell: (q) => q.question },
     { key: "source", header: "Laget fra", cell: (q) => q.citation },

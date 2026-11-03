@@ -43,6 +43,8 @@ test.describe("axe – lyst tema", () => {
 test("axe – Emne-RAG: «Tilpass kilder»", async ({ page }) => {
   await login(page);
   await page.goto("/canvas-verktoy/emne-rag");
+  await expect(page.getByText("Ingen kunnskapsbase opprettet ennå")).toBeVisible();  // compact status by the title
+  await expect(page.getByRole("button", { name: "Opprett kunnskapsbase" })).toBeVisible();
   await page.getByRole("button", { name: "Tilpass kilder" }).click();
   const panel = page.getByRole("dialog", { name: "Tilpass kilder" });
   await expect(panel.getByRole("heading", { name: "Avansert" })).toBeVisible();

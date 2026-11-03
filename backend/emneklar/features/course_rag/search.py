@@ -115,8 +115,8 @@ async def search(store: IndexStore, query: str, *, embedder: Embedder | None, re
                     keyword[cid] = (rank, round(score, 4))
     use_vectors = embedder is not None and store.embedding_identity == embedder.identity
     if embedder is not None and not use_vectors:
-        notes.append("Indeksen er laget med en annen embedding-modell enn den som er valgt nå. Bare nøkkelordsøk er "
-                     "brukt. Bygg indeksen på nytt for semantisk søk.")
+        notes.append("Kunnskapsbasen er laget med en annen embedding-modell enn den som er valgt nå. Bare nøkkelordsøk "
+                     "er brukt. Bygg den på nytt for semantisk søk.")
     if use_vectors and embedder is not None:
         for q in queries:
             query_vector = await embedder.embed_query(q)

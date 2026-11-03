@@ -226,7 +226,7 @@ def blocked_by(state: BuildState, service: str) -> bool:
 
 YOUTUBE_BLOCKED = Waiting("YouTube blokkerer midlertidig forespørsler om teksting fra nettverket ditt (for mange "
                           "forespørsler på kort tid). EmneKlar spør ikke YouTube mer i denne byggingen. Vent en stund, "
-                          "gjerne til neste dag, og trykk «Oppdater indeks».")
+                          "gjerne til neste dag, og trykk «Oppdater kunnskapsbasen».")
 YOUTUBE_LANGUAGES = ("no", "nb", "nn", "en", "en-US", "en-GB", "sv", "da")
 NO_AUDIO = "Lyd fra YouTube lastes ikke ned (YouTubes vilkår), så videoen er ikke med."
 # No captions is a Waiting reason: captions can be added on YouTube/Vimeo without anything changing in Canvas.
@@ -434,7 +434,7 @@ async def local_transcript(state: BuildState, item: SourceItem) -> tuple[Transcr
                              "(setup-emne-rag.bat).")
     if worker.downloads_needed() and not state.request.accept_downloads:
         return None, Waiting("Videoen har ingen teksting, og NB-Whisper er ikke lastet ned ennå. Trykk «Oppdater "
-                             "indeks» under «Bygg indeks» og godta nedlastingen i estimatet for å transkribere.")
+                             "kunnskapsbasen» og godta nedlastingen i estimatet for å transkribere.")
     target, reason = await download_media(state, item, "media")
     if target is None:
         return None, reason
@@ -506,7 +506,7 @@ async def provider_transcript(state: BuildState, item: SourceItem) -> tuple[Tran
                              f"{plan['reason']}")
     if plan["needs_confirmation"] and not state.request.confirmed:
         return None, Waiting("Videoen har ingen teksting. Lyden sendes ikke til KI-leverandøren uten samtykke – "
-                             "trykk «Oppdater indeks» under «Bygg indeks» og godta sendingen i estimatet.")
+                             "trykk «Oppdater kunnskapsbasen» og godta sendingen i estimatet.")
     target, reason = await download_media(state, item, "media")
     if target is None:
         return None, reason

@@ -122,7 +122,8 @@ async def build(course_id: str, body: BuildRequest, c: AppContainer = Depends(ge
         return await run_build(ctx, c, course_id, body)
 
     exists = engine.has_index(c, course_id)
-    title = "Emne-RAG: bygger indeksen på nytt" if body.mode == "full" or not exists else "Emne-RAG: oppdaterer indeksen"
+    title = ("Emne-RAG: oppretter kunnskapsbasen" if not exists else "Emne-RAG: bygger kunnskapsbasen på nytt"
+             if body.mode == "full" else "Emne-RAG: oppdaterer kunnskapsbasen")
     state = c.jobs.submit(kind=engine.JOB_KIND, title=title, runner=runner, course_id=course_id,
                           params=body.model_dump(), supports_pause=True, hard_cancel=True)
     return state.public()

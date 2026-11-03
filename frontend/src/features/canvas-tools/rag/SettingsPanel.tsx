@@ -63,7 +63,7 @@ export function SettingsPanel({ status, courseId }: { status: RagStatus; courseI
           {form.embedding_backend === "local" ? (
             <SelectField label="Embedding-modell" value={form.embedding_model} options={options("embedding")}
               onChange={(e) => set({ embedding_model: e.target.value })}
-              hint="Bytter du modell, må indeksen bygges på nytt." />
+              hint="Bytter du modell, må kunnskapsbasen bygges på nytt." />
           ) : null}
           {form.embedding_backend === "provider" ? (
             <div className="ek-grid" data-cols="2">

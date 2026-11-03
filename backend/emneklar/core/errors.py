@@ -79,12 +79,12 @@ MESSAGES: dict[str, str] = {
     "file_parse_failed": "Kunne ikke lese filen.",
     "url_blocked": "Adressen er blokkert av sikkerhetshensyn.",
     # Emne-RAG
-    "rag_index_missing": "Det finnes ingen Emne-RAG-indeks for emnet ennå. Bygg indeksen først.",
-    "rag_index_busy": "Indeksen for emnet bygges eller oppdateres akkurat nå. Vent til jobben er ferdig.",
-    "rag_index_foreign": "Indeksfilen tilhører ikke EmneKlar og ble ikke åpnet.",
-    "rag_index_outdated": "Indeksen er laget av en eldre versjon av EmneKlar. Bygg indeksen på nytt.",
+    "rag_index_missing": "Det finnes ingen kunnskapsbase for emnet ennå. Opprett den under Emne-RAG først.",
+    "rag_index_busy": "Kunnskapsbasen for emnet bygges eller oppdateres akkurat nå. Vent til jobben er ferdig.",
+    "rag_index_foreign": "Filen med kunnskapsbasen tilhører ikke EmneKlar og ble ikke åpnet.",
+    "rag_index_outdated": "Kunnskapsbasen er laget av en eldre versjon av EmneKlar. Bygg den på nytt.",
     "rag_model_changed": (
-        "Indeksen er laget med en annen embedding-modell enn den som er valgt nå. Bygg indeksen på nytt."
+        "Kunnskapsbasen er laget med en annen embedding-modell enn den som er valgt nå. Bygg den på nytt."
     ),
     "rag_nothing_selected": "Velg minst én kildetype, og minst én modul hvis du har valgt «Valgte moduler».",
     "rag_download_required": "Lokale modeller må lastes ned første gang. Bekreft nedlastingen før du starter.",

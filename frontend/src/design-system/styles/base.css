@@ -172,6 +172,18 @@ a {
 .ek-cluster[data-justify="between"] { justify-content: space-between; }
 .ek-cluster[data-justify="end"] { justify-content: flex-end; }
 .ek-cluster[data-align="start"] { align-items: flex-start; }
+/* An icon followed by text that may wrap over several lines: the icon stays beside the first line. */
+.ek-icon-text {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.ek-icon-text > svg {
+  flex: none;
+  width: 1.15em;
+  height: 1.15em;
+  margin-top: 0.15em;
+}
 
 .ek-grid {
   display: grid;

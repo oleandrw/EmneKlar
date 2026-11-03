@@ -151,7 +151,7 @@ export function AskPanel({ courseId, status }: { courseId: string; status: RagSt
   });
   const embeddingConsent = Boolean(status.embedding.needs_confirmation);
   if (!status.stats?.chunks) {
-    return <Alert tone="info">Bygg indeksen først. Da kan du søke og stille spørsmål til emnet her.</Alert>;
+    return <Alert tone="info">Opprett kunnskapsbasen først. Da kan du søke og stille spørsmål til emnet her.</Alert>;
   }
   const result = ask.data ?? null;
   const searchResult = searchMutation.data ?? null;

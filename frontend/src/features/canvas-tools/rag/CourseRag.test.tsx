@@ -125,7 +125,13 @@ describe("BuildPanel", () => {
     expect(screen.getByText("Inkluderer Canvas-tekst og dokumenter.")).toBeInTheDocument();
     expect(screen.getByText(/Bilder tas ikke med fordi KI ikke er satt opp/)).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: /Tekst fra Canvas/ })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Bygg indeks" }));
+    // One short note on content, KI and privacy by the main button; the details are behind «Les mer».
+    expect(screen.getByText(/Bare lærerens innhold brukes/)).toBeInTheDocument();
+    expect(screen.queryByText(/Leses aldri/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Les mer om innhold, KI og personvern" }));
+    expect(screen.getByText(/Leses aldri: innleveringer, karakterer/)).toBeInTheDocument();
+    expect(screen.getByText("Video uten teksting transkriberes på denne maskinen med NB-Whisper.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Opprett kunnskapsbase" }));
     expect(await screen.findByRole("rowheader", { name: "Sider" })).toBeInTheDocument();
     expect(screen.getByText(/Bare lærerprodusert innhold/)).toBeInTheDocument();
     const start = screen.getByRole("button", { name: "Start bygging" });
@@ -143,7 +149,7 @@ describe("BuildPanel", () => {
     const calls = mockApi({ "/rag/estimate": baseEstimate(), "/rag/build": { id: "job-1" } });
     render(wrap(<BuildPanel courseId="104" status={withAi()} />));
     expect(screen.getByText("Inkluderer Canvas-tekst, dokumenter, video, lyd og bilder.")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Bygg indeks" }));
+    await userEvent.click(screen.getByRole("button", { name: "Opprett kunnskapsbase" }));
     await waitFor(() => expect(calls.some((c) => c.url.includes("/rag/build"))).toBe(true));
     expect(calls.find((c) => c.url.includes("/rag/build"))?.body).toMatchObject({
       text: true, documents: true, video: true, images: true, contextual_enrichment: false, mode: "update" });
@@ -172,7 +178,7 @@ describe("BuildPanel", () => {
     await userEvent.click(within(again).getByRole("button", { name: "Bruk valgene" }));
     expect(await screen.findByText("Inkluderer Canvas-tekst, dokumenter, video, lyd og bilder.")).toBeInTheDocument();
     // Images go to an external provider: the estimate is shown and needs consent first.
-    await userEvent.click(screen.getByRole("button", { name: "Bygg indeks" }));
+    await userEvent.click(screen.getByRole("button", { name: "Opprett kunnskapsbase" }));
     const start = await screen.findByRole("button", { name: "Start bygging" });
     expect(start).toBeDisabled();
     await userEvent.click(screen.getByRole("checkbox", { name: /Jeg har sett hva som sendes/ }));
@@ -185,7 +191,7 @@ describe("BuildPanel", () => {
       skipped: [{ key: "page:uke-1", kind: "page", kind_label: "Side", title: "Uke 1", reason: "Upublisert i Canvas.",
         url: null }] }) });
     const { container } = render(wrap(<BuildPanel courseId="104" status={status({ stats: null })} />));
-    await userEvent.click(screen.getByRole("button", { name: "Bygg indeks" }));
+    await userEvent.click(screen.getByRole("button", { name: "Opprett kunnskapsbase" }));
     expect(await screen.findByText("12 upubliserte elementer er ikke med")).toBeInTheDocument();
     expect(screen.getByText("Fant ikke noe publisert innhold med disse valgene.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Start bygging" })).toBeDisabled();
@@ -202,13 +208,13 @@ describe("BuildPanel with selected modules", () => {
     });
     const { container } = render(wrap(<BuildPanel courseId="104" status={status({ stats: null })} />));
     await userEvent.click(screen.getByRole("radio", { name: /Valgte moduler/ }));
-    expect(screen.getByRole("button", { name: "Bygg indeks" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Opprett kunnskapsbase" })).toBeDisabled();
     await userEvent.click(await screen.findByRole("checkbox", { name: "Modul 1 (9 elementer, upublisert)" }));
     await userEvent.click(screen.getByRole("button", { name: "Tilpass kilder" }));
     const panel = await screen.findByRole("dialog", { name: "Tilpass kilder" });
     expect(within(panel).queryByRole("checkbox", { name: /Ta med upubliserte elementer/ })).not.toBeInTheDocument();
     await userEvent.click(within(panel).getByRole("button", { name: "Avbryt" }));
-    await userEvent.click(screen.getByRole("button", { name: "Bygg indeks" }));
+    await userEvent.click(screen.getByRole("button", { name: "Opprett kunnskapsbase" }));
     expect(await screen.findByText("9 upubliserte elementer er med")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Start bygging" })).toBeEnabled();
     expect(calls.find((c) => c.url.includes("/rag/estimate"))?.body).toMatchObject({ scope: "modules",

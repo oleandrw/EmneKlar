@@ -16,12 +16,12 @@ const FORMATS = [
 ];
 
 export function ExportPanel({ courseId, status }: { courseId: string; status: RagStatus }) {
-  if (!status.stats?.chunks) return <Alert tone="info">Bygg indeksen først.</Alert>;
+  if (!status.stats?.chunks) return <Alert tone="info">Opprett kunnskapsbasen først.</Alert>;
   return (
     <Card title="Eksporter kunnskapsbasen" headingLevel={2}>
       <div className="ek-stack" data-gap="4">
         <p className="ek-small">
-          Eksporten inneholder bare det som er i indeksen: lærerens innhold. Bildebeskrivelser og kontekstsetninger er
+          Eksporten inneholder bare det som er i kunnskapsbasen: lærerens innhold. Bildebeskrivelser og kontekstsetninger er
           merket som KI-generert. Vurder hvem du deler filene med – de kan inneholde upublisert innhold hvis du tok det med.
         </p>
         <ul className="ek-list-reset ek-stack" data-gap="3">

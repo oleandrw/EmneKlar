@@ -1,7 +1,8 @@
-// Emne-RAG → Bygg indeks: scope, a one-line summary of the sources («Tilpass kilder» opens the choices), the build
-// button (estimate first when something must be approved), then a background job with real progress.
+// Emne-RAG → «Opprett kunnskapsbase»: scope, a one-line summary of the sources («Tilpass kilder» opens the choices),
+// the main button with one short note on content, KI and privacy («Les mer» has the details), the estimate when
+// something must be approved, then a background job with real progress.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, RefreshCw, SlidersHorizontal } from "lucide-react";
+import { Play, RefreshCw, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 
 import { api } from "../../../core/api/client";
@@ -41,10 +42,11 @@ type Mode = "update" | "full";
 const WORDING: JobWording = {
   noun: "byggingen",
   current: "Nå behandles",
-  findingsTitle: "I indeksen",
+  findingsTitle: "I kunnskapsbasen",
   findingsEmpty: "Ingen utdrag ennå.",
-  cancelNote: "Det som allerede er ferdig, beholdes i indeksen. Velg «Oppdater indeks» senere for å fortsette der du slapp.",
-  countOnly: "utdrag i indeksen",
+  cancelNote: "Det som allerede er ferdig, beholdes i kunnskapsbasen. Velg «Oppdater kunnskapsbasen» senere for å " +
+    "fortsette der du slapp.",
+  countOnly: "utdrag i kunnskapsbasen",
 };
 
 function optionsFrom(status: RagStatus): BuildOptions {
@@ -80,7 +82,7 @@ function EstimateView({ estimate, accept, setAccept, consent, setConsent }: {
       ) : null}
       {estimate.unpublished_included ? (
         <Alert tone="info" title={`${formatNumber(estimate.unpublished_included)} upubliserte elementer er med`}>
-          De er ikke synlige for studentene i Canvas ennå. Ikke del indeksen eller eksporten med studenter hvis den har
+          De er ikke synlige for studentene i Canvas ennå. Ikke del kunnskapsbasen eller eksporten med studenter hvis den har
           innhold de ikke skal se (for eksempel eksamensoppgaver).
         </Alert>
       ) : null}
@@ -151,6 +153,52 @@ function EstimateView({ estimate, accept, setAccept, consent, setConsent }: {
   );
 }
 
+/** The one note on content, KI and privacy, by the main button; the details are behind «Les mer». */
+function PrivacySummary({ status }: { status: RagStatus }) {
+  const rag = status.settings;
+  const provider = status.providers.find((p) => p.id === rag.transcription_provider_id)?.name ?? rag.transcription_provider_id;
+  const search = !status.embedding.available ? "Søket bruker nøkkelord og kjører på denne maskinen."
+    : status.embedding.external
+      ? `Søket bruker ${status.embedding.label} hos en ekstern leverandør; utdragene sendes dit først når du har godkjent det.`
+      : `Søket (${status.embedding.label}) kjører på denne maskinen.`;
+  const transcription = rag.transcription === "provider"
+    ? `Video uten teksting transkriberes av ${provider}: bare lyden sendes, i biter, og bare etter at du har godkjent det.`
+    : rag.transcription === "off" ? "Video uten teksting transkriberes ikke; bare eksisterende teksting brukes."
+      : "Video uten teksting transkriberes på denne maskinen med NB-Whisper.";
+  const online = [rag.youtube_captions && "YouTube", rag.vimeo_captions && "Vimeo"].filter(Boolean).join(" og ");
+  return (
+    <div className="ek-stack" data-gap="1">
+      <p className="ek-small ek-muted ek-icon-text">
+        <ShieldCheck aria-hidden="true" />
+        <span>
+          Bare lærerens innhold brukes, og kunnskapsbasen lagres bare på denne maskinen. Skal noe lastes ned eller
+          sendes til en KI-leverandør, ser du hva og godkjenner det først.
+        </span>
+      </p>
+      <Disclosure summary="Les mer om innhold, KI og personvern">
+        <ul className="ek-small">
+          <li>
+            Leses: sider, oppgave- og quizbeskrivelser, emneplanen, diskusjonsinnlegg skrevet av lærere og filer lastet
+            opp av lærere. Video fra emnets medieliste tas bare med når lærerens innhold peker på den (listen kan ha
+            studentopptak).
+          </li>
+          <li>Leses aldri: innleveringer, karakterer, meldinger, studentenes innlegg og svar i diskusjoner.</li>
+          <li>Ingenting endres i Canvas.</li>
+          <li>{search}</li>
+          <li>{transcription}</li>
+          {online ? (
+            <li>Fra {online} hentes bare teksting (video-id-en sendes); lyd derfra lastes aldri ned.</li>
+          ) : null}
+          <li>
+            KI brukes bare til det du har valgt: bildebeskrivelser, kontekstuell berikelse, svar under «Spør emnet» og
+            testspørsmål til kvalitetsmålingen. Svar fra KI merkes som KI-forslag som må vurderes.
+          </li>
+        </ul>
+      </Disclosure>
+    </div>
+  );
+}
+
 function needsReview(estimate: Estimate): boolean {
   const external = estimate.embedding.needs_confirmation || estimate.ai.some((a) => a.external && a.available);
   const empty = !Object.values(estimate.counts).some((n) => n > 0);
@@ -216,13 +264,13 @@ export function BuildPanel({ courseId, status }: { courseId: string; status: Rag
 
   if (jobId) {
     return (
-      <Card title="Bygger indeksen" headingLevel={2}>
+      <Card title={status.index ? "Oppdaterer kunnskapsbasen" : "Oppretter kunnskapsbasen"} headingLevel={2}>
         <JobRunner jobId={jobId} wording={WORDING} onDone={(job) => {
           void client.invalidateQueries({ queryKey: ["rag", courseId] });
           if (job.status === "completed") {
             const r = job.result as { chunks?: number; skipped_total?: number; items_processed?: number; unchanged?: number;
               kept?: number };
-            toast.show({ tone: "success", title: "Indeksen er klar",
+            toast.show({ tone: "success", title: "Kunnskapsbasen er klar",
               body: `${r.chunks ?? 0} utdrag. ${r.items_processed ?? 0} elementer behandlet, ${r.unchanged ?? 0} uendret, ` +
                 (r.kept ? `${r.kept} beholdt fra forrige versjon (prøves igjen neste gang), ` : "") +
                 `${r.skipped_total ?? 0} hoppet over.` });
@@ -235,7 +283,7 @@ export function BuildPanel({ courseId, status }: { courseId: string; status: Rag
     );
   }
 
-  const buildLabel = exists ? "Oppdater indeks" : "Bygg indeks";
+  const buildLabel = exists ? "Oppdater kunnskapsbasen" : "Opprett kunnskapsbase";
   return (
     <div className="ek-stack" data-gap="6">
       <Card title="Hva skal med?" headingLevel={2}>
@@ -269,26 +317,27 @@ export function BuildPanel({ courseId, status }: { courseId: string; status: Rag
               </Button>
             </div>
           </section>
-          <div className="ek-stack" data-gap="2">
+          <div className="ek-stack" data-gap="3">
             <div className="ek-cluster">
-              <Button variant="primary" icon={<Play aria-hidden="true" />} onClick={() => runEstimate.mutate("update")}
+              <Button variant="primary" size="lg" icon={<Play aria-hidden="true" />} onClick={() => runEstimate.mutate("update")}
                 loading={(runEstimate.isPending && runEstimate.variables === "update") || start.isPending}
                 disabled={noModules || summary.nothing}>
                 {buildLabel}
               </Button>
               {exists ? (
-                <Button icon={<RefreshCw aria-hidden="true" />} onClick={() => runEstimate.mutate("full")}
+                <Button size="lg" icon={<RefreshCw aria-hidden="true" />} onClick={() => runEstimate.mutate("full")}
                   loading={runEstimate.isPending && runEstimate.variables === "full"} disabled={noModules || summary.nothing}>
                   Bygg på nytt fra bunnen av
                 </Button>
               ) : null}
             </div>
             {noModules ? <p className="ek-small ek-muted">Velg minst én modul.</p> : null}
-            <p className="ek-small ek-muted">
-              {exists ? "«Oppdater indeks» behandler bare nye og endrede elementer og fjerner det som er slettet i Canvas. "
-                : ""}
-              Du ser et estimat og godkjenner først hvis noe lastes ned eller sendes til en KI-leverandør.
-            </p>
+            {exists ? (
+              <p className="ek-small ek-muted">
+                Oppdateringen behandler bare nye og endrede elementer og fjerner det som er slettet i Canvas.
+              </p>
+            ) : null}
+            <PrivacySummary status={status} />
           </div>
           {runEstimate.error ? <Alert tone="danger" role="alert">{(runEstimate.error as Error).message}</Alert> : null}
           {start.error && !estimate ? <Alert tone="danger" role="alert">{(start.error as Error).message}</Alert> : null}

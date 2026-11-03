@@ -124,7 +124,7 @@ async def store_chunks(state: BuildState, item: SourceItem, records: list[ChunkR
         await enrich_records(state, item, records)
     vectors = await embed_records(state, records)
     status = "done" if records else "skipped"
-    reason = None if records else "Elementet har ingen tekst som kan indekseres."
+    reason = None if records else "Elementet har ingen tekst som kan tas med."
     state.store.put_item(item_record(item, state.request, status=status, reason=reason, content_hash=content_hash,
                                      meta=meta), records, vectors)
     if records:
@@ -361,7 +361,7 @@ async def run_build(ctx: JobContext, c: AppContainer, course_id: str, request: B
         phases.append("Video og lyd")
     if request.images:
         phases.append("Bilder")
-    phases.append("Ferdigstiller indeksen")
+    phases.append("Ferdigstiller kunnskapsbasen")
     total = len(phases)
     progress.set_phase("discover", phases[0], index=1, count=total, determinate=False)
     api = CanvasAPI(c.canvas())
@@ -401,7 +401,7 @@ async def run_build(ctx: JobContext, c: AppContainer, course_id: str, request: B
         if removed:
             store.delete_items(removed)
             progress.note(f"{len(removed)} element(er) som ikke lenger finnes i Canvas (eller utenfor omfanget), "
-                          "ble fjernet fra indeksen.")
+                          "ble fjernet fra kunnskapsbasen.")
         if state.unchanged:
             progress.note(f"{state.unchanged} element(er) er uendret siden sist og ble ikke behandlet på nytt.")
         text_items = [i for i in todo if i.kind in TEXT_KINDS]
@@ -448,7 +448,7 @@ async def run_build(ctx: JobContext, c: AppContainer, course_id: str, request: B
 
             await process_images(state, image_items, inv)
         phase += 1
-        progress.set_phase("finish", "Ferdigstiller indeksen", index=phase, count=total, determinate=True)
+        progress.set_phase("finish", "Ferdigstiller kunnskapsbasen", index=phase, count=total, determinate=True)
         await run_evaluation(state, reranker_def, device)
         status = "ready"
     finally:

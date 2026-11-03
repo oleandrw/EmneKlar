@@ -1,4 +1,4 @@
-// Emne-RAG → Bygg indeks → «Tilpass kilder»: sources and file types, unpublished content, and an «Avansert» section
+// Emne-RAG → «Opprett kunnskapsbase» → «Tilpass kilder»: sources and file types, unpublished content, and an «Avansert» section
 // with the choices that use KI or can cost money (contextual enrichment, keyframes, transcription service).
 // Works on a draft: «Avbryt» discards it, «Bruk valgene» applies it (and saves the transcription service).
 import { RotateCcw } from "lucide-react";
