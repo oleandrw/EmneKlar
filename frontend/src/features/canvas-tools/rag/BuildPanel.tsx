@@ -1,6 +1,7 @@
-// Emne-RAG → Bygg indeks: scope, source types, estimate, then a background job with real progress.
+// Emne-RAG → Bygg indeks: scope, a one-line summary of the sources («Tilpass kilder» opens the choices), the build
+// button (estimate first when something must be approved), then a background job with real progress.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Calculator, Play, RefreshCw } from "lucide-react";
+import { Play, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 
 import { api } from "../../../core/api/client";
@@ -24,13 +25,18 @@ import type { JobWording } from "../../analysis/ProgressPanel";
 import type { ContentIndex } from "../shared";
 import {
   DEFAULT_OPTIONS,
+  effectiveOptions,
   formatMb,
   KIND_ORDER,
+  sourceSummary,
   type BuildOptions,
   type Estimate,
-  type FileGroup,
   type RagStatus,
 } from "./api";
+import { SourcesDrawer, type SourcesDraft } from "./SourcesDrawer";
+import { sameTranscription, transcriptionOf, type TranscriptionValue } from "./TranscriptionFields";
+
+type Mode = "update" | "full";
 
 const WORDING: JobWording = {
   noun: "byggingen",
@@ -69,7 +75,7 @@ function EstimateView({ estimate, accept, setAccept, consent, setConsent }: {
         <Alert tone={rows.length ? "info" : "warning"}
           title={`${formatNumber(estimate.unpublished)} upubliserte elementer er ikke med`}>
           For hele emnet tas upublisert innhold ikke med som standard. Slå på «Ta med upubliserte elementer» under
-          «Valg», eller velg modulene under «Valgte moduler», og beregn estimatet på nytt.
+          «Tilpass kilder», eller velg modulene under «Valgte moduler», og prøv igjen.
         </Alert>
       ) : null}
       {estimate.unpublished_included ? (
@@ -145,11 +151,19 @@ function EstimateView({ estimate, accept, setAccept, consent, setConsent }: {
   );
 }
 
+function needsReview(estimate: Estimate): boolean {
+  const external = estimate.embedding.needs_confirmation || estimate.ai.some((a) => a.external && a.available);
+  const empty = !Object.values(estimate.counts).some((n) => n > 0);
+  return external || empty || estimate.downloads.length > 0 || estimate.unpublished > 0 ||
+    estimate.unpublished_included > 0;
+}
+
 export function BuildPanel({ courseId, status }: { courseId: string; status: RagStatus }) {
   const client = useQueryClient();
   const toast = useToast();
   const [options, setOptions] = useState<BuildOptions>(() => optionsFrom(status));
-  const [estimated, setEstimated] = useState<{ key: string; data: Estimate } | null>(null);
+  const [draft, setDraft] = useState<SourcesDraft | null>(null);
+  const [estimated, setEstimated] = useState<{ key: string; mode: Mode; data: Estimate } | null>(null);
   const [accept, setAccept] = useState(false);
   const [consent, setConsent] = useState(false);
   const [jobId, setJobId] = useState<string | null>(status.busy_job);
@@ -159,26 +173,46 @@ export function BuildPanel({ courseId, status }: { courseId: string; status: Rag
     enabled: options.scope === "modules",
   });
   const set = (patch: Partial<BuildOptions>) => setOptions((o) => ({ ...o, ...patch }));
-  const key = JSON.stringify(options);
+  const sent = effectiveOptions(options, status);
+  const key = JSON.stringify(sent);
   const estimate = estimated?.key === key ? estimated.data : null;
-  const runEstimate = useMutation({
-    mutationFn: async () => ({ key, data: await api.post<Estimate>(`/api/courses/${courseId}/rag/estimate`, options) }),
-    onSuccess: setEstimated,
-  });
+  const summary = sourceSummary(options, status);
   const start = useMutation({
-    mutationFn: (mode: "update" | "full") => api.post<{ id: string }>(`/api/courses/${courseId}/rag/build`, {
-      ...options, mode, accept_downloads: accept, confirmed: consent }),
+    mutationFn: ({ mode, confirmed, downloads }: { mode: Mode; confirmed: boolean; downloads: boolean }) =>
+      api.post<{ id: string }>(`/api/courses/${courseId}/rag/build`, { ...sent, mode, accept_downloads: downloads,
+        confirmed }),
     onSuccess: (job) => setJobId(job.id),
   });
+  const runEstimate = useMutation({
+    mutationFn: async (mode: Mode) => ({ key, mode,
+      data: await api.post<Estimate>(`/api/courses/${courseId}/rag/estimate`, sent) }),
+    onSuccess: (result) => {
+      setEstimated(result);
+      setAccept(false);
+      setConsent(false);
+      // Nothing to approve or look at: go straight on (the progress view shows what happens).
+      if (!needsReview(result.data)) start.mutate({ mode: result.mode, confirmed: false, downloads: false });
+    },
+  });
+  const saveTranscription = useMutation({
+    mutationFn: (value: TranscriptionValue) => api.patch(`/api/settings/rag`, value),
+  });
+  const apply = async () => {
+    if (!draft) return;
+    if (!sameTranscription(draft.transcription, transcriptionOf(status.settings))) {
+      await saveTranscription.mutateAsync(draft.transcription);
+      await client.invalidateQueries({ queryKey: ["rag", courseId] });
+    }
+    setOptions(draft.options);
+    setDraft(null);
+  };
   const exists = Boolean(status.index);
   const needsAccept = Boolean(estimate?.downloads.length) && !accept;
   const external = Boolean(estimate && (estimate.embedding.needs_confirmation ||
     estimate.ai.some((a) => a.external && a.available)));
   const empty = Boolean(estimate) && !Object.values(estimate?.counts ?? {}).some((n) => n > 0);
   const blocked = !estimate || empty || needsAccept || (external && !consent);
-  const unavailable = status.not_available;
-  const toggleGroup = (group: FileGroup, on: boolean) =>
-    set({ file_groups: on ? [...options.file_groups, group] : options.file_groups.filter((g) => g !== group) });
+  const noModules = options.scope === "modules" && options.module_ids.length === 0;
 
   if (jobId) {
     return (
@@ -201,6 +235,7 @@ export function BuildPanel({ courseId, status }: { courseId: string; status: Rag
     );
   }
 
+  const buildLabel = exists ? "Oppdater indeks" : "Bygg indeks";
   return (
     <div className="ek-stack" data-gap="6">
       <Card title="Hva skal med?" headingLevel={2}>
@@ -223,57 +258,49 @@ export function BuildPanel({ courseId, status }: { courseId: string; status: Rag
               </Fieldset>
             )
           ) : null}
-          <Fieldset legend="Kildetyper">
-            <Checkbox label="Tekst fra Canvas" checked={options.text} onChange={(e) => set({ text: e.target.checked })}
-              hint="Sider, oppgave- og quizbeskrivelser, emneplan og lærerens diskusjonsinnlegg." />
-            <Checkbox label="Dokumenter" checked={options.documents} onChange={(e) => set({ documents: e.target.checked })}
-              hint="Filer i emnet. Tabeller blir egne utdrag, og lysbilder ett utdrag hver med notater." />
-            {options.documents ? (
-              <Fieldset legend="Filtyper">
-                {status.file_groups.map((g) => (
-                  <Checkbox key={g.key} label={g.label} checked={options.file_groups.includes(g.key)}
-                    onChange={(e) => toggleGroup(g.key, e.target.checked)} />
-                ))}
-              </Fieldset>
-            ) : null}
-            <Checkbox label="Video og lyd" checked={options.video} disabled={Boolean(unavailable.video)}
-              onChange={(e) => set({ video: e.target.checked })}
-              hint={unavailable.video ?? (status.transcription.mode === "provider"
-                ? "Eksisterende teksting først, ellers transkripsjon via KI-leverandør (bare lyden sendes)."
-                : status.transcription.mode === "off" ? "Bare eksisterende teksting – transkripsjon er slått av."
-                  : "Eksisterende teksting først, ellers lokal transkripsjon med NB-Whisper.")} />
-            <Checkbox label="Bilder" checked={options.images} disabled={Boolean(unavailable.images)}
-              onChange={(e) => set({ images: e.target.checked })}
-              hint={unavailable.images ?? "Beskrivelser med en bildemodell (KI). Pynt, ikoner og duplikater filtreres bort."} />
-          </Fieldset>
-          <Fieldset legend="Valg">
-            {options.scope === "course" ? (
-              <Checkbox label="Ta med upubliserte elementer" checked={options.include_unpublished}
-                onChange={(e) => set({ include_unpublished: e.target.checked })}
-                hint="Av som standard for hele emnet. Velger du moduler, tas alt i dem med, publisert eller ikke." />
-            ) : null}
-            <Checkbox label="Kontekstuell berikelse med KI" checked={options.contextual_enrichment}
-              disabled={Boolean(unavailable.contextual_enrichment)}
-              onChange={(e) => set({ contextual_enrichment: e.target.checked })}
-              hint={unavailable.contextual_enrichment ?? "En til to setninger foran hvert utdrag som sier hvor det hører hjemme. Gir bedre treff, men krever KI."} />
-            {options.video ? (
-              <Checkbox label="Nøkkelbilder fra video (lysbilder i opptak)" checked={options.keyframes}
-                disabled={Boolean(unavailable.keyframes)} onChange={(e) => set({ keyframes: e.target.checked })}
-                hint={unavailable.keyframes ?? "Av som standard. Bilder ved sceneskifte beskrives med bildemodellen og kobles til tidspunktet."} />
-            ) : null}
-          </Fieldset>
-          <div className="ek-cluster">
-            <Button icon={<Calculator aria-hidden="true" />} onClick={() => runEstimate.mutate()} loading={runEstimate.isPending}
-              disabled={options.scope === "modules" && options.module_ids.length === 0}>
-              Beregn estimat
-            </Button>
+          <section className="ek-stack" data-gap="2" aria-labelledby="rag-kilder">
+            <h3 id="rag-kilder" className="ek-small">Kilder</h3>
+            <p>{summary.text}</p>
+            {summary.notes.map((note) => <p key={note} className="ek-small ek-muted">{note}</p>)}
+            <div className="ek-cluster">
+              <Button icon={<SlidersHorizontal aria-hidden="true" />}
+                onClick={() => setDraft({ options, transcription: transcriptionOf(status.settings) })}>
+                Tilpass kilder
+              </Button>
+            </div>
+          </section>
+          <div className="ek-stack" data-gap="2">
+            <div className="ek-cluster">
+              <Button variant="primary" icon={<Play aria-hidden="true" />} onClick={() => runEstimate.mutate("update")}
+                loading={(runEstimate.isPending && runEstimate.variables === "update") || start.isPending}
+                disabled={noModules || summary.nothing}>
+                {buildLabel}
+              </Button>
+              {exists ? (
+                <Button icon={<RefreshCw aria-hidden="true" />} onClick={() => runEstimate.mutate("full")}
+                  loading={runEstimate.isPending && runEstimate.variables === "full"} disabled={noModules || summary.nothing}>
+                  Bygg på nytt fra bunnen av
+                </Button>
+              ) : null}
+            </div>
+            {noModules ? <p className="ek-small ek-muted">Velg minst én modul.</p> : null}
+            <p className="ek-small ek-muted">
+              {exists ? "«Oppdater indeks» behandler bare nye og endrede elementer og fjerner det som er slettet i Canvas. "
+                : ""}
+              Du ser et estimat og godkjenner først hvis noe lastes ned eller sendes til en KI-leverandør.
+            </p>
           </div>
           {runEstimate.error ? <Alert tone="danger" role="alert">{(runEstimate.error as Error).message}</Alert> : null}
+          {start.error && !estimate ? <Alert tone="danger" role="alert">{(start.error as Error).message}</Alert> : null}
         </div>
       </Card>
 
-      {estimate ? (
-        <Card headingLevel={2} title="Klar til å bygge"
+      <SourcesDrawer status={status} draft={draft} onChange={setDraft} onCancel={() => setDraft(null)}
+        onApply={() => { void apply(); }} saving={saveTranscription.isPending}
+        error={saveTranscription.error ? (saveTranscription.error as Error).message : null} />
+
+      {estimate && estimated && needsReview(estimate) ? (
+        <Card headingLevel={2} title="Før du bygger"
           actions={status.embedding.available ? <Badge tone="success">Semantisk søk</Badge> : <Badge>Bare nøkkelordsøk</Badge>}>
           <div className="ek-stack" data-gap="4">
             {!status.embedding.available && status.embedding.reason ? (
@@ -281,21 +308,13 @@ export function BuildPanel({ courseId, status }: { courseId: string; status: Rag
             ) : null}
             <EstimateView estimate={estimate} accept={accept} setAccept={setAccept} consent={consent} setConsent={setConsent} />
             <div className="ek-cluster">
-              <Button variant="primary" icon={<Play aria-hidden="true" />} onClick={() => start.mutate("update")}
+              <Button variant="primary" icon={<Play aria-hidden="true" />}
+                onClick={() => start.mutate({ mode: estimated.mode, confirmed: consent, downloads: accept })}
                 loading={start.isPending} disabled={blocked}>
-                {exists ? "Oppdater indeks" : "Bygg indeks"}
+                {estimated.mode === "full" ? "Start bygging fra bunnen av" : exists ? "Start oppdatering" : "Start bygging"}
               </Button>
-              {exists ? (
-                <Button icon={<RefreshCw aria-hidden="true" />} onClick={() => start.mutate("full")} disabled={blocked}>
-                  Bygg på nytt fra bunnen av
-                </Button>
-              ) : null}
+              <Button onClick={() => setEstimated(null)}>Endre valg</Button>
             </div>
-            {exists ? (
-              <p className="ek-small ek-muted">
-                «Oppdater indeks» behandler bare nye og endrede elementer og fjerner det som er slettet i Canvas.
-              </p>
-            ) : null}
             {start.error ? <Alert tone="danger" role="alert">{(start.error as Error).message}</Alert> : null}
           </div>
         </Card>

@@ -36,11 +36,15 @@ tilbake hvis noe går galt. Større versjoner installeres aldri uten at du bekre
 ## Emne-RAG – kort brukerveiledning
 
 1. Gå til **Canvas-verktøy → Emne-RAG** (emnet velges i toppen av siden).
-2. Velg **Hele emnet** eller **Valgte moduler**, og hvilke kildetyper som skal med: tekst fra Canvas, dokumenter
-   (PDF, Word, PowerPoint, Excel, OpenDocument, RTF, CSV, tekst), video og lyd, og bilder.
-3. Trykk **Beregn estimat**. Du ser hvor mye som leses, omtrentlig tid, hva som må lastes ned første gang og hva
-   som eventuelt sendes til KI. Godta nedlasting/sending og trykk **Bygg indeks**. Byggingen går i bakgrunnen og kan
-   settes på pause eller avbrytes; **Oppdater indeks** fortsetter der den slapp og behandler bare det som er endret.
+2. Velg **Hele emnet** eller **Valgte moduler**. Alle kildetyper er med som standard: tekst fra Canvas, dokumenter
+   (PDF, Word, PowerPoint, Excel, OpenDocument, RTF, CSV, tekst), video og lyd, og bilder (bilder krever KI).
+   **Tilpass kilder** lar deg slå av kilder og filtyper, ta med upublisert innhold og – under **Avansert** – velge
+   KI-tillegg (kontekstuell berikelse, nøkkelbilder) og transkriberingstjeneste, med forklaring av hva som koster.
+   **Tilbakestill til standard** slår alt på igjen.
+3. Trykk **Bygg indeks**. Lastes noe ned første gang eller sendes noe til KI, ser du først et estimat (hvor mye som
+   leses, omtrentlig tid og hva som sendes) og godtar det; ellers starter byggingen med en gang. Byggingen går i
+   bakgrunnen og kan settes på pause eller avbrytes; **Oppdater indeks** fortsetter der den slapp og behandler bare
+   det som er endret.
 4. Under **Spør emnet** kan du søke uten KI eller få et svar med KI der hver påstand har en klikkbar kilde
    ([Sidetittel – Modul], [Video «…» – 12:34], [Fil.pdf s. 4], [Bilde på «…»]). Svaret er et KI-forslag som må vurderes.
 5. **Kvalitet** viser en helsescore for søket (recall@5 og MRR fra testspørsmål), og **Eksport** gir indeksen som ZIP

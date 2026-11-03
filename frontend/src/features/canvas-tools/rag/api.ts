@@ -19,18 +19,85 @@ export interface BuildOptions {
   keyframes: boolean;
 }
 
+// Every source is on by default; what costs extra (KI-tillegg) is off until chosen under «Tilpass kilder».
 export const DEFAULT_OPTIONS: BuildOptions = {
   scope: "course",
   module_ids: [],
   text: true,
   documents: true,
-  images: false,
-  video: false,
+  images: true,
+  video: true,
   file_groups: ["pdf", "word", "powerpoint", "excel", "text"],
   include_unpublished: false,
   contextual_enrichment: false,
   keyframes: false,
 };
+
+/** The sources and file types of the defaults, keeping scope and modules (which are chosen on the main page). */
+export function resetSources(options: BuildOptions): BuildOptions {
+  return { ...DEFAULT_OPTIONS, scope: options.scope, module_ids: options.module_ids };
+}
+
+/** What is actually sent: options that need KI are off when KI is not set up (the summary says why). */
+export function effectiveOptions(options: BuildOptions, status: RagStatus): BuildOptions {
+  const ai = status.ai.available;
+  const allowed = (key: keyof BuildOptions) => !status.not_available[key];
+  const video = options.video && allowed("video");
+  return {
+    ...options,
+    video,
+    images: options.images && ai && allowed("images"),
+    contextual_enrichment: options.contextual_enrichment && ai && allowed("contextual_enrichment"),
+    keyframes: options.keyframes && video && ai && allowed("keyframes"),
+  };
+}
+
+const SOURCE_SHORT: [keyof Pick<BuildOptions, "text" | "documents" | "video" | "images">, string][] = [
+  ["text", "Canvas-tekst"], ["documents", "dokumenter"], ["video", "video/lyd"], ["images", "bilder"]];
+const GROUP_SHORT: Record<FileGroup, string> = { pdf: "PDF", word: "Word-dokumenter", powerpoint: "presentasjoner",
+  excel: "regneark", text: "tekstfiler" };
+
+export function listNb(items: string[]): string {
+  return items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} og ${items[items.length - 1]}`;
+}
+
+const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+export interface SourceSummary {
+  customized: boolean;
+  nothing: boolean;
+  text: string;
+  notes: string[];
+}
+
+/** The one-line summary on the main page («Inkluderer …» or «Tilpassede kilder · … er utelatt.»). */
+export function sourceSummary(options: BuildOptions, status: RagStatus): SourceSummary {
+  const effective = effectiveOptions(options, status);
+  const off = SOURCE_SHORT.filter(([key]) => !options[key]).map(([, label]) => label);
+  if (options.documents) {
+    off.push(...status.file_groups.filter((g) => !options.file_groups.includes(g.key)).map((g) => GROUP_SHORT[g.key]));
+  }
+  const extras: string[] = [];
+  if (options.scope === "course" && options.include_unpublished) extras.push("Upublisert innhold tas med.");
+  if (effective.contextual_enrichment) extras.push("Kontekstuell berikelse med KI er på.");
+  if (effective.keyframes) extras.push("Nøkkelbilder fra video er på.");
+  const customized = off.length > 0 || extras.length > 0;
+  const included = [effective.text && "Canvas-tekst", effective.documents && "dokumenter",
+    ...(effective.video ? ["video", "lyd"] : []), effective.images && "bilder"].filter((x): x is string => Boolean(x));
+  const notes: string[] = [];
+  const aiMissing = status.ai.reason ? `: ${status.ai.reason}` : ".";
+  if (options.images && !effective.images) notes.push(`Bilder tas ikke med fordi KI ikke er satt opp${aiMissing}`);
+  if (options.video && !effective.video) notes.push(status.not_available.video ?? "Video og lyd er ikke tilgjengelig.");
+  if (options.contextual_enrichment && !effective.contextual_enrichment) {
+    notes.push(`Kontekstuell berikelse er valgt, men krever KI${aiMissing}`);
+  }
+  const nothing = included.length === 0;
+  const text = nothing ? "Ingen kilder er valgt."
+    : customized ? ["Tilpassede kilder", off.length ? `${capitalise(listNb(off))} er utelatt.` : null, ...extras]
+      .filter(Boolean).join(" · ")
+      : `Inkluderer ${listNb(included)}.`;
+  return { customized, nothing, text, notes };
+}
 
 export interface SkippedItem {
   key: string;

@@ -433,8 +433,8 @@ async def local_transcript(state: BuildState, item: SourceItem) -> tuple[Transcr
         return None, Waiting("Videoen har ingen teksting, og lokale modeller for transkripsjon er ikke installert "
                              "(setup-emne-rag.bat).")
     if worker.downloads_needed() and not state.request.accept_downloads:
-        return None, Waiting("Videoen har ingen teksting, og NB-Whisper er ikke lastet ned ennå. Beregn estimatet på "
-                             "nytt og godta nedlastingen for å transkribere.")
+        return None, Waiting("Videoen har ingen teksting, og NB-Whisper er ikke lastet ned ennå. Trykk «Oppdater "
+                             "indeks» under «Bygg indeks» og godta nedlastingen i estimatet for å transkribere.")
     target, reason = await download_media(state, item, "media")
     if target is None:
         return None, reason
@@ -506,7 +506,7 @@ async def provider_transcript(state: BuildState, item: SourceItem) -> tuple[Tran
                              f"{plan['reason']}")
     if plan["needs_confirmation"] and not state.request.confirmed:
         return None, Waiting("Videoen har ingen teksting. Lyden sendes ikke til KI-leverandøren uten samtykke – "
-                             "beregn estimatet og godta sendingen.")
+                             "trykk «Oppdater indeks» under «Bygg indeks» og godta sendingen i estimatet.")
     target, reason = await download_media(state, item, "media")
     if target is None:
         return None, reason

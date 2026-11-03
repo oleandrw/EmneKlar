@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import type { ReactNode } from "react";
@@ -99,74 +99,118 @@ describe("AskPanel", () => {
   });
 });
 
+const baseEstimate = (partial: Partial<Estimate> = {}): Estimate => ({
+  counts: { page: 3, file_pdf: 2 }, words: 1200, documents: { count: 2, size_mb: 1.5, too_large: [] },
+  chunks_estimate: 9, skipped: [], unpublished: 0, unpublished_included: 0, limitations: [], modules: [],
+  time: { low_seconds: 10, high_seconds: 50, assumptions: ["Embedding: ca. 3 utdrag per sekund (CPU)."] },
+  downloads: [], ai: [],
+  embedding: { available: true, label: "BGE-M3", reason: null, needs_download: false, download_mb: 0 },
+  reranker: { available: false, label: "x", reason: null, needs_download: false, download_mb: 0 }, device: "cpu",
+  privacy: ["Bare lærerprodusert innhold leses."], index: { exists: false, embedding: null, built_at: null },
+  ...partial,
+});
+const withAi = () => status({ stats: null, ai: { available: true, reason: null }, not_available: {} });
+
 describe("BuildPanel", () => {
-  it("shows an estimate and requires accepting first-time downloads", async () => {
-    const estimate: Estimate = {
-      counts: { page: 3, file_pdf: 2 }, words: 1200, documents: { count: 2, size_mb: 1.5, too_large: [] },
-      chunks_estimate: 9, skipped: [{ key: "page:blokk", kind: "page", kind_label: "Side", title: "Blokkside",
-        reason: "Blokkredigering", url: null }], unpublished: 0, unpublished_included: 0, limitations: [], modules: [],
-      time: { low_seconds: 10, high_seconds: 50, assumptions: ["Embedding: ca. 3 utdrag per sekund (CPU)."] },
-      downloads: [{ label: "BGE-M3", size_mb: 2270, kind: "embedding" }], ai: [],
+  it("keeps the main page short and builds after accepting first-time downloads", async () => {
+    const estimate = baseEstimate({
+      skipped: [{ key: "page:blokk", kind: "page", kind_label: "Side", title: "Blokkside", reason: "Blokkredigering",
+        url: null }],
+      downloads: [{ label: "BGE-M3", size_mb: 2270, kind: "embedding" }],
       embedding: { available: true, label: "BGE-M3", reason: null, needs_download: true, download_mb: 2270 },
-      reranker: { available: false, label: "x", reason: null, needs_download: false, download_mb: 0 }, device: "cpu",
-      privacy: ["Bare lærerprodusert innhold leses."], index: { exists: false, embedding: null, built_at: null },
-    };
-    const calls = mockApi({ "/rag/estimate": estimate });
+    });
+    const calls = mockApi({ "/rag/estimate": estimate, "/rag/build": { id: "job-1" } });
     const { container } = render(wrap(<BuildPanel courseId="104" status={status({ stats: null })} />));
-    expect(screen.getByRole("checkbox", { name: /Video og lyd/ })).toBeDisabled();
-    await userEvent.click(screen.getByRole("button", { name: "Beregn estimat" }));
+    // No KI and no video in this version: the summary says what is included and why the rest is not.
+    expect(screen.getByText("Inkluderer Canvas-tekst og dokumenter.")).toBeInTheDocument();
+    expect(screen.getByText(/Bilder tas ikke med fordi KI ikke er satt opp/)).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /Tekst fra Canvas/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Bygg indeks" }));
     expect(await screen.findByRole("rowheader", { name: "Sider" })).toBeInTheDocument();
     expect(screen.getByText(/Bare lærerprodusert innhold/)).toBeInTheDocument();
-    const start = screen.getByRole("button", { name: "Bygg indeks" });
+    const start = screen.getByRole("button", { name: "Start bygging" });
     expect(start).toBeDisabled();
     await userEvent.click(screen.getByRole("checkbox", { name: /Jeg godtar nedlasting/ }));
     await waitFor(() => expect(start).toBeEnabled());
-    expect(calls[0].body).toMatchObject({ ...DEFAULT_OPTIONS });
+    expect(calls[0].body).toMatchObject({ ...DEFAULT_OPTIONS, images: false, video: false });
     expect(await axeViolations(container)).toEqual([]);
+    await userEvent.click(start);
+    await waitFor(() => expect(calls.some((c) => c.url.includes("/rag/build"))).toBe(true));
+    expect(calls.find((c) => c.url.includes("/rag/build"))?.body).toMatchObject({ mode: "update", accept_downloads: true });
+  });
+
+  it("starts at once when there is nothing to approve", async () => {
+    const calls = mockApi({ "/rag/estimate": baseEstimate(), "/rag/build": { id: "job-1" } });
+    render(wrap(<BuildPanel courseId="104" status={withAi()} />));
+    expect(screen.getByText("Inkluderer Canvas-tekst, dokumenter, video, lyd og bilder.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Bygg indeks" }));
+    await waitFor(() => expect(calls.some((c) => c.url.includes("/rag/build"))).toBe(true));
+    expect(calls.find((c) => c.url.includes("/rag/build"))?.body).toMatchObject({
+      text: true, documents: true, video: true, images: true, contextual_enrichment: false, mode: "update" });
+    expect(screen.queryByText("Før du bygger")).not.toBeInTheDocument();
+  });
+
+  it("customises sources in a panel, summarises the change and resets to the defaults", async () => {
+    const calls = mockApi({ "/api/settings/rag": {}, "/rag/estimate": baseEstimate({ ai: [{ task: "rag_images",
+      label: "Bildebeskrivelser", calls: 4, input_tokens: 4000, available: true, reason: null, external: true,
+      route: { provider: "openai", model: "x", reason: "" } }] }) });
+    const { container } = render(wrap(<BuildPanel courseId="104" status={withAi()} />));
+    await userEvent.click(screen.getByRole("button", { name: "Tilpass kilder" }));
+    const panel = await screen.findByRole("dialog", { name: "Tilpass kilder" });
+    expect(within(panel).getByRole("heading", { name: "Avansert" })).toBeInTheDocument();
+    expect(within(panel).getByText(/ett KI-kall per åtte utdrag/)).toBeInTheDocument();
+    expect(await axeViolations(container)).toEqual([]);
+    await userEvent.click(within(panel).getByRole("checkbox", { name: /Video og lyd/ }));
+    await userEvent.click(within(panel).getByRole("checkbox", { name: /^Bilder/ }));
+    await userEvent.click(within(panel).getByRole("radio", { name: /KI-leverandør/ }));
+    await userEvent.click(within(panel).getByRole("button", { name: "Bruk valgene" }));
+    expect(await screen.findByText("Tilpassede kilder · Video/lyd og bilder er utelatt.")).toBeInTheDocument();
+    expect(calls.find((c) => c.url.includes("/api/settings/rag"))?.body).toMatchObject({ transcription: "provider" });
+    await userEvent.click(screen.getByRole("button", { name: "Tilpass kilder" }));
+    const again = await screen.findByRole("dialog", { name: "Tilpass kilder" });
+    await userEvent.click(within(again).getByRole("button", { name: "Tilbakestill til standard" }));
+    await userEvent.click(within(again).getByRole("button", { name: "Bruk valgene" }));
+    expect(await screen.findByText("Inkluderer Canvas-tekst, dokumenter, video, lyd og bilder.")).toBeInTheDocument();
+    // Images go to an external provider: the estimate is shown and needs consent first.
+    await userEvent.click(screen.getByRole("button", { name: "Bygg indeks" }));
+    const start = await screen.findByRole("button", { name: "Start bygging" });
+    expect(start).toBeDisabled();
+    await userEvent.click(screen.getByRole("checkbox", { name: /Jeg har sett hva som sendes/ }));
+    await waitFor(() => expect(start).toBeEnabled());
   });
 
   it("explains an empty estimate caused by unpublished content", async () => {
-    const estimate: Estimate = {
-      counts: {}, words: 0, documents: { count: 0, size_mb: 0, too_large: [] }, chunks_estimate: 0,
+    mockApi({ "/rag/estimate": baseEstimate({ counts: {}, words: 0, chunks_estimate: 0, unpublished: 12,
+      documents: { count: 0, size_mb: 0, too_large: [] },
       skipped: [{ key: "page:uke-1", kind: "page", kind_label: "Side", title: "Uke 1", reason: "Upublisert i Canvas.",
-        url: null }], unpublished: 12, unpublished_included: 0, limitations: [], modules: [],
-      time: { low_seconds: 0, high_seconds: 10, assumptions: [] }, downloads: [], ai: [],
-      embedding: { available: false, label: "x", reason: null, needs_download: false, download_mb: 0 },
-      reranker: { available: false, label: "x", reason: null, needs_download: false, download_mb: 0 }, device: "cpu",
-      privacy: [], index: { exists: false, embedding: null, built_at: null },
-    };
-    mockApi({ "/rag/estimate": estimate });
+        url: null }] }) });
     const { container } = render(wrap(<BuildPanel courseId="104" status={status({ stats: null })} />));
-    await userEvent.click(screen.getByRole("button", { name: "Beregn estimat" }));
+    await userEvent.click(screen.getByRole("button", { name: "Bygg indeks" }));
     expect(await screen.findByText("12 upubliserte elementer er ikke med")).toBeInTheDocument();
     expect(screen.getByText("Fant ikke noe publisert innhold med disse valgene.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Bygg indeks" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Start bygging" })).toBeDisabled();
     expect(await axeViolations(container)).toEqual([]);
   });
 });
 
 describe("BuildPanel with selected modules", () => {
   it("includes unpublished modules the user picks and says so", async () => {
-    const estimate: Estimate = {
-      counts: { page: 9 }, words: 3000, documents: { count: 0, size_mb: 0, too_large: [] }, chunks_estimate: 20,
-      skipped: [], unpublished: 0, unpublished_included: 9, limitations: [], modules: [],
-      time: { low_seconds: 5, high_seconds: 20, assumptions: [] }, downloads: [], ai: [],
-      embedding: { available: false, label: "x", reason: null, needs_download: false, download_mb: 0 },
-      reranker: { available: false, label: "x", reason: null, needs_download: false, download_mb: 0 }, device: "cpu",
-      privacy: [], index: { exists: false, embedding: null, built_at: null },
-    };
     const calls = mockApi({
       "/content-index": { modules: [{ id: "11", name: "Modul 1", items_count: 9, published: false }], items: [],
         partial: false },
-      "/rag/estimate": estimate,
+      "/rag/estimate": baseEstimate({ counts: { page: 9 }, unpublished_included: 9 }),
     });
     const { container } = render(wrap(<BuildPanel courseId="104" status={status({ stats: null })} />));
     await userEvent.click(screen.getByRole("radio", { name: /Valgte moduler/ }));
+    expect(screen.getByRole("button", { name: "Bygg indeks" })).toBeDisabled();
     await userEvent.click(await screen.findByRole("checkbox", { name: "Modul 1 (9 elementer, upublisert)" }));
-    expect(screen.queryByRole("checkbox", { name: /Ta med upubliserte elementer/ })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Beregn estimat" }));
+    await userEvent.click(screen.getByRole("button", { name: "Tilpass kilder" }));
+    const panel = await screen.findByRole("dialog", { name: "Tilpass kilder" });
+    expect(within(panel).queryByRole("checkbox", { name: /Ta med upubliserte elementer/ })).not.toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("button", { name: "Avbryt" }));
+    await userEvent.click(screen.getByRole("button", { name: "Bygg indeks" }));
     expect(await screen.findByText("9 upubliserte elementer er med")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Bygg indeks" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Start bygging" })).toBeEnabled();
     expect(calls.find((c) => c.url.includes("/rag/estimate"))?.body).toMatchObject({ scope: "modules",
       module_ids: ["11"] });
     expect(await axeViolations(container)).toEqual([]);

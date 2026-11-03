@@ -60,6 +60,14 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   endres.
 
 ### Endret
+- Emne-RAG → Bygg indeks er forenklet: hovedsiden har omfang (hele emnet eller valgte moduler), en kort
+  oppsummering av kildene («Inkluderer Canvas-tekst, dokumenter, video, lyd og bilder.»), **Tilpass kilder** og
+  **Bygg indeks**. Alle kildetyper er på som standard (bilder bare når KI er satt opp). «Tilpass kilder» åpner et
+  sidepanel med kilder og filtyper, upublisert innhold og en **Avansert**-del med KI-tilleggene (kontekstuell
+  berikelse, nøkkelbilder) og valg av transkriberingstjeneste, der det står hva som kan gi ekstra kostnad, samt
+  **Tilbakestill til standard**. Endrede valg vises i oppsummeringen («Tilpassede kilder · Video/lyd og bilder er
+  utelatt.»). «Bygg indeks» beregner estimatet først og viser det bare når noe må godkjennes (nedlasting, sending
+  til KI, upublisert innhold) eller ingenting ble funnet; ellers starter byggingen med en gang.
 - Kontrollen av innebygd innhold (Universell utforming) og videostandardiseringen bruker samme liste over generelle
   titler. «YouTube video», «Embedded video» og titler med kolon eller punktum til slutt regnes nå også som generelle.
 
