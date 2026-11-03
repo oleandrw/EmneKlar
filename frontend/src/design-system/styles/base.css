@@ -77,6 +77,8 @@ code {
   background: var(--color-surface-sunken);
   border-radius: 4px;
   padding: 0.05em 0.3em;
+  /* Long unbroken values (Windows paths, URLs) must wrap instead of widening the page on mobile. */
+  overflow-wrap: anywhere;
 }
 table {
   border-collapse: collapse;

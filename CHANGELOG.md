@@ -18,6 +18,14 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
 - Kontrollen av innebygd innhold (Universell utforming) og videostandardiseringen bruker samme liste over generelle
   titler. «YouTube video», «Embedded video» og titler med kolon eller punktum til slutt regnes nå også som generelle.
 
+### Rettet
+- Lange stier og adresser (for eksempel datamappen under *Innstillinger → Sikkerhet og personvern*) brytes nå over
+  flere linjer i stedet for å gi sideveis rulling på mobil.
+
+### Sikkerhet
+- Oppdaterte avhengigheter med kjente sårbarheter: certifi 2026.10.19, pypdf 6.21.4, opentelemetry-api 1.45.1 og
+  filelock 4.2.1.
+
 ## [0.1.0] – under utvikling
 
 ### Lagt til

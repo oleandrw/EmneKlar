@@ -7,6 +7,7 @@ Secrets never pass through these endpoints.
 from __future__ import annotations
 
 import os
+import sys
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
@@ -133,7 +134,8 @@ async def open_folder(body: FolderBody, c: AppContainer = Depends(get_container)
     """Open a data folder in Windows Explorer (local machine only, fixed folders)."""
     paths = {"data": c.config.data_dir, "backups": c.config.backups_dir, "reports": c.config.reports_dir,
              "logs": c.config.logs_dir}
-    if os.name != "nt":
+    # sys.platform (not os.name) so mypy narrows the platform and accepts the Windows-only os.startfile.
+    if sys.platform != "win32":
         raise AppError("unsupported", status=409, message="Å åpne mapper støttes bare på Windows.")
     paths[body.folder].mkdir(parents=True, exist_ok=True)
     os.startfile(paths[body.folder])  # noqa: S606 - fixed, known folder
