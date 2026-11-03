@@ -64,7 +64,11 @@ test("axe – mørkt tema og dialoger", async ({ page }) => {
 test("tastatur: hopp til hovedinnhold og synlig fokus", async ({ page }) => {
   await login(page);
   await page.goto("/oversikt");
-  // Start from the top of the document (the app moves focus to the page heading after navigation).
+  // Wait until the page has rendered and settled: the app moves focus to the page heading after (client-side)
+  // navigation, and on slower machines that can happen after a too-early blur and steal the first Tab.
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  // Start from the top of the document.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press("Tab");
   const skip = page.getByRole("link", { name: /hovedinnhold/i });
