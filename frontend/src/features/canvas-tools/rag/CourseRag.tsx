@@ -59,6 +59,7 @@ function SkippedTable({ items }: { items: SkippedItem[] }) {
     { key: "reason", header: "Hvorfor", cell: (s) => (
       <span className="ek-stack" data-gap="1">
         {s.failed ? <Badge tone="danger">Feilet</Badge> : null}
+        {s.waiting ? <Badge tone="info">Prøves igjen ved neste oppdatering</Badge> : null}
         <span>{s.reason}</span>
       </span>
     ) },

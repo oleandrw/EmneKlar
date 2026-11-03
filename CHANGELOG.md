@@ -34,6 +34,18 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   lagres og vises sammen med hvert spørsmål. **Eksport**: ZIP med `chunks.jsonl` (metadata og vektorer), manifest og
   formatbeskrivelse, eller kunnskapsbasen som Word, PDF, Markdown eller ren tekst. Knappen «Oppdater indeks»
   behandler bare nye og endrede elementer og fjerner slettede.
+- Emne-RAG → transkripsjon via KI-leverandør: video og lyd uten teksting kan transkriberes av OpenAI
+  (gpt-transcribe, gpt-4o-mini-transcribe eller whisper-1), Azure OpenAI eller en egen OpenAI-kompatibel server i
+  stedet for lokalt med NB-Whisper (Emne-RAG → Innstillinger → Transkripsjon: lokalt, via KI-leverandør eller av).
+  Bare lyden sendes, i biter på 60–120 sekunder kuttet ved pauser (stille biter sendes ikke), og bare etter at
+  estimatet har vist antall minutter, modell og hva som sendes, og du har godtatt det. Tidsstemplene følger bitene,
+  også når modellen ikke gir tidsstempler, og teksten fra forrige bit sendes med som hint så navn og fagord skrives
+  likt. Videotittel og annet innhold fra emnet sendes ikke.
+  Transkripsjonene bufres på filens SHA-256 (felles med lokal transkripsjon), og hvert kall logges under KI-bruk.
+  Modellene står i en katalog (`core/ai/transcription_models.json`); en egen modell-id kan skrives inn.
+  Elementer som venter på samtykke, modeller eller en innstilling, merkes «Prøves igjen ved neste oppdatering» og
+  tas med av «Oppdater indeks» når det er på plass. `av` (PyAV, FFmpeg innebygd) er nå en fast avhengighet for å
+  hente ut lyden.
 - Innholdskvalitet → Media: «Standardiser videoavspillere» for YouTube. Finner innebygde videoer, forklarer avvik
   fra én responsiv og Canvas-trygg standard (16:9, maks bredde, sentrert, `allowfullscreen`, `loading="lazy"`),
   foreslår beskrivende title med synlig kilde (eksisterende title, YouTube-metadata, Canvas-kontekst, KI-forslag på

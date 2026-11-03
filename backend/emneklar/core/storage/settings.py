@@ -141,6 +141,11 @@ class RagSettings(_Section):
     reranker_enabled: bool = True
     reranker_model: str = Field("", max_length=200)
     device: Literal["auto", "cpu", "cuda"] = "auto"
+    # Videos without captions: local NB-Whisper, an AI provider (OpenAI, Azure OpenAI, own server) or not at all.
+    transcription: Literal["local", "provider", "off"] = "local"
+    transcription_provider_id: str = Field("openai", max_length=40)
+    transcription_model: str = Field("", max_length=200)  # "" = catalog default (core/ai/transcription_models.json)
+    transcription_language: str = Field("", max_length=8, pattern=r"^([a-z]{2,3})?$")  # "" = detected automatically
     whisper_model: Literal["auto", "tiny", "base", "small", "medium", "large"] = "auto"
     whisper_other_language_model: str = Field("", max_length=200)
     youtube_captions: bool = True

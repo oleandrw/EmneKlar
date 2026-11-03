@@ -60,8 +60,8 @@ Leverandøroppsett (endepunkt, API-versjon, aktivert) ligger i innstillingene; n
   backups\database\     kopi av databasen før migrering/oppdatering
   reports\              genererte rapporter (HTML/CSV)
   logs\emneklar.log     strukturert logg (JSON-linjer, sensurert)
-  cache\                midlertidige nedlastinger (dokumentanalyse); cache\rag\ har transkripsjoner,
-                        bildebeskrivelser og kontekstsetninger for Emne-RAG (nøkkel = SHA-256)
+  cache\                midlertidige nedlastinger (dokumentanalyse); cache\rag\ har transkripsjoner (lokale og
+                        fra KI-leverandør), bildebeskrivelser og kontekstsetninger for Emne-RAG (nøkkel = SHA-256)
   rag\                  Emne-RAG-indekser, én SQLite-fil per emne
   models\               lokale modeller for Emne-RAG (Hugging Face-buffer og konverterte NB-Whisper-modeller)
   run\instance.json     kjørende instans (port, kontrollhemmelighet) – slettes ved avslutning

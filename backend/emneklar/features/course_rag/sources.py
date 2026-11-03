@@ -80,6 +80,13 @@ class SourceOptions(BaseModel):
         return f"{CHUNKER_VERSION}|ctx={int(self.contextual_enrichment)}|kf={int(self.keyframes)}"
 
 
+class Waiting(str):
+    """A skip reason that depends on something the user can change (consent, models, settings): the element gets
+    status «pending» and is tried again on the next update instead of counting as unchanged."""
+
+    __slots__ = ()
+
+
 @dataclass
 class SourceItem:
     key: str

@@ -40,6 +40,8 @@ export function SettingsPanel({ status, courseId }: { status: RagStatus; courseI
     ...models.filter((m) => m.kind === kind).map((m) => ({ value: m.id, label: `${m.label} – ca. ${formatMb(m.size_mb)}` })),
   ];
   const installed = status.local.installed;
+  const providerType = status.providers.find((p) => p.id === form.transcription_provider_id)?.type ?? "";
+  const transcriptionModels = status.transcription_models.filter((m) => m.provider_type === providerType);
   const columns: Column<LocalModel>[] = [
     { key: "label", header: "Modell", rowHeader: true, cell: (m) => (
       <span className="ek-stack" data-gap="1"><span>{m.label}</span><span className="ek-xs ek-muted">{m.id}</span></span>
@@ -93,6 +95,44 @@ export function SettingsPanel({ status, courseId }: { status: RagStatus; courseI
 
       <Card title="Video, lyd og filer" headingLevel={2}>
         <div className="ek-stack" data-gap="4">
+          <RadioGroup legend="Transkripsjon når videoen mangler teksting" name="rag-transcription" value={form.transcription}
+            onChange={(transcription) => set({ transcription })} options={[
+              { value: "local", label: "Lokalt med NB-Whisper", hint: "Best på norsk og dialekter. Krever lokale modeller (setup-emne-rag.bat)." },
+              { value: "provider", label: "KI-leverandør (OpenAI, Azure OpenAI eller egen server)",
+                hint: "Ingen store installasjoner. Bare lyden sendes, i biter på 60–120 sekunder, etter at du har godkjent det. Teksten fra forrige bit sendes med som stavehjelp." },
+              { value: "off", label: "Ikke transkriber", hint: "Bare eksisterende teksting brukes." },
+            ]} />
+          {form.transcription === "provider" ? (
+            <>
+              <div className="ek-grid" data-cols="2">
+                <SelectField label="Leverandør" value={form.transcription_provider_id}
+                  onChange={(e) => set({ transcription_provider_id: e.target.value, transcription_model: "" })}
+                  options={status.providers.map((p) => ({ value: p.id, label: p.name }))} />
+                {transcriptionModels.length ? (
+                  <SelectField label="Modell" value={form.transcription_model}
+                    onChange={(e) => set({ transcription_model: e.target.value })} options={[
+                      { value: "", label: `Standard (${transcriptionModels.find((m) => m.default)?.label ?? "katalogen"})` },
+                      ...transcriptionModels.map((m) => ({ value: m.id, label: m.label })),
+                    ]} />
+                ) : (
+                  <TextField label="Modell eller deployment" value={form.transcription_model}
+                    onChange={(e) => set({ transcription_model: e.target.value })}
+                    hint="Navnet på transkripsjonsmodellen hos leverandøren, for eksempel deployment-navnet i Azure." />
+                )}
+                <TextField label="Språk (valgfritt)" value={form.transcription_language} maxLength={3}
+                  onChange={(e) => set({ transcription_language: e.target.value.trim().toLowerCase() })}
+                  hint="Tom = gjenkjennes automatisk. «no» for norsk, «en» for engelsk." />
+              </div>
+              {status.transcription.plan && !status.transcription.plan.available ? (
+                <Alert tone="warning">{status.transcription.plan.reason}</Alert>
+              ) : null}
+              <Alert tone="info" title="Personvern">
+                Opptak kan inneholde stemmene til studenter. Sjekk at institusjonen har databehandleravtale med
+                leverandøren før du bruker ekstern transkripsjon. Du ser antall minutter og hvem det sendes til i
+                estimatet, og ingenting sendes uten at du godkjenner det.
+              </Alert>
+            </>
+          ) : null}
           <div className="ek-grid" data-cols="2">
             <SelectField label="NB-Whisper-modell" value={form.whisper_model}
               onChange={(e) => set({ whisper_model: e.target.value as RagSettings["whisper_model"] })}

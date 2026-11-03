@@ -37,7 +37,15 @@ from emneklar.features.course_rag import engine
 from emneklar.features.course_rag.chunking import ChunkDraft, chunk_blocks, chunk_units
 from emneklar.features.course_rag.convert.documents import group_of
 from emneklar.features.course_rag.images import Deduplicator
-from emneklar.features.course_rag.sources import KIND_LABELS, TEXT_KINDS, Inventory, SourceItem, SourceOptions, discover
+from emneklar.features.course_rag.sources import (
+    KIND_LABELS,
+    TEXT_KINDS,
+    Inventory,
+    SourceItem,
+    SourceOptions,
+    Waiting,
+    discover,
+)
 from emneklar.features.course_rag.store import ChunkRecord, IndexStore, ItemRecord
 
 log = logging.getLogger(__name__)
@@ -123,6 +131,8 @@ async def store_chunks(state: BuildState, item: SourceItem, records: list[ChunkR
 
 
 def mark(state: BuildState, item: SourceItem, status: str, reason: str) -> None:
+    if isinstance(reason, Waiting) and status == "skipped":
+        status = "pending"
     state.store.put_item(item_record(item, state.request, status=status, reason=reason), [])
     if status == "failed":
         state.failed += 1
@@ -221,7 +231,7 @@ async def process_document(state: BuildState, item: SourceItem) -> None:
     max_mb = state.c.settings.get().rag.max_file_mb
     size = int(item.meta.get("size") or 0)
     if size > max_mb * 1024 * 1024:
-        mark(state, item, "skipped", f"Filen er større enn grensen på {max_mb} MB (Emne-RAG → Innstillinger).")
+        mark(state, item, "skipped", Waiting(f"Filen er større enn grensen på {max_mb} MB (Emne-RAG → Innstillinger)."))
         return
     work = state.tmp / hashlib.sha1(item.key.encode()).hexdigest()[:12]  # noqa: S324 - folder name only
     try:
@@ -241,8 +251,9 @@ async def process_document(state: BuildState, item: SourceItem) -> None:
         if result.get("needs_ocr"):
             ocr = await ocr_units(state, item, path, work)
             if ocr is None:
-                mark(state, item, "skipped", "PDF-en ser skannet ut (bilder av tekst). OCR krever Tesseract med norsk "
-                     "språkpakke, eller at bilder er slått på og en bildemodell er tilgjengelig via KI.")
+                mark(state, item, "skipped", Waiting(
+                    "PDF-en ser skannet ut (bilder av tekst). OCR krever Tesseract med norsk språkpakke, eller at "
+                    "bilder er slått på og en bildemodell er tilgjengelig via KI."))
                 return
             units = ocr
             meta["ocr"] = True
@@ -322,10 +333,10 @@ def plan_items(inv: Inventory, store: IndexStore, options: SourceOptions) -> tup
 def skipped_list(inv: Inventory, store: IndexStore) -> list[dict[str, Any]]:
     out = [s.as_dict() for s in inv.skipped]
     for key, row in store.items().items():
-        if row["status"] in ("skipped", "failed"):
+        if row["status"] in ("skipped", "failed", "pending"):
             out.append({"key": key, "kind": row["kind"], "kind_label": KIND_LABELS.get(row["kind"], row["kind"]),
                         "title": row["title"], "reason": row["reason"] or "", "url": row["url"],
-                        "failed": row["status"] == "failed"})
+                        "failed": row["status"] == "failed", "waiting": row["status"] == "pending"})
     return out
 
 

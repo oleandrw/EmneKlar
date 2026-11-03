@@ -49,7 +49,9 @@ tilbake hvis noe går galt. Større versjoner installeres aldri uten at du bekre
 Bare lærerens innhold leses – aldri innleveringer, karakterer, meldinger eller studentinnlegg. Semantisk søk,
 rerangering og transkripsjon kjører lokalt med valgfrie modeller (flere GB): lukk EmneKlar og dobbeltklikk
 **`setup-emne-rag.bat`** (eller kjør `setup.bat --rag`). `update.bat` beholder dem senere. Uten lokale modeller bruker
-Emne-RAG nøkkelordsøk og eksisterende teksting. Standardinstallasjonen kjører på CPU; har maskinen en NVIDIA-GPU med
+Emne-RAG nøkkelordsøk og eksisterende teksting. Video uten teksting kan i stedet transkriberes av OpenAI, Azure
+OpenAI eller en egen OpenAI-kompatibel server (Emne-RAG → Innstillinger → Transkripsjon); da sendes bare lyden, og
+bare etter at du har sett estimatet og godtatt sendingen. Standardinstallasjonen kjører på CPU; har maskinen en NVIDIA-GPU med
 CUDA-utgaven av PyTorch og CUDA-bibliotekene for CTranslate2, brukes GPU automatisk (kan overstyres under
 Emne-RAG → Innstillinger). Skannede PDF-er leses med Tesseract hvis det er installert med norsk språkpakke.
 

@@ -56,7 +56,7 @@ TASKS: dict[str, TaskProfile] = {t.key: t for t in (
 )}
 
 #: Usage log entries that are not routed tasks (embedding models are chosen under Emne-RAG, not by the router).
-USAGE_LABELS: dict[str, str] = {"rag_embedding": "Emne-RAG: embedding"}
+USAGE_LABELS: dict[str, str] = {"rag_embedding": "Emne-RAG: embedding", "rag_transcription": "Emne-RAG: transkripsjon"}
 
 STRATEGY_LABEL = {"auto": "Automatisk", "low_cost": "Prioriter lav kostnad", "speed": "Prioriter hastighet",
                   "quality": "Prioriter kvalitet", "manual": "Manuell styring"}

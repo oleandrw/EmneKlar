@@ -90,7 +90,8 @@ function EstimateView({ estimate, accept, setAccept, consent, setConsent }: {
             {estimate.ai.map((a) => (
               <li key={a.task}>
                 {a.label}: {a.available
-                  ? `ca. ${formatNumber(a.calls)} kall og ${formatNumber(a.input_tokens)} tokens inn` +
+                  ? (a.minutes != null ? `ca. ${formatNumber(a.minutes)} minutter lyd i ${formatNumber(a.calls)} biter`
+                    : `ca. ${formatNumber(a.calls)} kall og ${formatNumber(a.input_tokens)} tokens inn`) +
                     (a.route ? ` med ${a.route.model} (${a.route.provider})` : "")
                   : `ikke tilgjengelig – ${a.reason ?? ""}`}
               </li>
@@ -215,7 +216,10 @@ export function BuildPanel({ courseId, status }: { courseId: string; status: Rag
             ) : null}
             <Checkbox label="Video og lyd" checked={options.video} disabled={Boolean(unavailable.video)}
               onChange={(e) => set({ video: e.target.checked })}
-              hint={unavailable.video ?? "Eksisterende teksting først, ellers lokal transkripsjon med NB-Whisper."} />
+              hint={unavailable.video ?? (status.transcription.mode === "provider"
+                ? "Eksisterende teksting først, ellers transkripsjon via KI-leverandør (bare lyden sendes)."
+                : status.transcription.mode === "off" ? "Bare eksisterende teksting – transkripsjon er slått av."
+                  : "Eksisterende teksting først, ellers lokal transkripsjon med NB-Whisper.")} />
             <Checkbox label="Bilder" checked={options.images} disabled={Boolean(unavailable.images)}
               onChange={(e) => set({ images: e.target.checked })}
               hint={unavailable.images ?? "Beskrivelser med en bildemodell (KI). Pynt, ikoner og duplikater filtreres bort."} />

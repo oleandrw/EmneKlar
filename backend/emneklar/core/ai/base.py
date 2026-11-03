@@ -62,6 +62,21 @@ class EmbeddingResult(BaseModel):
     provider: str
 
 
+class TranscriptionSegment(BaseModel):
+    start: float
+    end: float
+    text: str
+
+
+class TranscriptionResult(BaseModel):
+    text: str
+    segments: list[TranscriptionSegment] = Field(default_factory=list)  # empty when the model gives no timestamps
+    language: str | None = None
+    duration: float | None = None
+    model: str
+    provider: str
+
+
 class AIResult(BaseModel):
     data: dict[str, Any] | None = None
     text: str | None = None
@@ -102,6 +117,11 @@ class AIProvider(ABC):
     async def embed(self, model: str, texts: list[str]) -> EmbeddingResult:
         """Text embeddings. Only OpenAI-compatible APIs (OpenAI, Azure OpenAI, Ollama, LM Studio …) have them."""
         raise AIError("unsupported", status=409, message="Denne KI-leverandøren tilbyr ikke embedding.")
+
+    async def transcribe(self, model: str, audio: bytes, filename: str, *, segments: bool, language: str | None = None,
+                         prompt: str | None = None) -> TranscriptionResult:
+        """Speech to text. Only OpenAI-compatible APIs (OpenAI, Azure OpenAI, own servers) have it."""
+        raise AIError("unsupported", status=409, message="Denne KI-leverandøren tilbyr ikke transkripsjon.")
 
     async def health_check(self) -> HealthStatus:
         try:

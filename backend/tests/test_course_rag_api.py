@@ -373,3 +373,59 @@ def test_contextual_enrichment_is_cached(rag: TestClient, rag_container: AppCont
     before = len(context_calls)
     build(rag, contextual_enrichment=True, documents=False, confirmed=True, mode="full")
     assert len([c for c in calls if c["response_format"]["json_schema"]["name"] == "kontekst"]) == before
+
+
+def test_video_transcribed_by_openai_with_consent_and_cache(rag: TestClient, rag_container: AppContainer,
+                                                            rag_state: FakeCanvasState) -> None:
+    from tests.test_course_rag_units import speech_like_wav
+
+    rag_state.file_bytes["7101"] = (speech_like_wav(150), "video/mp4")  # the lab video now has real audio
+    rag_state.courses[RAG_COURSE].files["7101"]["size"] = len(rag_state.file_bytes["7101"][0])
+    uploads: list[bytes] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/audio/transcriptions"):
+            uploads.append(request.content)
+            return httpx.Response(200, json={"text": f"Lydbit {len(uploads)}: vi justerer hvitbalansen i laben."})
+        return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}, "finish_reason": "stop"}],
+                                         "usage": {"prompt_tokens": 1, "completion_tokens": 1}})
+
+    rag_container.ai_transport = httpx.MockTransport(handler)
+    assert rag.put("/api/ai/providers/openai", json={"enabled": True, "api_key": "sk-proj-ragtest1234567"}
+                   ).status_code == 200
+    rag_container.settings.update(lambda s: setattr(s.privacy, "allow_external_ai", True))
+    assert rag.patch("/api/settings/rag", json={"transcription": "provider"}).status_code == 200
+    options = {**BASE_OPTIONS, "documents": False, "video": True}
+    estimate = rag.post(f"/api/courses/{RAG_COURSE}/rag/estimate", json=options).json()
+    entry = next(a for a in estimate["ai"] if a["task"] == "rag_transcription")
+    assert entry["available"] and entry["external"] and entry["route"]["model"] == "gpt-transcribe"
+    assert any("bare lyden" in p for p in estimate["privacy"]) and estimate["video"]["transcription"] == "provider"
+    # Without consent the video is skipped with an explanation – nothing is sent.
+    build(rag, video=True, documents=False)
+    waiting = [s for s in rag.get(f"/api/courses/{RAG_COURSE}/rag").json()["index"]["skipped"]
+               if s["key"] == "file:7101"]
+    assert waiting and "samtykke" in waiting[0]["reason"] and waiting[0]["waiting"] and uploads == []
+    # The pending video is tried again by an ordinary update once the user has consented.
+    build(rag, video=True, documents=False, confirmed=True)
+    assert len(uploads) == 2 and all(b"RIFF" in u and b"gpt-transcribe" in u for u in uploads)
+    # Only audio: no video title or course text; the second piece gets the first piece's returned text as hint.
+    assert not any(b"Lab-demo" in u for u in uploads) and b'name="prompt"' not in uploads[0]
+    assert b"Lydbit 1: vi justerer" in uploads[1]
+    hits = search(rag, "hvitbalansen laben", types=["transcript"])["hits"]
+    lab = sorted((h for h in hits if h["title"] == "Lab-demo.mp4"), key=lambda h: h["start"])
+    assert [h["start"] for h in lab] == [0.0, lab[1]["start"]] and 60 <= lab[1]["start"] <= 120
+    assert lab[0]["citation"] == "Video «Lab-demo.mp4» – 0:00"
+    usage = rag.get("/api/ai/usage").json()
+    transcribed = [u for u in usage["items"] if u["task"] == "rag_transcription"]
+    assert transcribed and transcribed[0]["task_label"] == "Emne-RAG: transkripsjon"
+    assert all(u["success"] for u in transcribed)
+    build(rag, video=True, documents=False, confirmed=True, mode="full")
+    assert len(uploads) == 2  # cached by the file's SHA-256: never transcribed twice
+
+
+def test_transcription_off_skips_videos_without_captions(rag: TestClient) -> None:
+    assert rag.patch("/api/settings/rag", json={"transcription": "off"}).status_code == 200
+    build(rag, video=True, documents=False)
+    skipped = rag.get(f"/api/courses/{RAG_COURSE}/rag").json()["index"]["skipped"]
+    assert any(s["key"] == "file:7101" and "slått av" in s["reason"] for s in skipped)
+    assert search(rag, "sRGB Adobe RGB", types=["transcript"])["hits"]  # captions are still used

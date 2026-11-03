@@ -83,7 +83,7 @@ def extract_keyframes(path: str, out_dir: str, max_frames: int = MAX_KEYFRAMES) 
         if stream is None:
             return {"frames": []}
         for frame in container.decode(stream):
-            if frame.time is None or frame.time < next_time:
+            if not isinstance(frame, av.VideoFrame) or frame.time is None or frame.time < next_time:
                 continue
             next_time = frame.time + SAMPLE_SECONDS
             image = frame.to_image()

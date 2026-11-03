@@ -40,6 +40,7 @@ export interface SkippedItem {
   reason: string;
   url: string | null;
   failed?: boolean;
+  waiting?: boolean;
 }
 
 export interface Choice {
@@ -72,6 +73,10 @@ export interface RagSettings {
   reranker_enabled: boolean;
   reranker_model: string;
   device: "auto" | "cpu" | "cuda";
+  transcription: "local" | "provider" | "off";
+  transcription_provider_id: string;
+  transcription_model: string;
+  transcription_language: string;
   whisper_model: "auto" | "tiny" | "base" | "small" | "medium" | "large";
   whisper_other_language_model: string;
   youtube_captions: boolean;
@@ -142,6 +147,12 @@ export interface RagStatus {
   chunk_types: { key: ChunkType; label: string }[];
   not_available: Record<string, string>;
   providers: { id: string; name: string; type: string }[];
+  transcription: {
+    mode: RagSettings["transcription"];
+    plan: { available: boolean; reason: string | null; external: boolean;
+      model: { id: string; label: string; segments: boolean | null } | null } | null;
+  };
+  transcription_models: { id: string; label: string; provider_type: string; segments: boolean | null; default: boolean }[];
 }
 
 export interface AiTaskEstimate {
@@ -150,6 +161,7 @@ export interface AiTaskEstimate {
   calls: number;
   input_tokens: number;
   images?: number;
+  minutes?: number;
   available: boolean;
   reason: string | null;
   external: boolean;
@@ -161,7 +173,8 @@ export interface Estimate {
   words: number;
   documents: { count: number; size_mb: number; too_large: { title: string; size_mb: number }[] };
   video?: { count: number; with_captions: number; minutes_known: number; unknown_duration: number;
-    to_transcribe: number; unavailable: number };
+    to_transcribe: number; unavailable: number; transcription: RagSettings["transcription"]; model: string;
+    minutes_to_transcribe: number };
   images?: { candidates: number; documents_note: string };
   chunks_estimate: number;
   skipped: SkippedItem[];

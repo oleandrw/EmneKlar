@@ -65,6 +65,11 @@ async def status(course_id: str, c: AppContainer = Depends(get_container)) -> di
     embedding, reranker, device = engine.choices(c)
     local = await asyncio.to_thread(c.local_models.status, settings.rag.device)
     ai_reason = c.ai.unavailable_reason(settings)
+    from emneklar.core.ai.transcription import catalog as transcription_catalog
+
+    rag = settings.rag
+    transcription = c.ai.transcription_plan(rag.transcription_provider_id, rag.transcription_model, summary="") \
+        if rag.transcription == "provider" else None
     return {
         "index": engine.registry(c, course_id), "stats": stats, "modules": modules, "error": error,
         "index_embedding": index_embedding or None,
@@ -77,6 +82,8 @@ async def status(course_id: str, c: AppContainer = Depends(get_container)) -> di
         "file_groups": [{"key": k, "label": v} for k, v in GROUP_LABELS.items()],
         "chunk_types": [{"key": k, "label": CHUNK_TYPE_LABELS[k]} for k in CHUNK_TYPES],
         "not_available": NOT_YET,
+        "transcription": {"mode": rag.transcription, "plan": transcription},
+        "transcription_models": [m.as_dict() for m in transcription_catalog()],
         "providers": [{"id": p.id, "name": p.name, "type": p.type} for p in settings.ai.providers
                       if p.type != "anthropic"],
     }

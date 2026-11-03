@@ -1,0 +1,9 @@
+{
+  "version": "2026-11-03",
+  "note": "Transkripsjonsmodeller hos KI-leverandører (OpenAI-kompatibelt endepunkt /audio/transcriptions). segments=true betyr at modellen gir tidsstempler per setning (response_format verbose_json). Modeller uten tidsstempler får tidsstempel per lydbit (60–120 sekunder, kuttet ved pauser). Kontrollert mot OpenAIs API-referanse og migreringsveiledning (november 2026): whisper-1 skal fjernes 26.02.2027. For Azure OpenAI og egne servere skriver du navnet på deployment eller modell selv; ukjente modeller prøves med tidsstempler først.",
+  "models": [
+    {"provider_type": "openai", "id": "gpt-transcribe", "label": "GPT Transcribe", "segments": false, "default": true},
+    {"provider_type": "openai", "id": "gpt-4o-mini-transcribe", "label": "GPT-4o mini Transcribe (rimeligere)", "segments": false, "default": false},
+    {"provider_type": "openai", "id": "whisper-1", "label": "Whisper (tidsstempler per setning – fjernes 26.02.2027)", "segments": true, "default": false}
+  ]
+}

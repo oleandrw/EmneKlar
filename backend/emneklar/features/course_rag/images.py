@@ -37,7 +37,7 @@ from emneklar.core.security.guarded_http import build_guarded_client
 from emneklar.core.security.ssrf import UrlBlocked, validate_url
 from emneklar.features.course_rag.chunking import ChunkDraft
 from emneklar.features.course_rag.citations import timestamp
-from emneklar.features.course_rag.sources import SourceItem
+from emneklar.features.course_rag.sources import SourceItem, Waiting
 from emneklar.features.course_rag.store import ChunkRecord
 
 if TYPE_CHECKING:
@@ -285,7 +285,7 @@ async def process_images(state: BuildState, items: list[SourceItem], _inventory:
                 mark(state, item, "skipped", reason)
                 return
             if unavailable:
-                mark(state, item, "skipped", f"Bildebeskrivelser krever en bildemodell via KI: {unavailable}")
+                mark(state, item, "skipped", Waiting(f"Bildebeskrivelser krever en bildemodell via KI: {unavailable}"))
                 return
             target = state.tmp / hashlib.sha1(item.key.encode()).hexdigest()[:12] / "bilde"  # noqa: S324
             if item.kind == "file":

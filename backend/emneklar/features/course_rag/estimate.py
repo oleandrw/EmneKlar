@@ -42,6 +42,7 @@ REALTIME_FACTOR = {("cpu", "tiny"): 0.08, ("cpu", "base"): 0.15, ("cpu", "small"
                    ("cuda", "medium"): 0.08, ("cuda", "large"): 0.12}
 ASSUMED_BITRATE_MBIT = 1.5  # for files whose duration is unknown
 MAX_TRACK_LOOKUPS = 30
+PROVIDER_REALTIME_FACTOR = 0.15  # upload + transcription at the provider, as a share of the audio duration
 
 
 def _text_chunks(inv: Inventory) -> tuple[int, int]:
@@ -54,8 +55,8 @@ def _text_chunks(inv: Inventory) -> tuple[int, int]:
     return words, chunks
 
 
-async def _video(c: AppContainer, api: CanvasAPI, inv: Inventory, device: str) -> tuple[dict[str, Any], float,
-                                                                                        list[dict[str, Any]], list[str]]:
+async def _video(c: AppContainer, api: CanvasAPI, inv: Inventory, device: str) -> tuple[
+        dict[str, Any], float, list[dict[str, Any]], list[str], list[dict[str, Any]], list[str]]:
     items: list[SourceItem] = [i for i in inv.items if i.kind in ("media", "youtube") or (i.kind == "file" and
                                i.meta.get("category") in ("video_file", "subtitle"))]
     files = [i for i in items if i.kind == "file" and i.meta.get("category") == "video_file"][:MAX_TRACK_LOOKUPS]
@@ -66,8 +67,9 @@ async def _video(c: AppContainer, api: CanvasAPI, inv: Inventory, device: str) -
     local = c.local_models
     nb, other = choose_models(local, settings.rag.whisper_model, settings.rag.whisper_other_language_model, device)
     worker = Transcriber(local, nb, other, device)
+    mode = settings.rag.transcription
     with_captions = to_transcribe = unknown = youtube = 0
-    known = transcribe_seconds = 0.0
+    known = transcribe_seconds = audio_seconds = 0.0
     for item in items:
         duration = media_duration(item) if item.kind == "media" else None
         if duration:
@@ -85,10 +87,40 @@ async def _video(c: AppContainer, api: CanvasAPI, inv: Inventory, device: str) -
             continue
         to_transcribe += 1
         seconds = duration or int(item.meta.get("size") or 0) * 8 / (ASSUMED_BITRATE_MBIT * 1_000_000)
-        transcribe_seconds += seconds * REALTIME_FACTOR.get((device, nb.size or "small"), 1.0)
-    downloads = []
-    notes = []
-    if to_transcribe:
+        audio_seconds += seconds
+        transcribe_seconds += seconds * (PROVIDER_REALTIME_FACTOR if mode == "provider" else
+                                         REALTIME_FACTOR.get((device, nb.size or "small"), 1.0))
+    downloads: list[dict[str, Any]] = []
+    notes: list[str] = []
+    ai: list[dict[str, Any]] = []
+    privacy: list[str] = []
+    model_label = nb.label
+    if to_transcribe and mode == "off":
+        notes.append(f"{to_transcribe} video(er) uten teksting hoppes over fordi transkripsjon er slått av.")
+        transcribe_seconds = 0.0
+    elif to_transcribe and mode == "provider":
+        rag = settings.rag
+        plan = c.ai.transcription_plan(rag.transcription_provider_id, rag.transcription_model, summary="")
+        model = plan["model"] or {}
+        model_label = f"{model.get('label') or model.get('id') or 'ukjent modell'} hos {rag.transcription_provider_id}"
+        minutes = round(audio_seconds / 60)
+        ai.append({"task": "rag_transcription", "label": f"Transkripsjon ({model_label})",
+                   "calls": max(1, round(audio_seconds / 90)), "input_tokens": 0, "minutes": minutes,
+                   "available": plan["available"], "reason": plan["reason"], "route": plan["route"],
+                   "external": plan["external"]})
+        if not plan["available"]:
+            notes.append(f"{to_transcribe} video(er) uten teksting kan ikke transkriberes: {plan['reason']}")
+            transcribe_seconds = 0.0
+        elif plan["external"]:
+            privacy.append(f"Lyden fra {to_transcribe} video(er) (ca. {minutes} minutter) sendes til "
+                           f"{rag.transcription_provider_id} for transkripsjon – bare lyden, i biter, ikke bildet, "
+                           "videotittelen eller annet innhold fra emnet. Teksten leverandøren returnerer for én bit, "
+                           "sendes med neste bit som stavehjelp. Opptak kan inneholde stemmene til studenter; sjekk "
+                           "at institusjonen har databehandleravtale.")
+        if model.get("segments") is False:
+            notes.append("Modellen gir ikke tidsstempler per setning. Tidsstemplene gjelder lydbiter på 60–120 "
+                         "sekunder.")
+    elif to_transcribe:
         if not worker.available():
             notes.append(f"{to_transcribe} video(er) uten teksting kan ikke transkriberes fordi lokale modeller ikke er "
                          "installert (setup-emne-rag.bat).")
@@ -100,8 +132,9 @@ async def _video(c: AppContainer, api: CanvasAPI, inv: Inventory, device: str) -
                          "enn norsk.")
     summary = {"count": len(items), "with_captions": with_captions, "to_transcribe": to_transcribe,
                "youtube": youtube, "minutes_known": round(known / 60, 1), "unknown_duration": unknown,
-               "unavailable": sum(1 for s in inv.skipped if s.kind in ("tool", "vimeo")), "model": nb.label}
-    return summary, transcribe_seconds, downloads, notes
+               "unavailable": sum(1 for s in inv.skipped if s.kind in ("tool", "vimeo")), "model": model_label,
+               "transcription": mode, "minutes_to_transcribe": round(audio_seconds / 60, 1)}
+    return summary, transcribe_seconds, downloads, notes, ai, privacy
 
 
 async def estimate(c: AppContainer, course_id: str, options: SourceOptions) -> dict[str, Any]:
@@ -137,13 +170,17 @@ async def estimate(c: AppContainer, course_id: str, options: SourceOptions) -> d
     video = None
     assumptions_extra: list[str] = []
     if options.video:
-        video, transcribe_seconds, video_downloads, video_notes = await _video(c, api, inv, device)
+        video, transcribe_seconds, video_downloads, video_notes, video_ai, video_privacy = await _video(c, api, inv,
+                                                                                                        device)
         seconds += transcribe_seconds
         downloads += video_downloads
+        ai += video_ai
+        privacy += video_privacy
         inv.limitations.extend(video_notes)
-        assumptions_extra.append(f"Transkripsjon med {video['model']} på {'GPU' if device == 'cuda' else 'CPU'}; "
-                                 f"videoer med ukjent varighet er anslått ut fra filstørrelsen "
-                                 f"({ASSUMED_BITRATE_MBIT:g} Mbit/s).")
+        where = "hos leverandøren" if video["transcription"] == "provider" else \
+            f"på {'GPU' if device == 'cuda' else 'CPU'}"
+        assumptions_extra.append(f"Transkripsjon med {video['model']} {where}; videoer med ukjent varighet er anslått "
+                                 f"ut fra filstørrelsen ({ASSUMED_BITRATE_MBIT:g} Mbit/s).")
     images = None
     if options.images:
         from emneklar.features.course_rag.images import metadata_reason

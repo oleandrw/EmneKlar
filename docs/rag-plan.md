@@ -62,7 +62,8 @@ backend/tests/test_course_rag_*.py         enhetstester + integrasjonstest mot f
 ## Avhengigheter
 
 * **Alltid installert** (små hjul for Windows og Linux, CPython 3.11–3.14): `numpy` (vektorsøk), `Pillow`
-  (bildefilter, perceptuell hash), `pypdfium2` (gjengi skannede PDF-sider for OCR), `fpdf2` (PDF-eksport).
+  (bildefilter, perceptuell hash), `pypdfium2` (gjengi skannede PDF-sider for OCR), `fpdf2` (PDF-eksport),
+  `av` (PyAV med FFmpeg innebygd: henter ut lyden for transkripsjon via KI-leverandør og nøkkelbilder).
   Låses i `backend/constraints.txt`.
 * **Valgfritt, «lokale modeller»** (`pip install -e "backend[rag]"`): `sentence-transformers` (BGE-M3,
   bge-reranker-v2-m3; drar med PyTorch), `faster-whisper` (CTranslate2 + PyAV, som har FFmpeg innebygd – ingen
@@ -94,7 +95,8 @@ backend/tests/test_course_rag_*.py         enhetstester + integrasjonstest mot f
    rene søketreff (uten KI).
 2. **Video/lyd:** Canvas-teksting (`media_attachments/:id/media_tracks?include[]=webvtt_content`, sporadresser fra
    `courses/:id/media_objects`), YouTube-teksting, ellers NB-Whisper lokalt (modellstørrelse etter GPU/CPU,
-   annet språk → Whisper large-v3), segmenter på 60–120 s med overlapp, buffer på filhash, valgfrie nøkkelbilder.
+   annet språk → Whisper large-v3) eller via KI-leverandør (se under), segmenter på 60–120 s med overlapp, buffer
+   på filhash, valgfrie nøkkelbilder.
 3. **Bilder:** innsamling fra sider, dokumenter og bildefiler, pyntfilter (størrelse, form, filnavn, duplikater
    med dHash), beskrivelse med bildemodell via KI-laget (Claude-API eller lokal VLM), alt-tekst som ekstra
    input, egne bilde-chunks.
@@ -111,7 +113,8 @@ backend/tests/test_course_rag_*.py         enhetstester + integrasjonstest mot f
 * Medieobjekter tas bare med når lærerens innhold peker på dem (emnets medieliste kan inneholde studentopptak).
 * Filer som er lastet opp av andre enn lærere i emnet, hoppes over.
 * KI er valgfritt og går gjennom personvernporten med oppsummering før sending. Embedding, reranking og
-  transkripsjon kjører lokalt. Svar merkes «KI-forslag – må vurderes».
+  transkripsjon kjører lokalt som standard. Transkripsjon via KI-leverandør er et eget valg: bare lyden sendes,
+  bare etter samtykke i estimatet. Svar merkes «KI-forslag – må vurderes».
 
 ## Antakelser og valg
 
@@ -138,6 +141,27 @@ backend/tests/test_course_rag_*.py         enhetstester + integrasjonstest mot f
   hvis bilder er slått på og KI er tillatt; ellers hoppes filen over med forklaring.
 * Evalueringen måler om søket finner tilbake utdraget et testspørsmål ble laget fra (gjenfinning), ikke hvor
   gode svarene er. Uten KI lages testspørsmål av utdragets mest særpregede ord, og det står i rapporten.
+
+## Transkripsjon via KI-leverandør
+
+Lagt til etter fase 4, for maskiner uten GPU eller uten plass til lokale modeller. Valget står under
+Emne-RAG → Innstillinger → Transkripsjon (lokalt / via KI-leverandør / av), med leverandør, modell og språk.
+
+* Leverandører: OpenAI, Azure OpenAI (deploymentnavnet er modell-id-en) og egne OpenAI-kompatible servere
+  (`/audio/transcriptions`, multipart). Andre leverandørtyper vises som utilgjengelige med forklaring.
+* Modeller står i `core/ai/transcription_models.json` (ingen modellnavn i funksjonskoden): `gpt-transcribe`
+  (standard), `gpt-4o-mini-transcribe` og `whisper-1`. Det står også om modellen gir tidsstempler per segment;
+  en ukjent modell-id prøves først med segmenter og faller tilbake til ren tekst.
+* Lyden hentes ut med PyAV i en isolert parserprosess (`rag_audio_pieces`), blir mono 16 kHz WAV og kuttes i
+  biter på 60–120 s ved den stilleste pausen. Stille biter sendes ikke. Bitene gir tidsstempler også når modellen
+  bare returnerer tekst (`gpt-transcribe` gir ikke segmenter).
+* Personvern: bare lyden sendes (som `lyd-001.wav` osv.), aldri videotittel, filnavn, emnetekst eller
+  studentdata. Teksten leverandøren returnerte for forrige bit, sendes med neste bit som stavehjelp. Estimatet viser
+  minutter, modell, leverandør og hva som sendes; uten samtykke sendes ingenting og videoen får status «venter».
+  Hvert kall logges i KI-bruk (`rag_transcription`). Transkripsjonen bufres på filens SHA-256, felles med lokal
+  transkripsjon, så samme fil sendes aldri to ganger.
+* Elementer som venter på noe brukeren kan endre (samtykke, modeller, innstillinger, filgrense), lagres med status
+  `pending` og prøves igjen ved neste «Oppdater indeks» i stedet for å regnes som uendret.
 
 ## GPU
 

@@ -534,3 +534,110 @@ def test_keyword_search_finds_norwegian_compounds(tmp_path: Path) -> None:
     outcome = asyncio.run(search(store, "Hvilket format passer for bilder?", embedder=None, reranker=None))
     assert outcome.hits and outcome.hits[0].chunk.id == record.id
     store.close()
+
+
+# ------------------------------------------------------------------------------ transcription by a provider
+
+
+def speech_like_wav(seconds: float, *, pause_every: float = 7.0, silence_tail: float = 0.0) -> bytes:
+    """Tone bursts with short pauses (and optional silence at the end) as 16 kHz mono WAV."""
+    import wave
+
+    import numpy as np
+
+    rate = 16_000
+    parts, elapsed = [], 0.0
+    while elapsed < seconds:
+        n = int((pause_every - 0.6) * rate)
+        parts.append((3000 * np.sin(2 * np.pi * 220 * np.arange(n) / rate)).astype(np.int16))
+        parts.append(np.zeros(int(0.6 * rate), dtype=np.int16))
+        elapsed += pause_every
+    parts.append(np.zeros(int(silence_tail * rate), dtype=np.int16))
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(rate)
+        out.writeframes(np.concatenate(parts).tobytes())
+    return buf.getvalue()
+
+
+def test_audio_is_cut_at_pauses_and_silence_is_not_sent(tmp_path: Path) -> None:
+    from emneklar.features.course_rag.convert.audio import audio_pieces
+
+    (tmp_path / "a.wav").write_bytes(speech_like_wav(300, silence_tail=130))
+    result = audio_pieces(str(tmp_path / "a.wav"), str(tmp_path / "out"))
+    pieces = result["pieces"]
+    assert result["duration"] == pytest.approx(431, abs=1)
+    assert all(60 <= p["end"] - p["start"] <= 120 for p in pieces[:-1])
+    # every cut lies inside a pause (the tone runs 6.4 s, then 0.6 s of silence)
+    assert all(6.3 <= p["end"] % 7 <= 7.0 or p["end"] % 7 < 0.05 or p["end"] > 300 for p in pieces[:-1])
+    assert pieces[-1]["silent"] and not Path(pieces[-1]["path"]).exists()
+    assert all(Path(p["path"]).read_bytes()[:4] == b"RIFF" for p in pieces if not p["silent"])
+    (tmp_path / "x.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42not-really")
+    assert audio_pieces(str(tmp_path / "x.mp4"), str(tmp_path / "out2"))["error"] in ("decode_failed", "no_audio")
+
+
+def test_audio_is_extracted_from_a_video_container(tmp_path: Path) -> None:
+    import av
+    import numpy as np
+
+    from emneklar.features.course_rag.convert.audio import audio_pieces
+
+    path = tmp_path / "video.mp4"
+    with av.open(str(path), "w") as container:
+        video = container.add_stream("mpeg4", rate=10)
+        video.width, video.height = 64, 48
+        audio = container.add_stream("aac", rate=16000)
+        for i in range(20):
+            frame = av.VideoFrame.from_ndarray(np.full((48, 64, 3), i * 10, dtype=np.uint8), format="rgb24")
+            for packet in video.encode(frame):
+                container.mux(packet)
+        samples = (3000 * np.sin(2 * np.pi * 220 * np.arange(32000) / 16000)).astype(np.int16).reshape(1, -1)
+        audio_frame = av.AudioFrame.from_ndarray(samples, format="s16", layout="mono")
+        audio_frame.sample_rate = 16000
+        for packet in [*audio.encode(audio_frame), *audio.encode(None), *video.encode(None)]:
+            container.mux(packet)
+    result = audio_pieces(str(path), str(tmp_path / "out"))
+    assert len(result["pieces"]) == 1 and result["duration"] == pytest.approx(2.0, abs=0.3)
+    assert Path(result["pieces"][0]["path"]).read_bytes()[:4] == b"RIFF"  # audio only, never the picture
+
+
+def test_openai_transcription_request_and_fallbacks() -> None:
+    import httpx
+
+    from emneklar.core.ai.providers.openai_compat import AzureOpenAIProvider, OpenAICompatibleProvider
+    from emneklar.core.ai.transcription import resolve
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if b"verbose_json" in request.content and b"gpt-transcribe" in request.content:
+            return httpx.Response(400, json={"error": {"message": "response_format verbose_json is not supported"}})
+        if b"verbose_json" in request.content:
+            return httpx.Response(200, json={"text": "Hei og velkommen. Dagens tema.", "language": "norwegian",
+                                             "duration": 9.5, "segments": [
+                                                 {"start": 0.0, "end": 3.2, "text": " Hei og velkommen."},
+                                                 {"start": 3.2, "end": 9.5, "text": " Dagens tema."}]})
+        return httpx.Response(200, json={"text": "Bare tekst uten tidsstempler."})
+
+    provider = OpenAICompatibleProvider("openai", base_url="https://api.openai.com/v1", api_key="sk-test", local=False,
+                                        transport=httpx.MockTransport(handler))
+    result = asyncio.run(provider.transcribe("whisper-1", b"RIFFdata", "bit-1.wav", segments=True, prompt="Forelesning"))
+    assert [s.text for s in result.segments] == ["Hei og velkommen.", "Dagens tema."] and result.segments[1].end == 9.5
+    body = seen[-1].content
+    assert seen[-1].url.path == "/v1/audio/transcriptions" and b'name="timestamp_granularities[]"' in body
+    assert b'filename="bit-1.wav"' in body and b"Forelesning" in body
+    fallback = asyncio.run(provider.transcribe("gpt-transcribe", b"RIFF", "b.wav", segments=True))
+    assert fallback.text == "Bare tekst uten tidsstempler." and fallback.segments == []
+    assert b'name="response_format"\r\n\r\njson' in seen[-1].content
+    azure = AzureOpenAIProvider("azure", endpoint="https://x.openai.azure.com", api_key="k", api_version="2024-10-21",
+                                transport=httpx.MockTransport(handler))
+    asyncio.run(azure.transcribe("min-whisper", b"RIFF", "b.wav", segments=False))
+    assert seen[-1].url.path == "/openai/deployments/min-whisper/audio/transcriptions"
+    assert seen[-1].headers["api-key"] == "k"
+    default = resolve("openai", "")
+    assert default is not None and default.id == "gpt-transcribe" and default.segments is False
+    assert resolve("openai_compatible", "") is None and resolve("azure_openai", "dep").segments is None  # type: ignore[union-attr]
+    assert seen[0].headers["content-type"].startswith("multipart/form-data")

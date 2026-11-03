@@ -23,8 +23,10 @@ dependencies = [
     "defusedxml>=0.7",
     "pypdf>=5.0",
     "nh3>=0.2.18",
-    # Emne-RAG: vector search, image filtering, rendering scanned PDF pages for OCR, PDF export.
+    # Emne-RAG: vector search, image filtering, rendering scanned PDF pages for OCR, PDF export, and audio
+    # extraction (PyAV bundles FFmpeg) for transcription by an AI provider without the local-model install.
     "numpy>=1.26",
+    "av>=14",
     "Pillow>=10.4",
     "pypdfium2>=4.30",
     "fpdf2>=2.8",

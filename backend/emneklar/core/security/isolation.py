@@ -38,6 +38,7 @@ ALLOWED_JOBS = {
     "rag_render_pdf": "emneklar.features.course_rag.convert.ocr:render_pdf_pages",
     "rag_image_prepare": "emneklar.features.course_rag.convert.imageprep:prepare_image",
     "rag_keyframes": "emneklar.features.course_rag.convert.imageprep:extract_keyframes",
+    "rag_audio_pieces": "emneklar.features.course_rag.convert.audio:audio_pieces",
 }
 
 

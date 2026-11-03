@@ -35,7 +35,8 @@ EDITABLE: dict[str, set[str]] = {
     "notifications": {"notify_job_complete", "browser_notifications"},
     "advanced": {"update_repository", "update_channel", "check_updates", "debug_logging"},
     "rag": {"embedding_backend", "embedding_model", "embedding_provider_id", "embedding_provider_model",
-            "reranker_enabled", "reranker_model", "device", "whisper_model", "whisper_other_language_model",
+            "reranker_enabled", "reranker_model", "device", "transcription", "transcription_provider_id",
+            "transcription_model", "transcription_language", "whisper_model", "whisper_other_language_model",
             "youtube_captions", "candidates", "top_k", "query_rewrite", "max_file_mb", "max_video_mb"},
 }
 

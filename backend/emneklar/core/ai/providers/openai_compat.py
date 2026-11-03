@@ -21,8 +21,17 @@ from emneklar.core.ai.base import (
     DiscoveredModel,
     EmbeddingResult,
     ImagePart,
+    TranscriptionResult,
+    TranscriptionSegment,
 )
-from emneklar.core.ai.providers.http_common import get_json, make_client, parse_json_text, post_json, rejects
+from emneklar.core.ai.providers.http_common import (
+    get_json,
+    make_client,
+    parse_json_text,
+    post_json,
+    post_multipart,
+    rejects,
+)
 
 
 def chat_messages(request: AIRequest) -> list[dict[str, Any]]:
@@ -48,6 +57,49 @@ def parse_embeddings(data: dict[str, Any], provider: str, model: str, count: int
     return EmbeddingResult(vectors=[[float(x) for x in r["embedding"]] for r in rows],
                            input_tokens=int(usage.get("prompt_tokens") or 0), model=str(data.get("model") or model),
                            provider=provider)
+
+
+def parse_transcription(data: dict[str, Any], provider: str, model: str) -> TranscriptionResult:
+    segments = []
+    for row in data.get("segments") or []:
+        if not isinstance(row, dict):
+            continue
+        text = str(row.get("text") or "").strip()
+        try:
+            start, end = float(row.get("start") or 0), float(row.get("end") or 0)
+        except (TypeError, ValueError):
+            continue
+        if text:
+            segments.append(TranscriptionSegment(start=start, end=max(start, end), text=text))
+    duration = data.get("duration")
+    return TranscriptionResult(text=str(data.get("text") or "").strip(), segments=segments,
+                               language=data.get("language"), duration=float(duration) if duration else None,
+                               model=model, provider=provider)
+
+
+async def post_transcription(client: httpx.AsyncClient, url: str, headers: dict[str, str], *, model: str, audio: bytes,
+                             filename: str, segments: bool, language: str | None, prompt: str | None,
+                             provider: str) -> TranscriptionResult:
+    """POST …/audio/transcriptions. Without segment support (or when the model rejects it) plain JSON is used."""
+    data: dict[str, Any] = {"model": model, "response_format": "verbose_json" if segments else "json"}
+    if segments:
+        data["timestamp_granularities[]"] = "segment"
+    if language:
+        data["language"] = language
+    if prompt:
+        data["prompt"] = prompt[:800]
+    files = {"file": (filename, audio, "audio/wav")}
+    try:
+        result = await post_multipart(client, url, data, files, headers)
+    except AIError as exc:
+        if segments and rejects(exc, "response_format", "verbose_json", "timestamp"):
+            return await post_transcription(client, url, headers, model=model, audio=audio, filename=filename,
+                                            segments=False, language=language, prompt=prompt, provider=provider)
+        if prompt and rejects(exc, "prompt"):
+            return await post_transcription(client, url, headers, model=model, audio=audio, filename=filename,
+                                            segments=segments, language=language, prompt=None, provider=provider)
+        raise
+    return parse_transcription(result, provider, model)
 
 
 def parse_choice(data: dict[str, Any], provider: str, model: str, structured: bool) -> AIResult:
@@ -123,6 +175,14 @@ class OpenAICompatibleProvider(AIProvider):
         data = await post_json(self.client, f"{self.base}/embeddings", {"model": model, "input": texts}, self.headers())
         return parse_embeddings(data, self.provider_id, model, len(texts))
 
+    async def transcribe(self, model: str, audio: bytes, filename: str, *, segments: bool, language: str | None = None,
+                         prompt: str | None = None) -> TranscriptionResult:
+        if not model:
+            raise AIError("ai_model_missing")
+        return await post_transcription(self.client, f"{self.base}/audio/transcriptions", self.headers(), model=model,
+                                        audio=audio, filename=filename, segments=segments, language=language,
+                                        prompt=prompt, provider=self.provider_id)
+
     async def list_models(self) -> list[DiscoveredModel]:
         data = await get_json(self.client, f"{self.base}/models", self.headers())
         rows = [m for m in (data.get("data") or []) if isinstance(m, dict) and m.get("id")] if isinstance(data, dict) \
@@ -171,6 +231,14 @@ class AzureOpenAIProvider(OpenAICompatibleProvider):
         url = self.url(model).replace("/chat/completions", "/embeddings")
         data = await post_json(self.client, url, {"model": model, "input": texts}, self.headers())
         return parse_embeddings(data, self.provider_id, model, len(texts))
+
+    async def transcribe(self, model: str, audio: bytes, filename: str, *, segments: bool, language: str | None = None,
+                         prompt: str | None = None) -> TranscriptionResult:
+        if not model:
+            raise AIError("ai_model_missing")
+        url = self.url(model).replace("/chat/completions", "/audio/transcriptions")
+        return await post_transcription(self.client, url, self.headers(), model=model, audio=audio, filename=filename,
+                                        segments=segments, language=language, prompt=prompt, provider=self.provider_id)
 
     async def list_models(self) -> list[DiscoveredModel]:
         url = f"{self.base}/openai/v1/models" if self.api_version in ("", "v1") else \

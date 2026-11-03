@@ -30,7 +30,7 @@ from emneklar.core.canvas.client import CanvasError
 from emneklar.core.errors import AppError
 from emneklar.features.course_rag.chunking import ChunkDraft
 from emneklar.features.course_rag.convert.documents import decode_text
-from emneklar.features.course_rag.sources import SourceItem
+from emneklar.features.course_rag.sources import SourceItem, Waiting
 
 if TYPE_CHECKING:
     from emneklar.features.course_rag.builder import BuildState
@@ -250,23 +250,14 @@ async def local_transcript(state: BuildState, item: SourceItem) -> tuple[Transcr
     """Download the media and transcribe it (cached by file hash). Returns (transcript, reason when skipped)."""
     worker = transcriber(state)
     if not worker.available():
-        return None, ("Videoen har ingen teksting, og lokale modeller for transkripsjon er ikke installert "
-                      "(setup-emne-rag.bat).")
+        return None, Waiting("Videoen har ingen teksting, og lokale modeller for transkripsjon er ikke installert "
+                             "(setup-emne-rag.bat).")
     if worker.downloads_needed() and not state.request.accept_downloads:
-        return None, ("Videoen har ingen teksting, og NB-Whisper er ikke lastet ned ennå. Beregn estimatet på nytt og "
-                      "godta nedlastingen for å transkribere.")
-    url = media_download_url(item)
-    if not url:
-        return None, "Fant ingen nedlastbar versjon av videoen i Canvas."
-    rag = state.c.settings.get().rag
-    target = state.tmp / hashlib.sha1(item.key.encode()).hexdigest()[:12] / "media"  # noqa: S324 - folder name
-    target.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        await state.api.client.download(url, target, max_bytes=rag.max_video_mb * 1024 * 1024)
-    except AppError as exc:
-        if exc.code == "file_too_large":
-            return None, f"Videoen er større enn grensen på {rag.max_video_mb} MB (Emne-RAG → Innstillinger)."
-        raise
+        return None, Waiting("Videoen har ingen teksting, og NB-Whisper er ikke lastet ned ennå. Beregn estimatet på "
+                             "nytt og godta nedlastingen for å transkribere.")
+    target, reason = await download_media(state, item, "media")
+    if target is None:
+        return None, reason
     sha = await asyncio.to_thread(_sha256, target)
     cached = cached_transcript(state, sha)
     if cached is not None:
@@ -296,6 +287,96 @@ async def local_transcript(state: BuildState, item: SourceItem) -> tuple[Transcr
     return transcript, None
 
 
+PIECE_ERRORS = {"no_audio": "Fant ingen lyd i videoen.",
+                "no_decoder": "Lyden kunne ikke hentes ut (FFmpeg mangler). Kjør setup.bat på nytt.",
+                "decode_failed": "Lyden kunne ikke leses (filen kan være skadet eller i et ukjent format).",
+                "timeout": "Det tok for lang tid å hente ut lyden.", "crashed": "Lyduttrekket krasjet.",
+                "memory": "Lyden krevde for mye minne."}
+
+
+async def download_media(state: BuildState, item: SourceItem, name: str) -> tuple[Path | None, str | None]:
+    url = media_download_url(item)
+    if not url:
+        return None, "Fant ingen nedlastbar versjon av videoen i Canvas."
+    rag = state.c.settings.get().rag
+    target = state.tmp / hashlib.sha1(item.key.encode()).hexdigest()[:12] / name  # noqa: S324 - folder name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        await state.api.client.download(url, target, max_bytes=rag.max_video_mb * 1024 * 1024)
+    except AppError as exc:
+        if exc.code == "file_too_large":
+            return None, Waiting(f"Videoen er større enn grensen på {rag.max_video_mb} MB (Emne-RAG → Innstillinger).")
+        raise
+    return target, None
+
+
+async def provider_transcript(state: BuildState, item: SourceItem) -> tuple[Transcript | None, str | None]:
+    """Transcription by an AI provider (OpenAI, Azure OpenAI or an own OpenAI-compatible server).
+
+    Only the audio is sent, in pieces of 60–120 seconds cut at pauses, after the user has seen what is sent.
+    Pieces give exact timestamps also when the model returns text without timestamps; the text the provider returned
+    for the previous piece is passed back as ``prompt`` so names and terms are spelled the same across pieces. The
+    video title is not sent (file names can contain names of people).
+    """
+    rag = state.c.settings.get().rag
+    ai = state.c.ai
+    plan = ai.transcription_plan(rag.transcription_provider_id, rag.transcription_model, summary="")
+    if not plan["available"]:
+        return None, Waiting("Videoen har ingen teksting, og transkripsjon via KI-leverandør er ikke tilgjengelig: "
+                             f"{plan['reason']}")
+    if plan["needs_confirmation"] and not state.request.confirmed:
+        return None, Waiting("Videoen har ingen teksting. Lyden sendes ikke til KI-leverandøren uten samtykke – "
+                             "beregn estimatet og godta sendingen.")
+    target, reason = await download_media(state, item, "media")
+    if target is None:
+        return None, reason
+    try:
+        sha = await asyncio.to_thread(_sha256, target)
+        cached = cached_transcript(state, sha)
+        if cached is not None:
+            cached.notes.append("Transkripsjonen er hentet fra bufferen (samme fil er transkribert før).")
+            return cached, None
+        result = await state.c.parsers.run({"job": "rag_audio_pieces", "args": {
+            "path": str(target), "out_dir": str(target.parent / "lyd")}}, timeout=1800.0)
+    finally:
+        target.unlink(missing_ok=True)
+    if result.get("error"):
+        return None, PIECE_ERRORS.get(str(result["error"]), "Lyden kunne ikke hentes ut.")
+    model = plan["model"] or {}
+    model_id = str(model.get("id") or "")
+    provider_id = rag.transcription_provider_id
+    pieces = [p for p in result.get("pieces") or [] if not p.get("silent")]
+    segments: list[Segment] = []
+    language = None
+    previous = ""
+    progress = state.ctx.progress
+    for index, piece in enumerate(pieces, start=1):
+        await state.ctx.checkpoint()
+        progress.set_current(item.title, operation=f"Transkriberer via {provider_id} ({index} av {len(pieces)} lydbiter)")
+        path = Path(piece["path"])
+        start, end = float(piece["start"]), float(piece["end"])
+        answer = await ai.transcribe(provider_id, model_id, path.read_bytes(), path.name,
+                                     segments=model.get("segments") is not False,
+                                     summary=f"Lyd fra «{item.title}» ({index} av {len(pieces)})",
+                                     confirmed=state.request.confirmed, seconds=end - start,
+                                     language=rag.transcription_language or None, prompt=previous[-600:] or None,
+                                     course_id=state.course_id)
+        path.unlink(missing_ok=True)
+        language = language or answer.language
+        if answer.segments:
+            for row in answer.segments:
+                segments.append(Segment(start + row.start, min(end, start + max(row.start, row.end)), row.text))
+        elif answer.text:
+            segments.append(Segment(start, end, answer.text))
+        previous = answer.text
+    transcript = Transcript(segments, language, f"{provider_id}/{model_id}", "provider",
+                            float(result.get("duration") or 0) or None,
+                            notes=[f"Transkribert av {provider_id} ({model_id}). Bare lyden ble sendt, i biter."])
+    if segments:
+        store_transcript(state, sha, transcript)
+    return transcript, None if segments else "Fant ingen tale i videoen."
+
+
 async def process_media(state: BuildState, item: SourceItem) -> None:
     from emneklar.features.course_rag.builder import chunk_records, mark, store_chunks
 
@@ -319,7 +400,13 @@ async def process_media(state: BuildState, item: SourceItem) -> None:
     else:
         transcript = await canvas_captions(state, item)
         if transcript is None:
-            transcript, reason = await local_transcript(state, item)
+            mode = state.c.settings.get().rag.transcription
+            if mode == "provider":
+                transcript, reason = await provider_transcript(state, item)
+            elif mode == "local":
+                transcript, reason = await local_transcript(state, item)
+            else:
+                reason = Waiting("Videoen har ingen teksting, og transkripsjon er slått av (Emne-RAG → Innstillinger).")
     if transcript is None or not transcript.segments:
         mark(state, item, "skipped", reason or "Fant ingen tale å transkribere.")
         return
