@@ -129,6 +129,28 @@ class AdvancedSettings(_Section):
     debug_logging: bool = False
 
 
+class RagSettings(_Section):
+    """Emne-RAG. Model ids refer to core/ai/local_models.json ("" = the catalog default)."""
+
+    # local = sentence-transformers on this machine; provider = an OpenAI-compatible embeddings endpoint
+    # (OpenAI, Azure OpenAI, or a local server such as Ollama); none = keyword search (BM25) only.
+    embedding_backend: Literal["local", "provider", "none"] = "local"
+    embedding_model: str = Field("", max_length=200)
+    embedding_provider_id: str = Field("local", max_length=40)
+    embedding_provider_model: str = Field("", max_length=200)
+    reranker_enabled: bool = True
+    reranker_model: str = Field("", max_length=200)
+    device: Literal["auto", "cpu", "cuda"] = "auto"
+    whisper_model: Literal["auto", "tiny", "base", "small", "medium", "large"] = "auto"
+    whisper_other_language_model: str = Field("", max_length=200)
+    youtube_captions: bool = True
+    candidates: int = Field(40, ge=10, le=100)
+    top_k: int = Field(6, ge=3, le=10)
+    query_rewrite: bool = False
+    max_file_mb: int = Field(50, ge=1, le=500)
+    max_video_mb: int = Field(2000, ge=10, le=20000)
+
+
 class AppSettings(_Section):
     setup_completed: bool = False
     dry_run: bool = False
@@ -141,6 +163,7 @@ class AppSettings(_Section):
     appearance: AppearanceSettings = Field(default_factory=AppearanceSettings)
     notifications: NotificationSettings = Field(default_factory=NotificationSettings)
     advanced: AdvancedSettings = Field(default_factory=AdvancedSettings)
+    rag: RagSettings = Field(default_factory=RagSettings)
 
     def provider(self, provider_id: str) -> ProviderConfig | None:
         return next((p for p in self.ai.providers if p.id == provider_id), None)

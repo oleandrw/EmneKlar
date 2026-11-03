@@ -13,7 +13,7 @@ from sqlalchemy import select
 from emneklar.api.deps import get_container
 from emneklar.core import flags
 from emneklar.core.ai.base import AIError
-from emneklar.core.ai.router import STRATEGY_LABEL, TASKS
+from emneklar.core.ai.router import STRATEGY_LABEL, TASKS, USAGE_LABELS
 from emneklar.core.ai.service import is_local
 from emneklar.core.auth.secrets import ai_key_name
 from emneklar.core.container import AppContainer
@@ -217,7 +217,8 @@ async def usage(limit: int = 50, c: AppContainer = Depends(get_container)) -> di
     with c.db.session() as session:
         rows = session.scalars(select(AIUsage).order_by(AIUsage.created_at.desc()).limit(min(200, max(1, limit)))).all()
         return {"items": [{"id": r.id, "created_at": r.created_at.isoformat(), "task": r.task_type,
-                           "task_label": TASKS[r.task_type].label if r.task_type in TASKS else r.task_type,
+                           "task_label": TASKS[r.task_type].label if r.task_type in TASKS
+                           else USAGE_LABELS.get(r.task_type, r.task_type),
                            "provider_id": r.provider_id, "model_id": r.model_id, "strategy": r.strategy,
                            "reason": r.reason, "fallback_used": r.fallback_used, "success": r.success,
                            "error_code": r.error_code, "input_tokens": r.input_tokens,

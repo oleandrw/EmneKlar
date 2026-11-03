@@ -7,6 +7,15 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
 ## [Unreleased]
 
 ### Lagt til
+- Canvas-verktøy → **Emne-RAG**: en lokal kunnskapsbase av emnet (hele emnet eller valgte moduler) med søk og
+  KI-svar med klikkbare kildehenvisninger. Leser bare lærerprodusert innhold (sider, oppgave- og quizbeskrivelser,
+  emneplan, lærerens diskusjonsinnlegg og filer lastet opp av lærere) – aldri innleveringer, karakterer, meldinger
+  eller studentinnlegg. Tekst og dokumenter (PDF, DOCX, PPTX med notater, XLSX, ODT/ODP/ODS, RTF, CSV, TXT,
+  Markdown, HTML) gjøres om til strukturert Markdown og deles opp etter overskrifter; tabeller og lysbilder blir egne
+  utdrag. Hybridsøk med BM25 og vektorsøk slått sammen med Reciprocal Rank Fusion, rerangering, filtrering på modul
+  og kildetype, og en feilsøkingsvisning med poeng før og etter rerangering. Estimat før bygging, bakgrunnsjobb med
+  fremdrift, pause, avbryt og gjenopptak, og liste over hoppede elementer. Valgfrie lokale modeller (BGE-M3 og
+  bge-reranker-v2-m3) installeres med `setup-emne-rag.bat`; uten dem brukes nøkkelordsøk.
 - Innholdskvalitet → Media: «Standardiser videoavspillere» for YouTube. Finner innebygde videoer, forklarer avvik
   fra én responsiv og Canvas-trygg standard (16:9, maks bredde, sentrert, `allowfullscreen`, `loading="lazy"`),
   foreslår beskrivende title med synlig kilde (eksisterende title, YouTube-metadata, Canvas-kontekst, KI-forslag på

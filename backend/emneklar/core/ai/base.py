@@ -21,6 +21,9 @@ from emneklar.core.errors import AppError
 class TextPart(BaseModel):
     type: Literal["text"] = "text"
     text: str
+    # Mark the end of a long, repeated prefix (e.g. one document sent with many chunks) as cacheable.
+    # Anthropic gets an explicit cache breakpoint; OpenAI caches long identical prefixes automatically.
+    cache: bool = False
 
 
 class ImagePart(BaseModel):
@@ -50,6 +53,13 @@ class AIRequest(BaseModel):
 class AIUsage(BaseModel):
     input_tokens: int = 0
     output_tokens: int = 0
+
+
+class EmbeddingResult(BaseModel):
+    vectors: list[list[float]]
+    input_tokens: int = 0
+    model: str
+    provider: str
 
 
 class AIResult(BaseModel):
@@ -88,6 +98,10 @@ class AIProvider(ABC):
 
     @abstractmethod
     async def list_models(self) -> list[DiscoveredModel]: ...
+
+    async def embed(self, model: str, texts: list[str]) -> EmbeddingResult:
+        """Text embeddings. Only OpenAI-compatible APIs (OpenAI, Azure OpenAI, Ollama, LM Studio …) have them."""
+        raise AIError("unsupported", status=409, message="Denne KI-leverandøren tilbyr ikke embedding.")
 
     async def health_check(self) -> HealthStatus:
         try:

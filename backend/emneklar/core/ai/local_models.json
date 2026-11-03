@@ -1,0 +1,17 @@
+{
+  "version": "2026-11-03",
+  "note": "Lokale modeller for Emne-RAG (embedding, rerangering og tale-til-tekst). Størrelsene er omtrentlige nedlastingsstørrelser (ca.) for vektene i full presisjon. Modellene lastes ned fra Hugging Face første gang de brukes og lagres i datamappen (models). Hugging Face-format for NB-Whisper konverteres lokalt til CTranslate2.",
+  "models": [
+    {"id": "BAAI/bge-m3", "kind": "embedding", "label": "BGE-M3 (flerspråklig, god på norsk)", "size_mb": 2270, "dim": 1024, "max_tokens": 8192, "default": true, "license": "MIT"},
+    {"id": "NbAiLab/nb-sbert-v2-large", "kind": "embedding", "label": "NB-SBERT v2 large (rent norsk innhold)", "size_mb": 1420, "dim": 1024, "max_tokens": 512, "default": false, "license": "Apache-2.0", "notes": "Kortere kontekst enn BGE-M3: lange utdrag kan bli avkortet."},
+    {"id": "BAAI/bge-reranker-v2-m3", "kind": "reranker", "label": "BGE reranker v2 M3 (flerspråklig)", "size_mb": 2270, "default": true, "license": "Apache-2.0"},
+    {"id": "NbAiLab/nb-whisper-tiny", "kind": "whisper", "size": "tiny", "label": "NB-Whisper tiny", "size_mb": 155, "format": "transformers", "default": false, "license": "Apache-2.0"},
+    {"id": "NbAiLab/nb-whisper-base", "kind": "whisper", "size": "base", "label": "NB-Whisper base", "size_mb": 295, "format": "transformers", "default": false, "license": "Apache-2.0"},
+    {"id": "NbAiLab/nb-whisper-small", "kind": "whisper", "size": "small", "label": "NB-Whisper small", "size_mb": 970, "format": "transformers", "default": false, "license": "Apache-2.0"},
+    {"id": "NbAiLab/nb-whisper-medium", "kind": "whisper", "size": "medium", "label": "NB-Whisper medium", "size_mb": 3060, "format": "transformers", "default": false, "license": "Apache-2.0"},
+    {"id": "NbAiLab/nb-whisper-large", "kind": "whisper", "size": "large", "label": "NB-Whisper large", "size_mb": 6170, "format": "transformers", "default": true, "license": "Apache-2.0"},
+    {"id": "Systran/faster-whisper-large-v3", "kind": "whisper_other", "size": "large", "label": "Whisper large-v3 (annet språk enn norsk)", "size_mb": 3090, "format": "ct2", "default": true, "license": "MIT"},
+    {"id": "Systran/faster-whisper-medium", "kind": "whisper_other", "size": "medium", "label": "Whisper medium (annet språk, raskere på CPU)", "size_mb": 1530, "format": "ct2", "default": false, "license": "MIT"},
+    {"id": "Systran/faster-whisper-small", "kind": "whisper_other", "size": "small", "label": "Whisper small (annet språk, raskest på CPU)", "size_mb": 485, "format": "ct2", "default": false, "license": "MIT"}
+  ]
+}

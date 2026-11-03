@@ -349,6 +349,24 @@ class HomepageDraft(Base):
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
 
 
+class RagIndex(Base):
+    """Register of Emne-RAG indexes (one per course). The chunks themselves live in ``rag/course-<id>.sqlite``."""
+
+    __tablename__ = "rag_indexes"
+    course_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16), default="empty")  # empty|building|ready|partial|failed
+    options: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # scope, sources, file types …
+    embedding: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # backend, model, dim
+    stats: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    skipped: Mapped[list[Any]] = mapped_column(JSON, default=list)  # [{key, title, kind, reason, url}]
+    limitations: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    evaluation: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    last_job_id: Mapped[str | None] = mapped_column(String(36))
+    built_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+
+
 class Report(Base):
     __tablename__ = "reports"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

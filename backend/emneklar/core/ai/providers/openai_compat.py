@@ -19,6 +19,7 @@ from emneklar.core.ai.base import (
     AIResult,
     AIUsage,
     DiscoveredModel,
+    EmbeddingResult,
     ImagePart,
 )
 from emneklar.core.ai.providers.http_common import get_json, make_client, parse_json_text, post_json, rejects
@@ -36,6 +37,17 @@ def chat_messages(request: AIRequest) -> list[dict[str, Any]]:
                 content.append({"type": "text", "text": part.text})
         messages.append({"role": message.role, "content": content})
     return messages
+
+
+def parse_embeddings(data: dict[str, Any], provider: str, model: str, count: int) -> EmbeddingResult:
+    rows = [r for r in data.get("data") or [] if isinstance(r, dict) and isinstance(r.get("embedding"), list)]
+    if len(rows) != count:
+        raise AIError("ai_bad_response", status=502, detail="Feil antall vektorer fra embedding-modellen")
+    rows.sort(key=lambda r: int(r.get("index") or 0))
+    usage = data.get("usage") or {}
+    return EmbeddingResult(vectors=[[float(x) for x in r["embedding"]] for r in rows],
+                           input_tokens=int(usage.get("prompt_tokens") or 0), model=str(data.get("model") or model),
+                           provider=provider)
 
 
 def parse_choice(data: dict[str, Any], provider: str, model: str, structured: bool) -> AIResult:
@@ -105,6 +117,12 @@ class OpenAICompatibleProvider(AIProvider):
                 raise
         return parse_choice(data, self.provider_id, request.model, request.json_schema is not None)
 
+    async def embed(self, model: str, texts: list[str]) -> EmbeddingResult:
+        if not model:
+            raise AIError("ai_model_missing")
+        data = await post_json(self.client, f"{self.base}/embeddings", {"model": model, "input": texts}, self.headers())
+        return parse_embeddings(data, self.provider_id, model, len(texts))
+
     async def list_models(self) -> list[DiscoveredModel]:
         data = await get_json(self.client, f"{self.base}/models", self.headers())
         rows = [m for m in (data.get("data") or []) if isinstance(m, dict) and m.get("id")] if isinstance(data, dict) \
@@ -146,6 +164,13 @@ class AzureOpenAIProvider(OpenAICompatibleProvider):
         payload = self.payload(request)
         data = await post_json(self.client, self.url(request.model), payload, self.headers())
         return parse_choice(data, self.provider_id, request.model, request.json_schema is not None)
+
+    async def embed(self, model: str, texts: list[str]) -> EmbeddingResult:
+        if not model:
+            raise AIError("ai_model_missing")
+        url = self.url(model).replace("/chat/completions", "/embeddings")
+        data = await post_json(self.client, url, {"model": model, "input": texts}, self.headers())
+        return parse_embeddings(data, self.provider_id, model, len(texts))
 
     async def list_models(self) -> list[DiscoveredModel]:
         url = f"{self.base}/openai/v1/models" if self.api_version in ("", "v1") else \

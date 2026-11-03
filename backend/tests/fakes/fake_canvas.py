@@ -55,6 +55,7 @@ class CourseData:
     groups: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     files: dict[str, dict[str, Any]] = field(default_factory=dict)
     media_objects: list[dict[str, Any]] = field(default_factory=list)
+    users: list[dict[str, Any]] = field(default_factory=list)  # {id, name, enrollment: teacher|ta|designer|student}
     tabs: list[dict[str, Any]] = field(default_factory=list)
     blueprint_template: dict[str, Any] | None = None
     subscriptions: list[dict[str, Any]] = field(default_factory=list)
@@ -623,6 +624,23 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
     async def media_objects(request: Request) -> Response:
         return paginate(request, course(request).media_objects)
 
+    async def course_users(request: Request) -> Response:
+        c = course(request)
+        wanted = set(request.query_params.getlist("enrollment_type[]"))
+        users = [{"id": u["id"], "name": u.get("name", "")} for u in c.users
+                 if not wanted or u.get("enrollment") in wanted]
+        return paginate(request, users)
+
+    async def media_track_content(request: Request) -> Response:
+        """Non-API route that serves a track's WebVTT (the ``url`` in media_objects[].media_tracks)."""
+        for c in state.courses.values():
+            for media in c.media_objects:
+                if media.get("media_id") == request.path_params["mid"]:
+                    for track in media.get("media_tracks") or []:
+                        if str(track.get("id")) == request.path_params["tid"]:
+                            return Response(track.get("webvtt_content") or "WEBVTT\n", media_type="text/vtt")
+        return err(404, "not found")
+
     async def attachment_tracks(request: Request) -> Response:
         return JSONResponse(state.attachment_tracks.get(request.path_params["aid"], []))
 
@@ -779,6 +797,8 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
         Route("/files/{fid}/download", file_download),
         Route("/api/v1/courses/{cid}/media_objects", media_objects),
         Route("/api/v1/media_attachments/{aid}/media_tracks", attachment_tracks),
+        Route("/api/v1/courses/{cid}/users", course_users),
+        Route("/media_objects/{mid}/media_tracks/{tid}", media_track_content),
         Route("/api/v1/courses/{cid}/quizzes", quizzes, methods=["GET", "POST"]),
         Route("/api/v1/courses/{cid}/quizzes/{qid}", quiz, methods=["GET", "PUT", "DELETE"]),
         Route("/api/v1/courses/{cid}/quizzes/{qid}/questions", questions, methods=["GET", "POST"]),

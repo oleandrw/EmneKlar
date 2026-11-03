@@ -29,6 +29,8 @@ cyclonedx-python-lib==11.12.0
 defusedxml==0.7.1
 fastapi==0.142.2
 filelock==4.2.1
+fonttools==4.68.0
+fpdf2==2.9.0
 h11==0.16.0
 httpcore==1.0.9
 httpx==0.28.1
@@ -49,10 +51,12 @@ msgpack==1.2.3
 mypy==2.4.0
 mypy_extensions==1.1.0
 nh3==0.3.7
+numpy==2.4.6
 opentelemetry-api==1.45.1
 packageurl-python==0.17.6
 packaging==26.3
 pathspec==1.1.1
+pillow==13.0.0
 pip==26.2.1
 pip-requirements-parser==32.0.1
 pip_api==0.0.35
@@ -65,6 +69,7 @@ pydantic_core==2.46.5
 Pygments==2.21.0
 pyparsing==3.3.3
 pypdf==6.21.4
+pypdfium2==5.14.0
 pytest==9.1.1
 pytest-asyncio==1.4.0
 pytest-timeout==2.4.0

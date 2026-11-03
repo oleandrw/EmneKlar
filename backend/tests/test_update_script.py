@@ -380,6 +380,31 @@ def test_pin_fallback_only_when_pins_do_not_exist() -> None:
     assert not update.pins_unavailable("ERROR: some other failure")
 
 
+def test_optional_extras_are_remembered_and_never_fail_the_install(tmp_path: Path,
+                                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "EmneKlar"
+    (root / "backend").mkdir(parents=True)
+    write(root / "backend" / "constraints.txt", "fastapi==0.142.2\n")
+    assert update.chosen_extras(root) == []
+    update.remember_extra(root, "rag")
+    update.remember_extra(root, "rag")
+    assert update.chosen_extras(root) == ["rag"]
+    write(root / "backend" / ".venv" / update.EXTRAS_FILE, "rag\nunknown\n")
+    assert update.chosen_extras(root) == ["rag"]
+    commands: list[list[str]] = []
+
+    def fake_run(args: list[Any], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        commands.append([str(a) for a in args])
+        failing = any(str(a).endswith("[rag]") for a in args)
+        return subprocess.CompletedProcess(args, 1 if failing else 0, "", "")
+
+    monkeypatch.setattr(update, "run", fake_run)
+    reporter = update.Reporter(None, total_steps=1, title="test")
+    update.install_python_dependencies(Path("python"), root, reporter)
+    assert commands[0][-1].endswith("backend") and commands[1][-1].endswith("backend[rag]")
+    assert "-c" in commands[1]
+
+
 # ---------------------------------------------------------------------------- the whole update (faked)
 
 

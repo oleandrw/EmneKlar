@@ -23,9 +23,21 @@ dependencies = [
     "defusedxml>=0.7",
     "pypdf>=5.0",
     "nh3>=0.2.18",
+    # Emne-RAG: vector search, image filtering, rendering scanned PDF pages for OCR, PDF export.
+    "numpy>=1.26",
+    "Pillow>=10.4",
+    "pypdfium2>=4.30",
+    "fpdf2>=2.8",
 ]
 
 [project.optional-dependencies]
+# Emne-RAG with local models (several GB with PyTorch). Installed by setup-emne-rag.bat / setup.bat --rag;
+# update.bat keeps it installed. EmneKlar works without it (keyword search, captions, provider embeddings).
+rag = [
+    "sentence-transformers>=5.0",
+    "faster-whisper>=1.1",
+    "youtube-transcript-api>=1.0",
+]
 dev = [
     "pytest>=8.2",
     "pytest-asyncio>=0.24",

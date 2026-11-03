@@ -138,8 +138,21 @@ class CanvasAPI:
     async def get_discussion(self, course_id: str, topic_id: str) -> dict[str, Any]:
         return await self.client.get_json(f"/api/v1/courses/{course_id}/discussion_topics/{topic_id}")
 
-    async def list_files(self, course_id: str) -> list[dict[str, Any]]:
-        return await self.client.get_paginated(f"/api/v1/courses/{course_id}/files", [("sort", "name")])
+    async def list_files(self, course_id: str, *, include_user: bool = False) -> list[dict[str, Any]]:
+        params: list[tuple[str, Any]] = [("sort", "name")]
+        if include_user:
+            params.append(("include[]", "user"))  # uploader – Emne-RAG only indexes files uploaded by teachers
+        return await self.client.get_paginated(f"/api/v1/courses/{course_id}/files", params)
+
+    async def list_teaching_user_ids(self, course_id: str) -> set[str]:
+        """Ids of the course's teachers, TAs and designers (``GET …/users?enrollment_type[]=…``).
+
+        Only the ids are used – to tell teacher-written discussion topics and files from student content.
+        """
+        users = await self.client.get_paginated(
+            f"/api/v1/courses/{course_id}/users",
+            [("enrollment_type[]", "teacher"), ("enrollment_type[]", "ta"), ("enrollment_type[]", "designer")])
+        return {str(u.get("id")) for u in users if isinstance(u, dict) and u.get("id") is not None}
 
     async def get_file(self, file_id: str) -> dict[str, Any]:
         return await self.client.get_json(f"/api/v1/files/{file_id}")

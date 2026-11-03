@@ -78,6 +78,20 @@ MESSAGES: dict[str, str] = {
     "file_unsupported": "Dette filformatet støttes ikke.",
     "file_parse_failed": "Kunne ikke lese filen.",
     "url_blocked": "Adressen er blokkert av sikkerhetshensyn.",
+    # Emne-RAG
+    "rag_index_missing": "Det finnes ingen Emne-RAG-indeks for emnet ennå. Bygg indeksen først.",
+    "rag_index_busy": "Indeksen for emnet bygges eller oppdateres akkurat nå. Vent til jobben er ferdig.",
+    "rag_index_foreign": "Indeksfilen tilhører ikke EmneKlar og ble ikke åpnet.",
+    "rag_index_outdated": "Indeksen er laget av en eldre versjon av EmneKlar. Bygg indeksen på nytt.",
+    "rag_model_changed": (
+        "Indeksen er laget med en annen embedding-modell enn den som er valgt nå. Bygg indeksen på nytt."
+    ),
+    "rag_nothing_selected": "Velg minst én kildetype, og minst én modul hvis du har valgt «Valgte moduler».",
+    "rag_download_required": "Lokale modeller må lastes ned første gang. Bekreft nedlastingen før du starter.",
+    "rag_local_models_missing": (
+        "Lokale modeller er ikke installert. Lukk EmneKlar og kjør setup-emne-rag.bat (eller setup.bat --rag)."
+    ),
+    "rag_query_empty": "Skriv et spørsmål.",
     # Reports / updates
     "report_not_found": "Fant ikke rapporten.",
     "update_check_failed": "Kunne ikke sjekke etter oppdateringer.",
