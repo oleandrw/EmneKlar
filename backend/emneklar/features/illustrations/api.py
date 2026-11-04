@@ -62,6 +62,19 @@ def _store(c: AppContainer) -> Store:
     return Store(c.db)
 
 
+def _truthful(c: AppContainer, run: dict[str, Any]) -> dict[str, Any]:
+    """A run that says it is working but has no live job was interrupted (EmneKlar stopped or the job ended)."""
+    if run["status"] not in ("analyzing", "generating"):
+        return run
+    try:
+        job = c.jobs.get(run["job_id"]) if run["job_id"] else None
+    except NotFoundError:
+        job = None
+    if job is not None and job.status in ACTIVE:
+        return run
+    return {**run, "status": "interrupted", "status_label": RUN_STATUS_LABELS["interrupted"]}
+
+
 def _assets(c: AppContainer) -> AssetStore:
     return AssetStore(c.db, c.config.illustrations_dir)
 
@@ -97,7 +110,8 @@ async def status(course_id: str, c: AppContainer = Depends(get_container)) -> di
                "confirm_before_send": settings.privacy.confirm_before_send},
         "image_providers": image_providers(c),
         "design": profiles_store.active(course_id), "design_versions": profiles_store.versions(course_id)[:10],
-        "runs": _store(c).runs(course_id, limit=10), "busy_job": _busy(c, course_id), "dry_run": c.is_dry_run(),
+        "runs": [_truthful(c, r) for r in _store(c).runs(course_id, limit=10)], "busy_job": _busy(c, course_id),
+        "dry_run": c.is_dry_run(),
         "text_models": [{"ref": f"{m['provider_id']}/{m['model_id']}", "display_name": m["display_name"],
                          "provider_id": m["provider_id"], "vision": m["vision"]}
                         for m in c.ai.registry.list() if m["enabled"] and m["capabilities_known"]],
@@ -457,7 +471,7 @@ def _overview(run: dict[str, Any], items: list[dict[str, Any]]) -> list[dict[str
 async def get_run(run_id: int, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
     _flag(c)
     store = _store(c)
-    run = store.run(run_id)
+    run = _truthful(c, store.run(run_id))
     items = store.for_run(run_id)
     counts: dict[str, int] = {}
     for item in items:
@@ -469,8 +483,8 @@ async def get_run(run_id: int, c: AppContainer = Depends(get_container)) -> dict
         except NotFoundError:
             job = None
     return {"run": run, "illustrations": items, "overview": _overview(run, items), "counts": counts, "job": job,
-            "can_continue": run["status"] in ("cancelled", "interrupted", "cost_limit", "failed", "analyzing",
-                                              "generating") and (job is None or job["status"] not in ACTIVE)}
+            "can_continue": run["status"] in ("cancelled", "interrupted", "cost_limit", "failed")
+                            and (job is None or job["status"] not in ACTIVE)}
 
 
 class ContinueBody(BaseModel):

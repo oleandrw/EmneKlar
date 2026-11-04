@@ -637,3 +637,14 @@ def test_conflicted_illustration_can_be_published_again_on_the_current_page(canv
     again = canvas_client.post(f"/api/illustrations/runs/{run_id}/publish", json={}).json()
     assert wait_for_job(canvas_client, again["job"]["id"])["result"]["summary"] == {"applied": 1}
     assert "<figure" in page["body"] and "Nytt avsnitt fra læreren." in page["body"], "placed in the current page"
+
+
+def test_a_run_without_a_live_job_is_shown_as_interrupted(canvas_container, canvas_client: TestClient) -> None:
+    from emneklar.features.illustrations.store import Store
+
+    run = Store(canvas_container.db).create_run(COURSE_ID, scope={"type": "course"}, options={}, profile_id=None)
+    Store(canvas_container.db).update_run(run["id"], status="generating", job_id="gone-after-restart")
+    detail = canvas_client.get(f"/api/illustrations/runs/{run['id']}").json()
+    assert detail["run"]["status"] == "interrupted" and detail["can_continue"]
+    listed = canvas_client.get(f"/api/courses/{COURSE_ID}/illustrations").json()["runs"][0]
+    assert listed["status_label"] == "Avbrutt (EmneKlar ble lukket)"
