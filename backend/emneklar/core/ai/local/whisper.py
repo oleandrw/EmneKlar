@@ -77,7 +77,7 @@ def memory_gb() -> float | None:
 
             status = Status()
             status.dwLength = ctypes.sizeof(Status)
-            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):  # type: ignore[attr-defined]
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
                 return status.ullTotalPhys / 1024**3
             return None
         return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1024**3
