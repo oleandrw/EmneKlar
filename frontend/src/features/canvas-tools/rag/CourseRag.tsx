@@ -25,7 +25,6 @@ import {
   type Column,
   type Tone,
 } from "../../../design-system";
-import { BackToTools } from "../shared";
 import { JobRunner } from "../../analysis/JobRunner";
 import { DEFAULT_OPTIONS, STATUS_LABEL, useRagStatus, type RagStatus, type SkippedItem } from "./api";
 import { AskPanel } from "./AskPanel";
@@ -163,7 +162,6 @@ export function CourseRag() {
         meta={status.data && !status.data.index ? "Ingen kunnskapsbase opprettet ennå" : undefined}
         actions={<HelpLink topic="emne-rag" />} />
       <div className="ek-stack" data-gap="6">
-        <BackToTools />
         {status.isPending ? <Spinner label="Henter status for kunnskapsbasen …" /> : status.error ? (
           <Alert tone="danger" role="alert">{(status.error as Error).message}</Alert>
         ) : (
