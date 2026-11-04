@@ -107,7 +107,11 @@ def resolve_image(c: AppContainer, options: IllustrationSettings, profile: profi
     quality = options.image_quality or profile.image_quality
     if model and model.get("qualities") and quality not in model["qualities"]:
         quality = "high" if "high" in model["qualities"] else model["qualities"][-1]
-    size = options.image_size
+    from emneklar.core.ai.images import resolve as resolve_catalog
+
+    catalog_model = resolve_catalog(config.type, model["id"]) if config is not None and model else None
+    aspect = options.image_format if options.image_format != "auto" else "3:2"
+    size = catalog_model.size_for(aspect) if catalog_model else "1536x1024"
     if config is not None and config.type == "openai_compatible" and model is not None and not model.get("known"):
         reason += " Modellen er ikke i katalogen: referansebilder brukes ikke."
     return ImageChoice(provider_id=provider_id, model=model, quality=quality, size=size, reason=reason,

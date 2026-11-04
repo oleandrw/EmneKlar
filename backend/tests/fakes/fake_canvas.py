@@ -80,6 +80,7 @@ class FakeCanvasState:
     pending_uploads: dict[str, dict[str, Any]] = field(default_factory=dict)  # upload token -> preflight data
     upload_redirect: bool = True  # step 2 answers 302 (S3 style) or 201 with Location (InstFS style)
     upload_requests: list[dict[str, Any]] = field(default_factory=list)  # what step 2 received (headers, order)
+    sanitize_pages: bool = False  # run page bodies through EmneKlar's mirror of Canvas' sanitiser on save
 
 
 # ---------------------------------------------------------------------------------------- seed
@@ -450,6 +451,10 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
             data = (await body(request)).get("wiki_page", {})
             if data.get("front_page") is True and not data.get("published", p["published"]):
                 return err(400, "The front page cannot be unpublished")
+            if state.sanitize_pages and "body" in data:
+                from emneklar.core.security.sanitize import canvas_sanitize
+
+                data = {**data, "body": canvas_sanitize(data["body"])}
             for key in ("title", "body", "published", "editing_roles"):
                 if key in data:
                     p[key] = data[key]

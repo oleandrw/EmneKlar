@@ -7,6 +7,7 @@ import type { Job } from "../../../core/api/types";
 export type ScopeType = "course" | "module" | "modules" | "page";
 export type QualityProfileId = "max" | "balanced" | "fast";
 export type Amount = "low" | "balanced" | "high";
+export type ImageFormat = "auto" | "16:9" | "3:2" | "4:3" | "1:1" | "2:3";
 
 export interface Scope {
   type: ScopeType;
@@ -35,9 +36,13 @@ export interface IllustrationSettings {
   image_provider_id: string;
   image_model: string;
   image_quality: "" | "low" | "medium" | "high" | "xhigh" | "max";
-  image_size: "1536x1024" | "1024x1024" | "1024x1536";
+  image_format: ImageFormat;
   use_reference_images: boolean;
   captions: boolean;
+  text_in_images: "auto" | "never";
+  credit: boolean;
+  credit_text: string;
+  max_width_px: number;
   folder: string;
   cost_limit_usd: number | null;
   concurrency: number;
@@ -99,7 +104,7 @@ export interface DesignData {
   visual_traits: string;
   avoid: string[];
   people: string;
-  aspect_ratio: "3:2" | "1:1" | "2:3";
+  aspect_ratio: ImageFormat;
 }
 
 export interface DesignProfile {
@@ -111,7 +116,6 @@ export interface DesignProfile {
   origin: string;
   active: boolean;
   data: DesignData;
-  size: string;
   reference_assets: string[];
   created_at: string | null;
   style_prompt: string;
@@ -156,6 +160,8 @@ export interface Catalog {
   placements: Record<string, string>;
   amounts: Record<Amount, string>;
   statuses: Record<string, string>;
+  formats: Record<ImageFormat, string>;
+  image_types: Record<string, string>;
   usage_rights: { id: string; label: string }[];
   pricing: { version: string; currency: string; note: string };
 }
@@ -199,8 +205,6 @@ export interface Illustration {
     accuracy_notes?: string;
     adds_value?: string;
     placement_reason?: string;
-    skip_reason?: string;
-    needs_text_in_image?: boolean;
   };
   prompt: string;
   style_override: string | null;
@@ -215,7 +219,9 @@ export interface Illustration {
     visual_quality?: number;
     style_consistency?: number;
     supports_learning_goal?: number;
-    text_in_image?: string;
+    text_status?: "none" | "correct" | "errors" | "unwanted";
+    text_issues?: string[];
+    caption_adds_value?: boolean;
     issues?: string[];
     incorrect_details?: string[];
     manual_check?: boolean;
@@ -225,8 +231,12 @@ export interface Illustration {
   decorative: boolean;
   caption: string;
   caption_enabled: boolean;
+  aspect_ratio: Exclude<ImageFormat, "auto">;
+  image_type: string;
+  labels: string[];
+  credit: string;
   change_id: number | null;
-  published: { file_id?: string; at?: string };
+  published: { file_id?: string; at?: string; html_check?: { ok: boolean; missing: string[]; dropped: string[] } | null };
   error: string | null;
   manual_check: boolean;
   ai_label: string;
@@ -284,6 +294,8 @@ export interface Estimate {
     note: string;
   };
   payload_summary: string;
+  payload_short: string;
+  providers: string[];
   receivers: Receiver[];
   external: boolean;
   needs_confirmation: boolean;

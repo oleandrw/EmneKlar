@@ -463,6 +463,11 @@ class Illustration(Base):
     decorative: Mapped[bool] = mapped_column(Boolean, default=False)
     caption: Mapped[str] = mapped_column(Text, default="")
     caption_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Format, kind of image and the exact short labels in it (diagrams, models …); empty labels = text-free.
+    aspect_ratio: Mapped[str] = mapped_column(String(8), default="3:2", server_default="3:2")
+    image_type: Mapped[str] = mapped_column(String(24), default="illustration", server_default="illustration")
+    labels: Mapped[list[Any]] = mapped_column(JSON, default=list, server_default="[]")
+    credit: Mapped[str] = mapped_column(Text, default="", server_default="")  # credit line, separate from the caption
     change_id: Mapped[int | None] = mapped_column(Integer)
     published: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     error: Mapped[str | None] = mapped_column(Text)

@@ -160,8 +160,10 @@ eller én side, og setter dem inn etter godkjenning:
 ```
 kartlegging (Canvas, ingen KI): moduler med alle elementtyper, sider (paginert), sider i flere moduler én gang
    ─► nivå 1 emnekontekst ─► nivå 2 modulkontekst (med tidligere moduler) ─► nivå 3 hele siden, seksjon for seksjon
-   ─► nivå 4 seksjonen (med før/etter) ─► bildeplan (0..n forslag, formål, må vise / må ikke vise, risiko, prompt)
-   ─► bildemodell (+ designprofil, referansebilder) ─► multimodal kontroll (karakterer, alt-tekst, bildetekst)
+   ─► nivå 4 seksjonen (med før/etter) ─► bildeplan (0..n forslag, formål, bildetype, format, korte etiketter,
+       må vise / må ikke vise, risiko, prompt)
+   ─► bildemodell (+ designprofil, referansebilder, størrelse etter format) ─► multimodal kontroll (karakterer,
+       tekstkontroll, alt-tekst, bildetekst)
        ─► ny runde ved behov ─► gjennomgang ─► endringsmotoren (opplasting, innsetting, konfliktsjekk, backup, logg)
 ```
 
@@ -171,6 +173,13 @@ kartlegging (Canvas, ingen KI): moduler med alle elementtyper, sider (paginert),
   (`illustration_analyses`) og sendes videre som strukturerte sammendrag; lange sider kortes ned per seksjon.
 * **Personvern** (`privacy.py`): bare sider, modulstruktur, emnebeskrivelse og emneplan leses; e-post, telefon,
   fødselsnummer og signerte URL-er fjernes før sending; kursinnhold sendes som avgrenset data.
+* **Tekst i bilder:** bildene forklarer mest mulig visuelt. Diagrammer, modeller, infografikk og prosesser kan ha
+  korte etiketter (høyst åtte, ett til tre ord, innholdets språk); planen angir dem ordrett, bildeprompten krever
+  nøyaktig de etikettene og ingen annen tekst, og kontrollen avviser feilstavet eller uønsket tekst.
+* **Figur i Canvas:** `figure` > `img` + `figcaption`, høyst 900 px (innstilling), responsiv, bildetekst
+  venstrejustert, kreditering som egen `small`-linje, `loading="lazy"` lenger ned på siden. Etter publisering
+  sjekkes figur, bilde, alt-tekst og bildetekst (må finnes) og valgfrie attributter (rapporteres hvis Canvas fjernet
+  dem).
 * **Plassering** (`htmlspans.py`, `structure.py`, `placement.py`): HTML leses med kildeposisjoner, og figurer
   skjøtes inn *mellom* blokker i innholdsbeholderen – aldri inne i avsnitt, lister, tabeller, iframes eller
   malkomponenter. Ankre er blokkens tag + hash av teksten. Lærerens HTML endres ikke et tegn; angring fjerner bare

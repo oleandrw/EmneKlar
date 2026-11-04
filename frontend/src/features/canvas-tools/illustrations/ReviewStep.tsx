@@ -24,7 +24,7 @@ import { JobRunner } from "../../analysis/JobRunner";
 import { FINAL_STATUSES } from "../../analysis/useJob";
 import { ILLUSTRATION_TONE, money, RUN_TONE, useRun, type Catalog, type Illustration, type OverviewPage, type RunDetail } from "./api";
 import { JOB_WORDING } from "./AnalyseStep";
-import { IllustrationDetail } from "./IllustrationDetail";
+import { IllustrationDetail, PagePreviewDialog } from "./IllustrationDetail";
 
 function pageLine(page: OverviewPage): string {
   const n = page.proposed;
@@ -45,23 +45,19 @@ function Thumb({ item, onOpen }: { item: Illustration; onOpen: () => void }) {
       <span className="ek-cluster" data-gap="1">
         <Badge tone={ILLUSTRATION_TONE[item.status] ?? "neutral"}>{item.status_label}</Badge>
         {item.manual_check ? <Badge tone="warning">Manuell kontroll</Badge> : null}
+        {item.labels.length ? <Badge>Med etiketter</Badge> : null}
       </span>
       <span className="ek-small ek-muted">{item.placement_label}{item.section.title ? ` – «${item.section.title}»` : ""}</span>
     </button>
   );
 }
 
-export function ReviewStep({ runId, catalog, onPublish, stage = "review" }: {
-  runId: number;
-  catalog: Catalog;
-  onPublish: () => void;
-  /** Step 5 (Generer) and step 6 (Gjennomgå) show the same overview with a different emphasis. */
-  stage?: "generate" | "review";
-}) {
+export function ReviewStep({ runId, catalog, onPublish }: { runId: number; catalog: Catalog; onPublish: () => void }) {
   const client = useQueryClient();
   const toast = useToast();
   const run = useRun(runId);
   const [openId, setOpenId] = useState<number | null>(null);
+  const [previewId, setPreviewId] = useState<number | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const refresh = () => client.invalidateQueries({ queryKey: ["illustrations"] });
   const bulk = useMutation({
@@ -100,10 +96,8 @@ export function ReviewStep({ runId, catalog, onPublish, stage = "review" }: {
 
   return (
     <div className="ek-stack" data-gap="6">
-      <Card title={stage === "generate" ? "5. Generer" : "6. Gjennomgå"}
-        description={stage === "generate"
-          ? "Bildeplanen for hele omfanget. Velg hvilke forslag som skal lages, og følg fremdriften per modul og side."
-          : "Oversikt over hele omfanget. Godkjenn enkeltbilder, alle bildene på en side, en hel modul eller alt på én gang."}
+      <Card title="4. Generer og gjennomgå"
+        description="Lag bildene, se dem på siden og godkjenn, avvis, endre eller lag dem på nytt – ett bilde, en side, en modul eller alt på én gang."
         actions={<Badge tone={RUN_TONE[data.run.status] ?? "neutral"}>{data.run.status_label}</Badge>}>
         <div className="ek-stack" data-gap="4">
           <KeyFigureList label="Status">
@@ -161,9 +155,14 @@ export function ReviewStep({ runId, catalog, onPublish, stage = "review" }: {
                     <h4>{page.title}</h4>
                     <span className="ek-small ek-muted">{pageLine(page)}{page.proposed === 0 && page.reason ? ` – ${page.reason}` : ""}</span>
                   </div>
-                  {page.illustrations.some((i) => i.status === "generated" || i.status === "flagged") ? (
-                    <Button size="sm" onClick={() => bulk.mutate({ level: "page", page_url: page.page_url })}>Godkjenn alle på siden</Button>
-                  ) : null}
+                  <div className="ek-cluster" data-gap="2">
+                    {page.illustrations.some((i) => i.asset_id) ? (
+                      <Button size="sm" onClick={() => setPreviewId(page.illustrations.find((i) => i.asset_id)?.id ?? null)}>Forhåndsvis siden</Button>
+                    ) : null}
+                    {page.illustrations.some((i) => i.status === "generated" || i.status === "flagged") ? (
+                      <Button size="sm" onClick={() => bulk.mutate({ level: "page", page_url: page.page_url })}>Godkjenn alle på siden</Button>
+                    ) : null}
+                  </div>
                 </div>
                 {page.illustrations.length ? (
                   <div className="ek-thumb-grid">
@@ -172,8 +171,7 @@ export function ReviewStep({ runId, catalog, onPublish, stage = "review" }: {
                         <Thumb item={item} onOpen={() => setOpenId(item.id)} />
                         {data.run.status === "planned" && (item.status === "proposed" || item.status === "skipped") ? (
                           <Checkbox label="Ta med" checked={item.status === "proposed"}
-                            onChange={(e) => include.mutate({ id: item.id, on: e.target.checked })}
-                            disabled={item.status === "skipped" && Boolean(item.plan.needs_text_in_image)} />
+                            onChange={(e) => include.mutate({ id: item.id, on: e.target.checked })} />
                         ) : null}
                       </div>
                     ))}
@@ -185,6 +183,7 @@ export function ReviewStep({ runId, catalog, onPublish, stage = "review" }: {
         </Card>
       ))}
       {open ? <IllustrationDetail item={open} catalog={catalog} onClose={() => setOpenId(null)} onJob={setJobId} /> : null}
+      {previewId !== null ? <PagePreviewDialog illustrationId={previewId} onClose={() => setPreviewId(null)} /> : null}
     </div>
   );
 }

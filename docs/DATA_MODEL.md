@@ -58,7 +58,7 @@ Leverandøroppsett (endepunkt, API-versjon, aktivert) ligger i innstillingene; n
 | `illustration_profiles` | Designprofil per emne, versjonert (stil, palett, kontrast, lys, komposisjon, bakgrunn, detaljnivå, format, kjennetegn, hva som ikke skal med), aktiv versjon, opphav (forhåndsvalg/KI/egen) og referansebilder (asset-id-er) |
 | `illustration_runs` | Én kjøring over et omfang: status, omfang, valg (kvalitetsprofil, mengde, modeller, kostnadsgrense, automatisk innsetting), designprofil, jobb, kartlegging og sidestatus, kostnadsanslag, faktisk forbruk, emne- og modulkontekst (sammendrag), begrensninger |
 | `illustration_analyses` | Hurtigbuffer for KI-analyse av emne, modul og side (nøkkel: objekt + hash av inndata + analyseversjon) |
-| `illustrations` | Ett forslag: modul, side, seksjon (tekst før/etter), anker, pedagogisk plan (formål, begrep, læringsmål, motiv, må vise / må ikke vise, risiko, merverdi), bildeprompt, stil, bildeversjoner med kontrollresultat, alt-tekst, dekorativ, bildetekst, status, endring i køen, publiseringsinfo, fingeravtrykk (mot dubletter) |
+| `illustrations` | Ett forslag: modul, side, seksjon (tekst før/etter), anker, pedagogisk plan (formål, begrep, læringsmål, motiv, må vise / må ikke vise, risiko, merverdi), bildetype, format, korte etiketter, bildeprompt, stil, bildeversjoner med kontrollresultat, alt-tekst, dekorativ, bildetekst, kreditering, status, endring i køen, publiseringsinfo (med kontroll av hva Canvas beholdt), fingeravtrykk (mot dubletter) |
 | `illustration_assets` | Genererte bilder: fil i datamappen, SHA-256, format, størrelse, modell, Canvas-fil-id etter opplasting |
 
 ## Filer i datamappen

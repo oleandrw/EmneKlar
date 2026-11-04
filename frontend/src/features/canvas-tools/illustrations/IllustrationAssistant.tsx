@@ -18,13 +18,12 @@ import {
 } from "../../../design-system";
 import { AnalyseStep } from "./AnalyseStep";
 import { DEFAULT_SCOPE, RUN_TONE, useCatalog, useIllustrationStatus, useScopeIndex, type IllustrationSettings, type RunSummary, type Scope } from "./api";
-import { DesignStep } from "./DesignStep";
-import { ModelStep } from "./ModelStep";
+import { ImageSettingsStep } from "./ImageSettingsStep";
 import { PublishStep } from "./PublishStep";
 import { ReviewStep } from "./ReviewStep";
 import { scopeReady, ScopeStep } from "./ScopeStep";
 
-type StepId = "omfang" | "modeller" | "design" | "analyse" | "generer" | "gjennomga" | "publiser";
+type StepId = "innhold" | "innstillinger" | "analyse" | "generer" | "publiser";
 
 const SCOPE_LABEL: Record<string, string> = { course: "Hele emnet", module: "Én modul", modules: "Flere moduler", page: "Én side" };
 
@@ -57,7 +56,7 @@ export function IllustrationAssistant() {
   const status = useIllustrationStatus(courseId);
   const catalog = useCatalog();
   const index = useScopeIndex(courseId);
-  const [step, setStep] = useState<StepId>("omfang");
+  const [step, setStep] = useState<StepId>("innhold");
   const [scope, setScope] = useState<Scope>(DEFAULT_SCOPE);
   const [settings, setSettings] = useState<IllustrationSettings | null>(null);
   const [runId, setRunId] = useState<number | null>(null);
@@ -66,7 +65,7 @@ export function IllustrationAssistant() {
   }, [status.data, settings]);
   useEffect(() => {
     setRunId(null);
-    setStep("omfang");
+    setStep("innhold");
     setScope(DEFAULT_SCOPE);
   }, [courseId]);
 
@@ -87,16 +86,14 @@ export function IllustrationAssistant() {
   const data = status.data;
   const ready = scopeReady(scope);
   const steps = [
-    { id: "omfang" as const, label: "Velg omfang", done: ready && step !== "omfang" },
-    { id: "modeller" as const, label: "Velg KI-modeller" },
-    { id: "design" as const, label: "Velg designprofil", done: Boolean(data.design) },
-    { id: "analyse" as const, label: "Analyser innhold", disabled: !ready && runId === null, done: runId !== null },
-    { id: "generer" as const, label: "Generer", disabled: runId === null },
-    { id: "gjennomga" as const, label: "Gjennomgå", disabled: runId === null },
+    { id: "innhold" as const, label: "Velg innhold", done: ready && step !== "innhold" },
+    { id: "innstillinger" as const, label: "Bildeinnstillinger", done: Boolean(data.design) && step !== "innstillinger" && step !== "innhold" },
+    { id: "analyse" as const, label: "Analyser", disabled: !ready && runId === null, done: runId !== null },
+    { id: "generer" as const, label: "Generer og gjennomgå", disabled: runId === null },
     { id: "publiser" as const, label: "Publiser", disabled: runId === null },
   ];
-  const next: Record<StepId, StepId | null> = { omfang: "modeller", modeller: "design", design: "analyse", analyse: null,
-    generer: "gjennomga", gjennomga: "publiser", publiser: null };
+  const next: Record<StepId, StepId | null> = { innhold: "innstillinger", innstillinger: "analyse", analyse: null,
+    generer: "publiser", publiser: null };
   const nextStep = next[step];
 
   return (
@@ -104,34 +101,32 @@ export function IllustrationAssistant() {
       {header}
       <div className="ek-stack" data-gap="6">
         {data.dry_run ? <Alert tone="info" title="Dry run er på">Du kan analysere og lage bilder, men ingenting sendes til Canvas.</Alert> : null}
-        {step === "omfang" ? <RunList runs={data.runs} onOpen={(run) => {
+        {step === "innhold" ? <RunList runs={data.runs} onOpen={(run) => {
           setRunId(run.id);
-          setStep(run.status === "review" || run.status === "completed" ? "gjennomga" : "generer");
+          setStep("generer");
         }} /> : null}
         <div className="ek-wizard">
           <Stepper label="Steg i KI-bildeassistenten" steps={steps} current={step} onSelect={setStep} />
           <div className="ek-stack" data-gap="4">
-            {step === "omfang" ? (
+            {step === "innhold" ? (
               <ScopeStep scope={scope} onChange={setScope} index={index.data} loading={index.isPending} error={index.error?.message ?? null} />
             ) : null}
-            {step === "modeller" ? <ModelStep settings={settings} onChange={setSettings} status={data} catalog={catalog.data} /> : null}
-            {step === "design" ? <DesignStep courseId={courseId} status={data} catalog={catalog.data} /> : null}
+            {step === "innstillinger" ? (
+              <ImageSettingsStep courseId={courseId} settings={settings} onChange={setSettings} status={data} catalog={catalog.data} />
+            ) : null}
             {step === "analyse" ? (
               <AnalyseStep courseId={courseId} scope={scope} settings={settings} catalog={catalog.data} busyJobId={data.busy_job?.id ?? null}
-                onStarted={(run) => setRunId(run.id)}
+                runId={runId} onStarted={(run) => setRunId(run.id)} onNext={() => setStep("generer")}
                 onDone={(job) => {
                   void client.invalidateQueries({ queryKey: ["illustrations"] });
-                  setStep(job.result?.status === "review" ? "gjennomga" : "generer");
+                  if (job.result?.status === "review") setStep("generer");
                 }} />
             ) : null}
-            {step === "generer" && runId !== null ? (
-              <ReviewStep runId={runId} catalog={catalog.data} stage="generate" onPublish={() => setStep("publiser")} />
-            ) : null}
-            {step === "gjennomga" && runId !== null ? <ReviewStep runId={runId} catalog={catalog.data} onPublish={() => setStep("publiser")} /> : null}
+            {step === "generer" && runId !== null ? <ReviewStep runId={runId} catalog={catalog.data} onPublish={() => setStep("publiser")} /> : null}
             {step === "publiser" && runId !== null ? <PublishStep runId={runId} catalog={catalog.data} /> : null}
             {nextStep ? (
               <div className="ek-cluster" data-justify="end">
-                <Button variant="primary" onClick={() => setStep(nextStep)} disabled={step === "omfang" && !ready}>Neste</Button>
+                <Button variant="primary" onClick={() => setStep(nextStep)} disabled={step === "innhold" && !ready}>Neste</Button>
               </div>
             ) : null}
           </div>

@@ -98,6 +98,18 @@ class AssetStore:
                 image.convert("RGB").save(thumb, "WEBP", quality=80)
         return thumb
 
+    def display_data_url(self, asset_id: str, max_side: int = 1200) -> str:
+        """A smaller WebP copy as a data URL (for the sandboxed page preview, which cannot use the session)."""
+        import base64
+
+        source = self.path(asset_id)
+        copy = source.with_name(f"{source.stem}.display.webp")
+        if not copy.is_file():
+            with Image.open(source) as image:
+                image.thumbnail((max_side, max_side))
+                image.convert("RGB").save(copy, "WEBP", quality=82)
+        return "data:image/webp;base64," + base64.b64encode(copy.read_bytes()).decode("ascii")
+
     def set_canvas_file(self, asset_id: str, file_id: str) -> None:
         with self.db.session() as session:
             row = session.get(IllustrationAsset, asset_id)

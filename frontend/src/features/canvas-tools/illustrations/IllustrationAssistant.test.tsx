@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "../../../design-system";
 import { AnalyseStep } from "./AnalyseStep";
 import { DEFAULT_SCOPE, type Catalog, type Estimate, type Illustration, type IllustrationSettings, type RunDetail, type Scope, type ScopeIndex, type Status } from "./api";
-import { ModelStep } from "./ModelStep";
+import { ImageSettingsStep } from "./ImageSettingsStep";
 import { ReviewStep } from "./ReviewStep";
 import { ScopeStep } from "./ScopeStep";
 
@@ -43,8 +43,8 @@ afterEach(() => vi.unstubAllGlobals());
 
 const settings: IllustrationSettings = {
   quality_profile: "max", amount: "balanced", analysis_model: "", planning_model: "", review_model: "", image_provider_id: "openai",
-  image_model: "", image_quality: "", image_size: "1536x1024", use_reference_images: true, captions: true, folder: "EmneKlar-illustrasjoner",
-  cost_limit_usd: null, concurrency: 2,
+  image_model: "", image_quality: "", image_format: "auto", use_reference_images: true, captions: true, folder: "EmneKlar-illustrasjoner",
+  cost_limit_usd: null, concurrency: 2, text_in_images: "auto", credit: true, credit_text: "KI-generert illustrasjon", max_width_px: 900,
 };
 
 const catalog: Catalog = {
@@ -57,6 +57,8 @@ const catalog: Catalog = {
   roles: { illustration_analysis: "Innholdsanalyse", illustration_planning: "Bildeplan", illustration_review: "Kvalitetskontroll" },
   image_models: [], placements: { after_explanation: "Etter den faglige forklaringen" }, amounts: { low: "Lav", balanced: "Balansert", high: "Høy" },
   statuses: {}, usage_rights: [{ id: "own_copyright", label: "Jeg har opphavsretten" }],
+  formats: { auto: "Automatisk (anbefalt)", "16:9": "Bred 16:9", "3:2": "Liggende 3:2", "4:3": "Liggende 4:3", "1:1": "Kvadratisk 1:1", "2:3": "Stående 2:3" },
+  image_types: { diagram: "Diagram" },
   pricing: { version: "2026-11-04", currency: "USD", note: "Veiledende priser." },
 };
 
@@ -110,14 +112,23 @@ describe("ScopeStep", () => {
   });
 });
 
-describe("ModelStep", () => {
-  it("defaults to «Maksimal kvalitet» and balanced amount, and shows the models per task", async () => {
-    const { container } = render(wrap(<ModelStep settings={settings} onChange={() => {}} status={status} catalog={catalog} />));
+describe("ImageSettingsStep", () => {
+  it("shows quality, amount and design up front and keeps model names and costs under «Avanserte innstillinger»", async () => {
+    const user = userEvent.setup();
+    mockApi({ "/illustrations/assets": { items: [] } });
+    const { container } = render(wrap(<ImageSettingsStep courseId="101" settings={settings} onChange={() => {}} status={status} catalog={catalog} />));
+    expect(screen.getByRole("heading", { name: "2. Bildeinnstillinger" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Maksimal kvalitet \(standard\)/ })).toBeChecked();
     expect(screen.getByRole("radio", { name: /Balansert \(standard\)/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /Moderne 3D-illustrasjoner/ })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /Korte etiketter i diagrammer/ })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Merk bildene med «KI-generert illustrasjon»/ })).toBeChecked();
+    expect(screen.queryByText(/Claude Fable 5.1/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Kostnadsgrense/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Avanserte innstillinger" }));
     expect(screen.getByText(/Claude Fable 5.1/)).toBeInTheDocument();
-    expect(screen.getByText(/GPT-Image-2.5 Sunburst/)).toBeInTheDocument();
-    expect(screen.getByText(/Anthropic har ikke noen bildegenerering/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Maksimal visningsbredde/)).toHaveValue(900);
+    expect(screen.getByLabelText(/^Bildeformat/)).toHaveValue("auto");
     expect(await axeViolations(container)).toEqual([]);
   });
 });
@@ -129,13 +140,15 @@ const estimate: Estimate = {
   estimate: { currency: "USD", lines: [{ key: "images", label: "Bildegenerering", calls_low: 2, calls_high: 5, cost_low: 0.4, cost_high: 1.1 }],
     total_low: 0.9, total_high: 2.4, images_low: 2, images_high: 5, unpriced: [], cached_pages: 0, note: "Ikke en garantert pris." },
   payload_summary: "Dette sendes …",
+  payload_short: "Undervisningsinnholdet i omfanget sendes til Anthropic og OpenAI for analyse, bildegenerering og kvalitetskontroll.",
+  providers: ["Anthropic", "OpenAI"],
   receivers: [{ role: "Innholdsanalyse", service: "Claude Fable 5.1 (Anthropic)", content: "Teksten på 3 side(r)." },
     { role: "Bildegenerering", service: "GPT-Image-2.5 Sunburst (OpenAI)", content: "Bildeprompter." }],
   external: true, needs_confirmation: true, usage_rights_required: false, pages: [],
 };
 
 describe("AnalyseStep", () => {
-  it("shows what is sent where and a cost range, and needs consent before «Analyser og lag illustrasjoner»", async () => {
+  it("shows a short summary of what is sent, hides models and costs, and starts the analysis after consent", async () => {
     const user = userEvent.setup();
     const calls = mockApi({
       "/illustrations/estimate": estimate,
@@ -144,19 +157,20 @@ describe("AnalyseStep", () => {
     });
     const started = vi.fn();
     render(wrap(<AnalyseStep courseId="101" scope={{ ...DEFAULT_SCOPE, type: "modules", module_ids: ["201", "202"] }} settings={settings}
-      catalog={catalog} busyJobId={null} onStarted={started} onDone={() => {}} />));
-    await user.click(screen.getByRole("button", { name: /Kartlegg og beregn/ }));
-    expect(await screen.findByText(/Claude Fable 5.1 \(Anthropic\)/)).toBeInTheDocument();
+      catalog={catalog} busyJobId={null} runId={null} onStarted={started} onDone={() => {}} onNext={() => {}} />));
+    await user.click(screen.getByRole("button", { name: /Kartlegg innholdet/ }));
+    expect(await screen.findByText(/sendes til Anthropic og OpenAI/)).toBeInTheDocument();
+    expect(screen.queryByText(/Claude Fable 5.1 \(Anthropic\)/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Avanserte innstillinger: modeller og kostnadsanslag/ }));
+    expect(screen.getByText(/Claude Fable 5.1 \(Anthropic\)/)).toBeInTheDocument();
     expect(screen.getByText(/Totalt anslått/)).toHaveTextContent("0,90 USD – 2,40 USD");
-    expect(screen.getByText(/Ikke en garantert pris/)).toBeInTheDocument();
-    const start = screen.getByRole("button", { name: "Analyser og lag illustrasjoner" });
+    const start = screen.getByRole("button", { name: "Analyser og foreslå bilder" });
     expect(start).toBeDisabled();
-    expect(calls.some((c) => c.url.includes("/illustrations/runs"))).toBe(false);
-    await user.click(screen.getByRole("checkbox", { name: /godkjenner at innholdet sendes/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Jeg godkjenner/ }));
     await user.click(start);
     await waitFor(() => expect(started).toHaveBeenCalled());
     const run = calls.find((c) => c.url.includes("/illustrations/runs"))!;
-    expect(run.body).toMatchObject({ mode: "full", auto_insert: false, confirmed: true, scope: { type: "modules", module_ids: ["201", "202"] } });
+    expect(run.body).toMatchObject({ mode: "plan", auto_insert: false, confirmed: true, scope: { type: "modules", module_ids: ["201", "202"] } });
   });
 });
 
@@ -167,6 +181,7 @@ const ill = (id: number, page: string, status: string, extra: Partial<Illustrati
   placement_label: "Etter den faglige forklaringen", plan: { concept: `Begrep ${id}` }, prompt: "p", style_override: null, asset_id: "a",
   image_url: "/api/illustrations/assets/a", thumb_url: "/api/illustrations/assets/a?size=thumb", versions: [], review: { verdict: "pass" },
   alt_text: "Fire studenter", decorative: false, caption: "Samarbeid", caption_enabled: true, change_id: null, published: {}, error: null,
+  aspect_ratio: "3:2", image_type: "illustration", labels: [], credit: "KI-generert illustrasjon",
   manual_check: false, ai_label: "KI-forslag – må vurderes", ...extra,
 });
 

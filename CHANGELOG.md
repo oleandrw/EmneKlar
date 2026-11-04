@@ -8,27 +8,38 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
 
 ### Lagt til
 - **KI-bildeassistent** under Canvas-verktøy: analyserer hele emnet, én modul, flere moduler eller én side og lager
-  faglig presise illustrasjoner i én gjennomgående stil, med alternativ tekst og bildetekst. Arbeidsflyt i sju
-  steg (omfang, KI-modeller, designprofil, analyse, generering, gjennomgang, publisering) med oversikt per modul og
-  side, godkjenning av ett bilde, en side, en modul eller hele emnet, og «Fortsett» etter avbrudd.
+  faglig relevante illustrasjoner i én gjennomgående stil, med alternativ tekst og bildetekst. Fem steg: Velg
+  innhold, Bildeinnstillinger, Analyser, Generer og gjennomgå, Publiser. Oversikt per modul og side, godkjenning av
+  ett bilde, en side, en modul eller hele emnet, og «Fortsett» etter avbrudd.
+- Bildeinnstillinger samler kvalitet (Maksimal kvalitet – standard, Balansert, Rask), antall illustrasjoner (Lav,
+  Balansert, Høy) og designprofil. De beste tilgjengelige KI-modellene velges automatisk ut fra kvaliteten;
+  modellnavn, bildeformat, visningsbredde og kostnader ligger under «Avanserte innstillinger».
 - Hierarkisk kontekstmodell (emne → modul → side → seksjon) med strukturert kontekstpakke og hurtigbufret
-  analyse. Sider i flere moduler behandles én gang; andre modulelementer brukes som kontekst.
-- Pedagogisk bildeplan per side (formål, begrep, læringsmål, motiv, må vise / må ikke vise, risiko for faglige
-  feil, merverdi), med mengdevalg Lav / Balansert / Høy. Null bilder er et gyldig svar. Diagrammer som krever
-  tekst anbefales laget i HTML/SVG i stedet.
-- Versjonert designprofil per emne med sju stiler (bl.a. moderne 3D, flat, fotografisk, akademisk, isometrisk,
-  infografisk, egendefinert), KI-forslag, eksempelbilde og referansebilder som brukes ved nye bilder.
-- Bildegenerering i KI-laget (OpenAI Image API med referansebilder, Azure OpenAI, OpenAI-kompatible servere) med
-  katalog over bildemodeller (GPT-Image-2.5 Sunburst og Flare). Kvalitetsprofilene Maksimal kvalitet (standard),
-  Balansert og Rask velger modeller per rolle (Claude Fable 5.1 / Opus 5.5 / Sonnet 5.5, GPT-6 Astra /
-  GPT-6.1 Sol / GPT-6.1 Terra), og avanserte brukere kan velge selv.
-- Multimodal kvalitetskontroll av hvert bilde (relevans, samsvar, kvalitet, stil, feil detaljer, tekst i bildet,
-  læringsmål) med automatisk ny runde, flagg for manuell kontroll og alt-tekst/bildetekst ut fra det faktiske bildet.
+  analyse. KI vurderer selv hvor bilder gir pedagogisk verdi og foreslår naturlig plassering; null bilder er et
+  gyldig svar. Sider i flere moduler behandles én gang; andre modulelementer brukes som kontekst.
+- Versjonert designprofil per emne med sju stiler, KI-forslag, eksempelbilde og referansebilder. Bildeformatet
+  velges automatisk per bilde (16:9, 3:2, 4:3, 1:1 eller 2:3) innenfor emnets stil, eller låses for emnet.
+- Tekst i bildene bare der den gir faglig verdi: korte etiketter i diagrammer, modeller, infografikk og prosesser,
+  på innholdets språk, nøyaktig angitt i bildeplanen og kontrollert for stavefeil, lesbarhet og uønsket tekst.
+  Andre bilder er tekstfrie. Kan slås av.
+- Kvalitetskontroll av hvert bilde med en bildeanalysemodell (relevans, samsvar, kvalitet, stil, feil detaljer,
+  tekst, læringsmål), ny runde ved behov, flagg for manuell kontroll, alt-tekst ut fra det faktiske bildet
+  (dekorative bilder får `alt=""`) og bildetekst bare når den tilfører noe. Kreditering («KI-generert
+  illustrasjon») er en egen linje, adskilt fra bildeteksten.
+- Forhåndsvisning av bildene på selve siden (PC, nettbrett og mobil) før publisering.
+- Canvas-tilpasset HTML: `figure`/`img`/`figcaption`, høyst 900 px bred som standard (kan endres), responsiv,
+  bildetekst venstrejustert under bildet, `loading="lazy"` for bilder lenger ned på siden. Etter publisering
+  kontrolleres hva Canvas beholdt; attributter Canvas fjerner (som `loading`), vises i grensesnittet.
+- Bildegenerering i KI-laget (OpenAI Image API med referansebilder og vilkårlige formater, Azure OpenAI,
+  OpenAI-kompatible servere) med katalog over bildemodeller (GPT-Image-2.5 Sunburst og Flare). Kvalitetsprofilene
+  fordeler Claude Fable 5.1 / Opus 5.5 / Sonnet 5.5 og GPT-6 Astra / GPT-6.1 Sol / GPT-6.1 Terra på analyse,
+  bildeplan og kontroll.
 - Kostnadsanslag som intervall før start (veiledende priser, ikke garantert), registrering av faktisk forbruk og
   kostnadsgrense per jobb.
-- Publisering via endringsmotoren: 3-stegs filopplasting til Canvas-filer, innsetting som `figure`/`figcaption`
-  mellom avsnitt uten å endre eksisterende HTML, konfliktsjekk, sikkerhetskopi, publiseringsstatus beholdes,
-  opphavsrett når emnet krever det, valgfri automatisk innsetting, og angring som bare fjerner EmneKlars figurer.
+- Publisering via endringsmotoren: 3-stegs filopplasting til Canvas-filer, innsetting mellom avsnitt uten å endre
+  eksisterende HTML, konfliktsjekk (også mot lagringer under opplastingen), sikkerhetskopi, publiseringsstatus
+  beholdes, opphavsrett når emnet krever det, valgfri automatisk innsetting, og angring som bare fjerner
+  EmneKlars figurer.
 - `GPT-6.1 Terra` i modellkatalogen.
 
 ### Endret

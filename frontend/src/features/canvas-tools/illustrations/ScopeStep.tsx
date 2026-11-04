@@ -18,7 +18,7 @@ export function ScopeStep({ scope, onChange, index, loading, error }: {
     set({ module_ids: on ? [...scope.module_ids, id] : scope.module_ids.filter((m) => m !== id) });
 
   return (
-    <Card title="1. Velg omfang" description="Hva skal KI-bildeassistenten arbeide med? Uansett valg leses emnets struktur, slik at bildene passer inn i helheten.">
+    <Card title="1. Velg innhold" description="Hva skal KI-bildeassistenten arbeide med? Uansett valg leses emnets struktur, slik at bildene passer inn i helheten.">
       <div className="ek-stack" data-gap="6">
         <RadioGroup<ScopeType>
           legend="Omfang"

@@ -38,14 +38,14 @@ def fingerprint(course_id: str, page_url: str, section_title: str, concept: str)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
 
 
-def marker_for(ill: dict[str, Any]) -> str:
+def marker_for(ill: dict[str, Any], extra: str = "") -> str:
     """``ill-<id>-<hash of what is rendered>``: a changed image, alt text, caption or placement gives a new marker, so
     publishing again replaces EmneKlar's previous figure instead of skipping it as «already on the page»."""
     anchor = ill.get("anchor") or {}
     rendered = json.dumps([ill.get("asset_id"), "" if ill.get("decorative") else ill.get("alt_text"),
                            ill.get("caption") if ill.get("caption_enabled") else None, bool(ill.get("decorative")),
-                           anchor.get("placement"), anchor.get("block_hash"), anchor.get("block_index")],
-                          ensure_ascii=False)
+                           anchor.get("placement"), anchor.get("block_hash"), anchor.get("block_index"),
+                           ill.get("credit") or "", extra], ensure_ascii=False)
     return f"ill-{ill['id']}-{hashlib.sha256(rendered.encode('utf-8')).hexdigest()[:10]}"
 
 
@@ -66,6 +66,8 @@ def illustration_dict(row: Illustration) -> dict[str, Any]:
         "thumb_url": f"/api/illustrations/assets/{row.asset_id}?size=thumb" if row.asset_id else None,
         "versions": row.versions or [], "review": row.review or {}, "alt_text": row.alt_text,
         "decorative": row.decorative, "caption": row.caption, "caption_enabled": row.caption_enabled,
+        "aspect_ratio": row.aspect_ratio, "image_type": row.image_type, "labels": list(row.labels or []),
+        "credit": row.credit,
         "change_id": row.change_id, "published": row.published or {}, "error": row.error,
         "manual_check": bool((row.review or {}).get("manual_check")), "ai_label": "KI-forslag – må vurderes",
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
@@ -230,6 +232,7 @@ class Store:
                         row.status = "published"
                         row.published = {"file_id": info.get("file_id"), "marker": marker, "src": info.get("src"),
                                          "figure": (after.get("applied_figures") or {}).get(marker),
+                                         "html_check": (after.get("html_check") or {}).get(marker),
                                          "page_hash": after.get("page_hash"),
                                          "log_id": (change.result or {}).get("log_id"),
                                          "at": change.applied_at.isoformat() if change.applied_at else None}

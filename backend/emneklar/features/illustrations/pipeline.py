@@ -248,19 +248,19 @@ async def plan_page(state: RunState, url: str, module_id: str, planned_in_module
         if fp in known:
             continue  # the same illustration already exists or was rejected before – no duplicates on re-runs
         known.add(fp)
-        needs_text = bool(proposal.get("needs_text_in_image"))
-        status = "skipped" if needs_text else "proposed"
         plan_data = {k: proposal.get(k) for k in (
             "placement_reason", "pedagogical_purpose", "concept", "learning_goal", "motif", "composition",
             "relevant_context", "must_show", "must_not_show", "accuracy_risk", "accuracy_notes", "adds_value",
-            "needs_text_in_image", "text_alternative", "decorative")}
+            "decorative")}
         plan_data["page_summary"] = analysis.get("page_summary")
         plan_data["content_language"] = language
-        if needs_text:
-            plan_data["skip_reason"] = ("Innholdet krever tekst i bildet. Lag heller diagrammet med redigerbar HTML/"
-                                        "SVG-tekst: " + str(proposal.get("text_alternative") or ""))
+        image_type = str(proposal.get("image_type") or "illustration")
+        image_type = image_type if image_type in prompts.IMAGE_TYPES else "illustration"
         row = state.store.add(
-            run_id=state.run_id, course_id=state.course_id, fingerprint=fp, status=status,
+            run_id=state.run_id, course_id=state.course_id, fingerprint=fp, status="proposed",
+            image_type=image_type, aspect_ratio=choose_aspect(state, str(proposal.get("aspect_ratio") or "")),
+            labels=clean_labels(proposal.get("labels"), allowed=state.options.settings.text_in_images != "never"),
+            credit=state.options.settings.credit_text if state.options.settings.credit else "",
             module_id=module_info.id if module_info else None,
             module_name=module_info.name if module_info else "Sider utenfor moduler", page_url=url,
             page_id=state.inv.pages[url].page_id, page_title=page.title, page_hash=page.content_hash,
@@ -275,6 +275,29 @@ async def plan_page(state: RunState, url: str, module_id: str, planned_in_module
         "reason": str(plan.get("reason") or "")[:1000], "summary": str(analysis.get("page_summary") or "")[:1000],
         "page_hash": page.content_hash, "anchors": len(candidate_anchors(structure))})
     return created
+
+
+def choose_aspect(state: RunState, proposed: str) -> str:
+    """A fixed format (setting or design profile) wins; otherwise the planner's choice for this illustration."""
+    fixed = state.options.settings.image_format
+    if fixed != "auto":
+        return fixed
+    profile = str((state.design.get("data") or {}).get("aspect_ratio") or "auto")
+    if profile != "auto":
+        return profile
+    return proposed if proposed in prompts.ASPECTS else "3:2"
+
+
+def clean_labels(value: Any, *, allowed: bool) -> list[str]:
+    """Short labels only: at most MAX_LABELS, each a few words; nothing when text in images is switched off."""
+    if not allowed or not isinstance(value, list):
+        return []
+    out: list[str] = []
+    for item in value:
+        label = " ".join(str(item or "").split())
+        if label and len(label) <= 40 and len(label.split()) <= 4 and label not in out:
+            out.append(label)
+    return out[: prompts.MAX_LABELS]
 
 
 def _position(inv: Inventory, url: str) -> int:
@@ -313,8 +336,10 @@ def compose_prompt(ill: dict[str, Any], design: dict[str, Any], *, extra: str = 
         parts.append("Must not show or misrepresent: " + "; ".join(str(x) for x in plan["must_not_show"]))
     if extra:
         parts.append(extra)
-    parts.append(style_block(data, version=design.get("version")))
-    parts.append(prompts.IMAGE_RULES)
+    parts.append(style_block(data, version=design.get("version"), labels=bool(ill.get("labels"))))
+    labels = list(ill.get("labels") or [])
+    language = str(plan.get("content_language") or "nb")
+    parts.append(prompts.label_rules(labels, language) if labels else prompts.IMAGE_RULES)
     return "\n\n".join(p for p in parts if p)[:30_000]
 
 
@@ -338,8 +363,11 @@ def _decide(review: dict[str, Any], plan: dict[str, Any]) -> tuple[str, list[str
     issues = [str(x) for x in (review.get("issues") or [])] + [f"Feil detalj: {x}" for x in
                                                               review.get("incorrect_details") or []]
     verdict = str(review.get("verdict") or "manual_check")
-    if review.get("text_in_image") == "significant":
-        issues.append("Bildet inneholder tekst.")
+    text_status = review.get("text_status")
+    if text_status in ("errors", "unwanted"):
+        issues.append("Teksten i bildet er feil eller uønsket: " + "; ".join(str(x) for x in review.get("text_issues")
+                                                                            or []) if review.get("text_issues")
+                      else "Teksten i bildet er feil eller uønsket.")
         verdict = "revise" if verdict == "pass" else verdict
     if scores and min(scores) <= 2 and verdict == "pass":
         verdict = "revise"
@@ -357,15 +385,20 @@ async def generate_one(state: RunState, ill: dict[str, Any]) -> None:
     references = _references(state)
     rounds = state.profile.review_rounds
     prompt = compose_prompt(ill, state.design)
+    from emneklar.core.ai.images import resolve as resolve_image
+
+    catalog_model = resolve_image(_provider_type(state, image.provider_id), image.model["id"])
+    size = catalog_model.size_for(ill.get("aspect_ratio") or "3:2") if catalog_model else image.size
     versions = list(ill.get("versions") or [])
     best: dict[str, Any] | None = None
     final_review: dict[str, Any] = {}
     verdict, issues = "manual_check", list[str]()
     state.store.update(ill["id"], status="generating", error=None)
     for attempt in range(rounds + 1):
-        estimate = image_call_cost(state.c, state.choices, prompt_chars=len(prompt), references=len(references))
+        estimate = image_call_cost(state.c, state.choices, prompt_chars=len(prompt), references=len(references),
+                                   size=size)
         state.meter.check(estimate)
-        request = ImageGenerationRequest(model=image.model["id"], prompt=prompt, size=image.size, quality=image.quality,
+        request = ImageGenerationRequest(model=image.model["id"], prompt=prompt, size=size, quality=image.quality,
                                          reference_images=[ImagePart.from_bytes(d, t) for _, d, t in references])
         result = await state.c.ai.generate_image(
             image.provider_id, image.model["id"], request, confirmed=state.confirmed, course_id=state.course_id,
@@ -373,7 +406,7 @@ async def generate_one(state: RunState, ill: dict[str, Any]) -> None:
                     + (f" og {len(references)} referansebilder fra emnet" if references else ""))
         config = state.c.settings.get().provider(image.provider_id)
         ptype = config.type if config else image.provider_id
-        cost = pricing.image_cost(ptype, image.model["id"], quality=image.quality, size=image.size,
+        cost = pricing.image_cost(ptype, image.model["id"], quality=image.quality, size=size,
                                   prompt_tokens=result.usage.input_tokens - result.usage.input_image_tokens,
                                   output_tokens=result.usage.output_tokens,
                                   input_image_tokens=result.usage.input_image_tokens) if result.usage.reported else None
@@ -406,13 +439,16 @@ async def generate_one(state: RunState, ill: dict[str, Any]) -> None:
     reason = str(final_review.get("manual_check_reason") or "")
     if (ill.get("plan") or {}).get("accuracy_risk") == "high":
         reason = reason or "Komplekst faglig innhold – bør kontrolleres av en fagperson."
+    caption_value = bool(final_review.get("caption_adds_value", True))
     state.store.update(
         ill["id"], asset_id=best["asset_id"], status="flagged" if flagged else "generated",
         alt_text=str(final_review.get("alt_text") or "")[:600], caption=str(final_review.get("caption") or "")[:600],
+        caption_enabled=state.options.settings.captions and caption_value,
         decorative=bool(final_review.get("decorative")), versions=versions,
         review={**{k: final_review.get(k) for k in (
             "relevance", "content_alignment", "visual_quality", "style_consistency", "supports_learning_goal",
-            "text_in_image", "incorrect_details", "issues", "image_description")},
+            "text_status", "text_issues", "incorrect_details", "issues", "image_description",
+            "caption_adds_value")},
             "verdict": best["verdict"], "issues": best["issues"], "manual_check": flagged, "manual_check_reason": reason,
             "attempts": len([v for v in versions if v["prompt"]]), "label": "KI-forslag – må vurderes"})
 
@@ -436,6 +472,7 @@ async def review_one(state: RunState, ill: dict[str, Any], data: bytes,
         "must_not_show": plan.get("must_not_show"), "accuracy_risk": plan.get("accuracy_risk"),
         "accuracy_notes": plan.get("accuracy_notes"), "page_summary": plan.get("page_summary"),
         "visual_style_guide": state.design.get("style_prompt"), "content_language": plan.get("content_language") or "nb",
+        "image_type": ill.get("image_type"), "planned_labels": ill.get("labels") or [],
     }
     text = (("Bilde 1 er illustrasjonen som skal vurderes."
              + (" Bilde 2 er et godkjent referansebilde fra emnet (stilgrunnlag)." if references else "")) + "\n\n"
@@ -450,6 +487,11 @@ async def review_one(state: RunState, ill: dict[str, Any], data: bytes,
 
 
 # ----------------------------------------------------------------------------------------- the job
+
+
+def _provider_type(state: RunState, provider_id: str) -> str:
+    config = state.c.settings.get().provider(provider_id)
+    return config.type if config else provider_id
 
 
 def _progress_label(state: RunState, url: str) -> str:

@@ -7,6 +7,8 @@ core/ai (external AI must be allowed; with «Bekreft før innhold sendes» the t
 from __future__ import annotations
 
 import asyncio
+import logging
+import re
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
@@ -33,18 +35,31 @@ from emneklar.features.illustrations.costs import estimate as estimate_costs
 from emneklar.features.illustrations.design import DesignData, DesignProfiles
 from emneklar.features.illustrations.inventory import OUTSIDE_MODULES, Scope, build_inventory, html_text
 from emneklar.features.illustrations.pipeline import JOB_KIND, RunOptions, compose_prompt, run_job, sample_prompt
-from emneklar.features.illustrations.placement import PLACEMENTS, Anchor, candidate_anchors
+from emneklar.features.illustrations.placement import (
+    PLACEMENTS,
+    Anchor,
+    Insertion,
+    PlacementError,
+    candidate_anchors,
+    figure_html,
+    insert,
+)
 from emneklar.features.illustrations.privacy import wrap
 from emneklar.features.illustrations.publish import build_page_change, stage_page, with_queued
 from emneklar.features.illustrations.store import RUN_STATUS_LABELS, STATUS_LABELS, Store
 from emneklar.features.illustrations.structure import parse_page
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
 
 USAGE_RIGHT_LABELS = {"own_copyright": "Jeg har opphavsretten", "used_by_permission": "Brukt med tillatelse",
                       "fair_use": "Rimelig bruk / sitatrett", "public_domain": "Fritt tilgjengelig (public domain)",
                       "creative_commons": "Creative Commons-lisens"}
 AMOUNT_LABELS = {"low": "Lav", "balanced": "Balansert", "high": "Høy"}
+FORMAT_LABELS = {"auto": "Automatisk (anbefalt)", "16:9": "Bred 16:9", "3:2": "Liggende 3:2", "4:3": "Liggende 4:3",
+                 "1:1": "Kvadratisk 1:1", "2:3": "Stående 2:3"}
+IMAGE_TYPE_LABELS = {"scene": "Situasjon", "illustration": "Illustrasjon", "object": "Gjenstand", "diagram": "Diagram",
+                     "model": "Modell", "infographic": "Infografikk", "process": "Prosess", "concept_map": "Begrepskart"}
 
 
 def _flag(c: AppContainer) -> None:
@@ -102,6 +117,7 @@ async def catalog(c: AppContainer = Depends(get_container)) -> dict[str, Any]:
         "image_models": [m.as_dict() for m in image_catalog.catalog()], "image_catalog_note":
             image_catalog.catalog_data()["note"],
         "placements": PLACEMENTS, "amounts": AMOUNT_LABELS, "statuses": STATUS_LABELS,
+        "formats": FORMAT_LABELS, "image_types": IMAGE_TYPE_LABELS,
         "run_statuses": RUN_STATUS_LABELS, "pricing": pricing.summary(),
         "usage_rights": [{"id": k, "label": USAGE_RIGHT_LABELS[k]} for k in USE_JUSTIFICATIONS],
     }
@@ -257,6 +273,13 @@ async def suggest_design(course_id: str, body: ConsentBody, c: AppContainer = De
             "model": result.model, "route_reason": decision.reason}
 
 
+def _sample_size(c: AppContainer, choices: Any, design: dict[str, Any]) -> str:
+    aspect = str((design.get("data") or {}).get("aspect_ratio") or "auto")
+    config = c.settings.get().provider(choices.image.provider_id)
+    model = image_catalog.resolve(config.type, choices.image.model["id"]) if config and choices.image.model else None
+    return model.size_for(aspect if aspect != "auto" else "3:2") if model else "1536x1024"
+
+
 @router.post("/courses/{course_id}/illustrations/design/sample/prepare")
 async def prepare_sample(course_id: str, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
     _flag(c)
@@ -283,7 +306,7 @@ async def design_sample(course_id: str, body: ConsentBody, c: AppContainer = Dep
     prompt = sample_prompt({"name": context["name"]}, design)
     result = await c.ai.generate_image(
         choices.image.provider_id, choices.image.model["id"],
-        ImageGenerationRequest(model=choices.image.model["id"], prompt=prompt, size=design["size"],
+        ImageGenerationRequest(model=choices.image.model["id"], prompt=prompt, size=_sample_size(c, choices, design),
                                quality=choices.image.quality),
         summary="Eksempelbilde for designprofilen", confirmed=body.confirmed, course_id=course_id)
     image = result.images[0]
@@ -342,7 +365,17 @@ def _payload_summary(c: AppContainer, choices: Any, *, pages: int, chars: int, r
     text = ("Dette sendes: " + " ".join(f"{r['role']} → {r['service']}: {r['content']}" for r in receivers)
             + " Aldri: studentbesvarelser, karakterer, meldinger, diskusjonssvar, deltakerlister eller "
               "kontaktinformasjon (e-post og telefonnummer fjernes).")
-    return {"receivers": receivers, "text": text}
+    names = []
+    for role in ("illustration_analysis", "illustration_planning", "illustration_review"):
+        primary = choices.roles[role].primary
+        provider = app.provider(primary["provider_id"]) if primary else None
+        if provider and provider.name not in names:
+            names.append(provider.name)
+    if generate and image_provider and image_provider.name not in names:
+        names.append(image_provider.name)
+    short = ("Undervisningsinnholdet i omfanget sendes til " + " og ".join(names) + " for analyse, bildegenerering og "
+             "kvalitetskontroll. Studentdata og kontaktinformasjon sendes aldri.") if names else ""
+    return {"receivers": receivers, "text": text, "short": short, "providers": names}
 
 
 async def _inventory_and_estimate(c: AppContainer, course_id: str, body: RunBody) -> dict[str, Any]:
@@ -380,6 +413,7 @@ async def _inventory_and_estimate(c: AppContainer, course_id: str, body: RunBody
     return {"available": reason is None, "reason": reason, "stats": inv.stats(), "skipped": inv.skipped,
             "limitations": inv.limitations, "estimate": cost, "choices": choices.as_dict(),
             "payload_summary": payload["text"], "receivers": payload["receivers"], "external": external,
+            "payload_short": payload["short"], "providers": payload["providers"],
             "needs_confirmation": external and app.privacy.confirm_before_send,
             "usage_rights_required": usage_rights_required,
             "pages": [{"url": u, "title": inv.pages[u].title, "module": getattr(inv.module_of(u), "name",
@@ -563,6 +597,7 @@ class IllustrationPatch(BaseModel):
     anchor: dict[str, Any] | None = None
     status: Literal["approved", "rejected", "skipped", "proposed", "generated"] | None = None
     asset_id: str | None = Field(default=None, max_length=32)  # choose another generated version
+    credit: str | None = Field(default=None, max_length=200)  # credit line ("" = none), separate from the caption
 
 
 @router.patch("/illustrations/{illustration_id}")
@@ -576,7 +611,7 @@ async def edit(illustration_id: int, body: IllustrationPatch, c: AppContainer = 
         raise AppError("change_state_invalid", status=409,
                        message="Illustrasjonen er publisert. Bruk «Angre på denne siden» for å fjerne den fra Canvas.")
     fields: dict[str, Any] = {k: v for k, v in body.model_dump(exclude_unset=True).items()
-                              if k in ("prompt", "alt_text", "caption", "caption_enabled", "decorative")}
+                              if k in ("prompt", "alt_text", "caption", "caption_enabled", "decorative", "credit")}
     if "style_override" in body.model_fields_set:
         if body.style_override and body.style_override not in {s["key"] for s in design_mod.styles()}:
             raise AppError("validation_error", detail="Ukjent stil")
@@ -632,6 +667,8 @@ def _hash(body: str) -> str:
 class RegenerateBody(BaseModel):
     prompt: str | None = Field(default=None, max_length=6000)
     style_override: str | None = Field(default=None, max_length=32)
+    labels: list[str] | None = Field(default=None, max_length=20)  # the exact short labels ([] = text-free)
+    aspect_ratio: Literal["16:9", "3:2", "4:3", "1:1", "2:3"] | None = None
     confirmed: bool = False
 
 
@@ -651,9 +688,95 @@ async def regenerate(illustration_id: int, body: RegenerateBody, c: AppContainer
         fields["prompt"] = body.prompt
     if body.style_override is not None:
         fields["style_override"] = body.style_override or None
+    if body.labels is not None:
+        from emneklar.features.illustrations.pipeline import clean_labels
+
+        fields["labels"] = clean_labels(body.labels, allowed=options.settings.text_in_images != "never")
+    if body.aspect_ratio is not None:
+        fields["aspect_ratio"] = body.aspect_ratio
     store.update(illustration_id, **fields)
     return _submit(c, ill["course_id"], ill["run_id"], stages=("generate",), confirmed=body.confirmed,
                    ids=[illustration_id], title=f"KI-bildeassistent: nytt bilde for «{ill['page_title']}»")
+
+
+@router.get("/illustrations/{illustration_id}/page-preview")
+async def page_preview(illustration_id: int, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
+    """The live page with this illustration – and the page's other illustrations from the run that are not
+    rejected or skipped – inserted where they would go, sanitised like Canvas does. Our images are embedded as data
+    URLs because the sandboxed preview frame cannot load anything that needs the session."""
+    _flag(c)
+    store = _store(c)
+    ill = store.get(illustration_id)
+    page = await CanvasAPI(c.canvas()).get_page(ill["course_id"], ill["page_url"])
+    body = page.get("body") or ""
+    max_width = c.settings.get().illustrations.max_width_px
+    others = [i for i in store.for_run(ill["run_id"]) if i["page_url"] == ill["page_url"] and i["asset_id"]
+              and i["status"] not in ("rejected", "skipped") and i["id"] != ill["id"]]
+    chosen = [ill, *others] if ill["asset_id"] else others
+    assets = _assets(c)
+    insertions, skipped, sources = [], [], {}
+    for item in chosen:
+        info = assets.get(item["asset_id"])
+        # A placeholder on a reserved host: the Canvas image proxy rewrite leaves it alone, then it becomes a data URL.
+        placeholder = f"https://emneklar.invalid/asset/{item['asset_id']}"
+        sources[placeholder] = item["asset_id"]
+        insertions.append(Insertion(f"preview-{item['id']}", Anchor.from_dict(item["anchor"]), figure_html(
+            marker=f"preview-{item['id']}", src=placeholder, alt="" if item["decorative"] else item["alt_text"],
+            caption=item["caption"] if item["caption_enabled"] else None, width=info["width"], height=info["height"],
+            decorative=item["decorative"], max_width=max_width, credit=item.get("credit") or None)))
+    html = body
+    for insertion in insertions:
+        try:
+            html = insert(html, [insertion])
+        except PlacementError:
+            skipped.append(insertion.marker)
+    from emneklar.core.security.sanitize import preview_html
+
+    clean = preview_html(html, c.settings.get().canvas.base_url)
+    clean = await _inline_images(c, clean, {p: assets.display_data_url(a) for p, a in sources.items()})
+    return {"html": clean, "title": page.get("title") or ill["page_title"], "skipped": skipped,
+            "page_changed": bool(ill["page_hash"]) and ill["page_hash"] != _hash(body)}
+
+
+_IMG = re.compile(r'<img\b[^>]*?\bsrc="([^"]+)"[^>]*>', re.IGNORECASE)
+PREVIEW_CANVAS_IMAGES = 12
+PREVIEW_IMAGE_BYTES = 5 * 1024 * 1024
+
+
+async def _inline_images(c: AppContainer, html: str, ours: dict[str, str]) -> str:
+    """The preview frame is sandboxed (no session, strict CSP), so every image is embedded: our illustrations, and the
+    page's own Canvas images fetched through the Canvas client (size-limited). Images from other sites are replaced
+    by a labelled placeholder – the preview never loads anything from the internet."""
+    import base64
+    import io
+    from urllib.parse import unquote
+
+    from PIL import Image
+
+    api = CanvasAPI(c.canvas())
+    inline = dict(ours)
+    fetched = 0
+    for src in dict.fromkeys(m.group(1) for m in _IMG.finditer(html)):
+        if src in inline or not src.startswith("/api/canvas/image?url=") or fetched >= PREVIEW_CANVAS_IMAGES:
+            continue
+        fetched += 1
+        try:
+            data, _ctype = await api.file_bytes(unquote(src.split("url=", 1)[1]), max_bytes=PREVIEW_IMAGE_BYTES)
+            with Image.open(io.BytesIO(data)) as image:
+                image.thumbnail((1200, 1200))
+                buffer = io.BytesIO()
+                image.convert("RGB").save(buffer, "WEBP", quality=80)
+            inline[src] = "data:image/webp;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
+        except Exception as exc:  # noqa: BLE001 - any failure: show the placeholder instead of a broken image
+            log.debug("Forhåndsvisning: bildet kunne ikke hentes (%s)", type(exc).__name__)
+
+    def replace(match: re.Match[str]) -> str:
+        src = match.group(1)
+        if src in inline:
+            return match.group(0).replace(f'src="{src}"', f'src="{inline[src]}"', 1)
+        return '<span class="ek-preview-placeholder">Eksisterende bilde – vises ikke i forhåndsvisningen</span>'
+
+    return _IMG.sub(replace, html)
 
 
 @router.get("/illustrations/{illustration_id}/prompt-preview")

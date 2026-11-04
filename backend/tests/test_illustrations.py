@@ -288,6 +288,8 @@ class FakeAI:
     def __init__(self) -> None:
         self.calls: list[dict] = []
         self.verdicts: list[str] = []
+        self.text_statuses: list[str] = []
+        self.caption_adds_value = True
         self.plans: dict[str, list[dict]] = {}
 
     @staticmethod
@@ -330,11 +332,15 @@ class FakeAI:
             return {"needs_illustrations": bool(proposals), "reason": "Testplan", "illustrations": proposals}
         if "relevance" in props:
             verdict = self.verdicts.pop(0) if self.verdicts else "pass"
+            text_status = self.text_statuses.pop(0) if self.text_statuses else "none"
             return {"relevance": 5, "content_alignment": 5, "visual_quality": 4, "style_consistency": 4,
-                    "supports_learning_goal": 5, "text_in_image": "none", "incorrect_details": [], "issues": [],
+                    "supports_learning_goal": 5, "text_status": text_status,
+                    "text_issues": ["«Fargemodel» er feilstavet"] if text_status == "errors" else [],
+                    "incorrect_details": [], "issues": [],
                     "verdict": verdict, "manual_check_reason": "", "revised_prompt": "Better prompt",
                     "image_description": "Studenter", "alt_text": "Fire studenter sammenligner et fotografi og en logo.",
-                    "decorative": False, "caption": "Valg av format avhenger av bildets innhold."}
+                    "decorative": False, "caption": "Valg av format avhenger av bildets innhold.",
+                    "caption_adds_value": self.caption_adds_value}
         if "style_key" in props:
             return {"style_key": "academic", "name": "Akademisk", "rationale": "Passer faget",
                     "illustration_style": "academic", "palette": ["#112233", "nope"], "palette_description": "",
@@ -345,7 +351,12 @@ class FakeAI:
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
         if path.endswith(("/images/generations", "/images/edits")):
-            self.calls.append({"kind": "image", "path": path, "body": request.content.decode("utf-8", "replace")})
+            raw = request.content.decode("utf-8", "replace")
+            try:
+                prompt = json.loads(raw).get("prompt", "")
+            except ValueError:
+                prompt = raw
+            self.calls.append({"kind": "image", "path": path, "body": raw, "prompt": prompt})
             return httpx.Response(200, json={"data": [{"b64_json": base64.b64encode(png(64, 40)).decode()}],
                                              "usage": {"input_tokens": 300, "output_tokens": 1584,
                                                        "input_tokens_details": {"text_tokens": 300, "image_tokens": 0}}})
@@ -364,14 +375,15 @@ class FakeAI:
                                          "model": body["model"], "usage": {"prompt_tokens": 1000, "completion_tokens": 300}})
 
 
-def proposal(section: str = "s1", placement: str = "after_explanation", concept: str = "Raster og vektor") -> dict:
+def proposal(section: str = "s1", placement: str = "after_explanation", concept: str = "Raster og vektor",
+             **extra: object) -> dict:
     return {"section_id": section, "placement": placement, "placement_reason": "Etter forklaringen",
             "pedagogical_purpose": "Vise forskjellen", "concept": concept, "learning_goal": "Velge format",
             "motif": "To bilder side om side", "composition": "Venstre/høyre", "relevant_context": "Raster vs vektor",
             "must_show": ["et foto", "en logo"], "must_not_show": ["tekst"], "accuracy_risk": "low",
-            "accuracy_notes": "", "adds_value": "Ingen bilder viser dette", "needs_text_in_image": False,
-            "text_alternative": "", "decorative": False,
-            "image_prompt": "A photograph next to a simple logo, showing raster versus vector."}
+            "accuracy_notes": "", "adds_value": "Ingen bilder viser dette", "decorative": False,
+            "image_type": "illustration", "aspect_ratio": "3:2", "labels": [],
+            "image_prompt": "A photograph next to a simple logo, showing raster versus vector.", **extra}
 
 
 @pytest.fixture
@@ -431,6 +443,7 @@ def test_estimate_shows_receivers_and_a_non_guaranteed_range(canvas_client: Test
     assert {r["role"] for r in estimate["receivers"]} == {"Innholdsanalyse", "Bildeplan", "Bildegenerering",
                                                           "Kvalitetskontroll"}
     assert "Claude Fable 5.1" in estimate["payload_summary"] and "studentbesvarelser" in estimate["payload_summary"]
+    assert estimate["payload_short"].startswith("Undervisningsinnholdet i omfanget sendes til Anthropic og OpenAI")
     assert "Emnets navn, beskrivelse og emneplan, modulstrukturen" in estimate["payload_summary"]
     assert ai.calls == [], "the estimate reads Canvas only"
 
@@ -514,19 +527,102 @@ def test_review_loop_regenerates_and_flags_for_manual_check(canvas_container, ca
     assert approve.status_code == 400, "a meaningful image needs alt text before it can be approved"
 
 
-def test_plan_only_mode_and_text_heavy_proposals(canvas_client: TestClient, ai: FakeAI) -> None:
-    diagram = {**proposal(concept="Fargemodell"), "needs_text_in_image": True,
-               "text_alternative": "Tabell i HTML"}
-    ai.plans = {"Fargelære": [diagram, proposal(section="s1", concept="Komplementærfarger")]}
+def test_plan_only_mode_then_generate_the_chosen_proposals(canvas_client: TestClient, ai: FakeAI) -> None:
+    ai.plans = {"Fargelære": [proposal(concept="Fargemodell"), proposal(section="s1", concept="Komplementærfarger")]}
     run = start(canvas_client, {"type": "page", "page_url": "fargelaere"}, mode="plan")
     assert run["run"]["status"] == "planned" and not any(c["kind"] == "image" for c in ai.calls)
-    statuses = sorted(i["status"] for i in run["illustrations"])
-    assert statuses == ["proposed", "skipped"]
-    skipped = next(i for i in run["illustrations"] if i["status"] == "skipped")
-    assert "HTML/SVG" in skipped["plan"]["skip_reason"]
+    first, second = run["illustrations"]
+    assert first["status"] == second["status"] == "proposed"
+    canvas_client.patch(f"/api/illustrations/{second['id']}", json={"status": "skipped"})
     job = canvas_client.post(f"/api/illustrations/runs/{run['run']['id']}/generate", json={"confirmed": True}).json()
     assert wait_for_job(canvas_client, job["id"])["status"] == "completed"
-    assert len([c for c in ai.calls if c["kind"] == "image"]) == 1, "only the proposed one is generated"
+    assert len([c for c in ai.calls if c["kind"] == "image"]) == 1, "only the included proposal is generated"
+
+
+def test_short_labels_in_diagrams_are_requested_exactly_and_checked(canvas_container, canvas_client: TestClient,
+                                                                     ai: FakeAI) -> None:
+    labels = ["Rød", "Grønn", "Blå", "Et for langt etikett med mange ord", "Rød"]
+    ai.plans = {"Fargelære": [proposal(concept="Fargemodell", image_type="diagram", aspect_ratio="4:3",
+                                       labels=labels)]}
+    ai.text_statuses = ["errors", "correct"]
+    run = start(canvas_client, {"type": "page", "page_url": "fargelaere"})
+    ill = run["illustrations"][0]
+    assert ill["labels"] == ["Rød", "Grønn", "Blå"], "short, unique labels only"
+    images = [c for c in ai.calls if c["kind"] == "image"]
+    assert len(images) == 2, "a misspelled label gives a new round"
+    assert '"Rød"; "Grønn"; "Blå"' in images[0]["prompt"] and "spelled exactly" in images[0]["prompt"]
+    assert "absolutely no text" not in images[0]["prompt"] and "1536x1152" in images[0]["body"], "4:3 format"
+    assert "Fix these problems" in images[1]["prompt"] and "feilstavet" in images[1]["prompt"]
+    review = next(c for c in ai.calls if c["kind"] == "text" and "kvalitetssikrer" in str(c["system"]))
+    assert "planned_labels" in review["text"] and "Grønn" in review["text"]
+    assert ill["status"] == "generated" and ill["review"]["text_status"] == "correct"
+
+
+def test_text_free_when_text_in_images_is_off(canvas_client: TestClient, ai: FakeAI) -> None:
+    ai.plans = {"Fargelære": [proposal(image_type="diagram", labels=["Rød", "Blå"])]}
+    settings = {**canvas_client.get(f"/api/courses/{COURSE_ID}/illustrations").json()["settings"],
+                "text_in_images": "never"}
+    run = start(canvas_client, {"type": "page", "page_url": "fargelaere"}, settings=settings)
+    assert run["illustrations"][0]["labels"] == []
+    image = next(c for c in ai.calls if c["kind"] == "image")
+    assert "absolutely no text" in image["body"]
+
+
+@pytest.mark.parametrize(("setting", "planned", "size"), [
+    ("auto", "16:9", "1536x864"), ("auto", "2:3", "1024x1536"), ("1:1", "16:9", "1024x1024")])
+def test_image_format_is_chosen_per_illustration_unless_fixed(canvas_client: TestClient, ai: FakeAI, setting: str,
+                                                              planned: str, size: str) -> None:
+    ai.plans = {"Fargelære": [proposal(aspect_ratio=planned)]}
+    settings = {**canvas_client.get(f"/api/courses/{COURSE_ID}/illustrations").json()["settings"],
+                "image_format": setting}
+    run = start(canvas_client, {"type": "page", "page_url": "fargelaere"}, settings=settings)
+    image = next(c for c in ai.calls if c["kind"] == "image")
+    assert size in image["body"] and run["illustrations"][0]["aspect_ratio"] == (planned if setting == "auto"
+                                                                                  else setting)
+
+
+def test_caption_is_off_when_it_adds_nothing(canvas_client: TestClient, ai: FakeAI) -> None:
+    ai.plans = {"Fargelære": [proposal()]}
+    ai.caption_adds_value = False
+    run = start(canvas_client, {"type": "page", "page_url": "fargelaere"})
+    ill = run["illustrations"][0]
+    assert ill["caption"] and ill["caption_enabled"] is False and ill["credit"] == "KI-generert illustrasjon"
+
+
+def test_published_figure_is_responsive_credited_and_checked(canvas_container, canvas_client: TestClient,
+                                                            ai: FakeAI) -> None:
+    state = fake_state(canvas_container)
+    state.sanitize_pages = True  # behave like Canvas: unknown attributes are removed on save
+    ai.plans = {"Bildeformater": [proposal(section="s2", placement="end_of_section")]}
+    run = start(canvas_client, {"type": "page", "page_url": "bildeformater"})
+    result = publish_all(canvas_client, run["run"]["id"])
+    assert wait_for_job(canvas_client, result["job"]["id"])["result"]["summary"] == {"applied": 1}
+    body = page_body(canvas_client, "bildeformater")["body"]
+    figure_html = re.search(r"<figure.*?</figure>", body, re.DOTALL).group(0)
+    assert "max-width:900px" in figure_html.replace(" ", "") and "width:100%" in figure_html.replace(" ", "")
+    assert "text-align:left" in figure_html.replace(" ", "")
+    assert '<small class="emneklar-credit"' in figure_html and "KI-generert illustrasjon</small>" in figure_html
+    caption = re.search(r"<figcaption[^>]*>(.*?)<small", figure_html, re.DOTALL).group(1)
+    assert "KI-generert" not in caption, "the credit is separate from the caption"
+    published = next(i for i in canvas_client.get(f"/api/illustrations/runs/{run['run']['id']}").json()["illustrations"])
+    check = published["published"]["html_check"]
+    assert check["ok"] and 'loading="lazy"' in check["dropped"], "what Canvas removed is reported, not hidden"
+
+
+def test_lazy_loading_only_below_the_top_of_the_page() -> None:
+    s = parse_page(PAGE)
+    top, lower = P.anchor_for(s, "s0", "after_intro"), P.anchor_for(s, "s1", "end_of_section")
+    assert not P.lazy_for(top) and P.lazy_for(lower)
+    portrait = P.figure_html(marker="m", src="/x", alt="a", caption=None, width=1024, height=1536, decorative=False)
+    assert "max-width: 560px" in portrait, "tall images are shown narrower"
+
+
+def test_page_preview_shows_the_image_in_the_page(canvas_client: TestClient, ai: FakeAI) -> None:
+    ai.plans = {"Fargelære": [proposal(section="s0", placement="after_intro")]}
+    run = start(canvas_client, {"type": "page", "page_url": "fargelaere"})
+    preview = canvas_client.get(f"/api/illustrations/{run['illustrations'][0]['id']}/page-preview").json()
+    assert preview["skipped"] == [] and 'src="data:image/webp;base64,' in preview["html"]
+    assert "Lys grå tekst på hvit bakgrunn." in preview["html"] and "<figure" in preview["html"]
 
 
 def test_dry_run_publishes_nothing(canvas_container, canvas_client: TestClient, ai: FakeAI) -> None:
@@ -769,3 +865,14 @@ def test_template_components_are_never_entered() -> None:
     assert out.startswith(accordion), "the figure goes after the component, never inside it"
     wrapped = f'<div id="dp-wrapper" class="dp-wrapper">{accordion}<p>Etter</p></div>'
     assert parse_page(wrapped).wrapper_depth == 1, "known page wrappers are still entered"
+
+
+def test_page_preview_embeds_canvas_images_and_never_loads_external_ones(canvas_container, canvas_client: TestClient,
+                                                                         ai: FakeAI) -> None:
+    fake_state(canvas_container).file_bytes["9004"] = (png(), "image/png")  # a valid image on the page
+    ai.plans = {"Bildeformater": [proposal(section="s2", placement="end_of_section")]}
+    run = start(canvas_client, {"type": "page", "page_url": "bildeformater"})
+    html = canvas_client.get(f"/api/illustrations/{run['illustrations'][0]['id']}/page-preview").json()["html"]
+    assert "cdn.example.org" not in html and "/api/canvas/image" not in html
+    assert "Eksisterende bilde – vises ikke i forhåndsvisningen" in html, "the external image is a placeholder"
+    assert html.count('src="data:image/webp;base64,') == 2, "our illustration and the page's own Canvas image"

@@ -27,12 +27,15 @@ from emneklar.core.container import AppContainer
 from emneklar.core.errors import AppError
 from emneklar.features.illustrations.assets import EXT, AssetStore
 from emneklar.features.illustrations.placement import (
+    DEFAULT_MAX_WIDTH,
     Anchor,
     Insertion,
     PlacementError,
+    check_figure,
     figure_html,
     find_figures,
     insert,
+    lazy_for,
     remove,
 )
 from emneklar.features.illustrations.store import Store, marker_for
@@ -129,10 +132,7 @@ class InsertIllustrations(Applier):
                                            use_justification=rights["use_justification"],
                                            legal_copyright=rights.get("legal_copyright"), publish=True, permit=permit)
             src = f"/courses/{change.course_id}/files/{file['id']}/preview"
-            insertions.append(Insertion(item["marker"], Anchor.from_dict(item["anchor"]), figure_html(
-                marker=item["marker"], src=src, alt=item.get("alt") or "",
-                caption=item.get("caption") if item.get("caption_enabled", True) else None,
-                width=item.get("width"), height=item.get("height"), decorative=bool(item.get("decorative")))))
+            insertions.append(Insertion(item["marker"], Anchor.from_dict(item["anchor"]), render(item, src)))
             files.append({"illustration_id": item["illustration_id"], "file_id": str(file["id"]),
                           "marker": item["marker"], "src": src, "reused": reused, "file_name": file.get("display_name")})
         # 2. Re-read and compare with the state the engine checked before the backup. Anything else → stop.
@@ -160,14 +160,24 @@ class InsertIllustrations(Applier):
         await api.update_page(change.course_id, change.target["object_id"], {"body": new_body}, permit=permit)
         after = await self.current(api, change)
         markers = [i.marker for i in insertions]
+        # What did Canvas keep? Required parts must be there; optional attributes are reported, not hidden.
+        by_marker = {f["marker"]: f for f in files}
+        html_check = {item["marker"]: check_figure(
+            after["figures"].get(item["marker"]), file_id=by_marker[item["marker"]]["file_id"],
+            alt="" if item.get("decorative") else str(item.get("alt") or ""),
+            caption=bool(item.get("caption_enabled") and item.get("caption") and not item.get("decorative"))
+            or bool(item.get("credit")), lazy=bool(item.get("lazy"))) for item in items}
         return {**after, "applied_figures": {m: after["figures"].get(m) for m in markers}, "files": files,
-                "page_hash": hashlib.sha256(str(after["body"]).encode("utf-8")).hexdigest()}
+                "html_check": html_check, "page_hash": hashlib.sha256(str(after["body"]).encode("utf-8")).hexdigest()}
 
     def verify(self, proposed: dict[str, Any], after: dict[str, Any]) -> list[str]:
         problems = []
         figures = after.get("figures") or {}
         if any(item["marker"] not in figures for item in proposed.get("illustrations") or []):
             problems.append("illustrasjonene")
+        for check in (after.get("html_check") or {}).values():
+            if not check.get("ok"):
+                problems.append("figurens HTML (" + ", ".join(check.get("missing") or []) + ")")
         if "_published" in proposed and after.get("published") != proposed["_published"]:
             problems.append("publiseringsstatus")
         return problems
@@ -189,10 +199,20 @@ class InsertIllustrations(Applier):
 register(InsertIllustrations())
 
 
+def render(item: dict[str, Any], src: str) -> str:
+    """The figure for a staged item (the same HTML in the preview and in Canvas, apart from the image address)."""
+    return figure_html(marker=item["marker"], src=src, alt=item.get("alt") or "",
+                       caption=item.get("caption") if item.get("caption_enabled", True) else None,
+                       width=item.get("width"), height=item.get("height"), decorative=bool(item.get("decorative")),
+                       max_width=int(item.get("max_width") or DEFAULT_MAX_WIDTH), lazy=bool(item.get("lazy")),
+                       credit=item.get("credit") or None)
+
+
 async def build_page_change(c: AppContainer, course_id: str, page_url: str, illustrations: list[dict[str, Any]],
                             *, usage_rights: dict[str, Any] | None, folder: str) -> dict[str, Any]:
     """Read the live page and compute exactly what publishing would change (no write, nothing staged)."""
     assets = AssetStore(c.db, c.config.illustrations_dir)
+    max_width = c.settings.get().illustrations.max_width_px
     api = CanvasAPI(c.canvas())
     page = await api.get_page(course_id, page_url)
     if is_block_editor_page(page):
@@ -204,13 +224,15 @@ async def build_page_change(c: AppContainer, course_id: str, page_url: str, illu
             raise AppError("validation_error", message=f"Illustrasjon {ill['id']} har ikke noe bilde ennå.")
         asset = assets.get(ill["asset_id"])
         path = assets.path(ill["asset_id"])
-        marker = marker_for(ill)
+        marker = marker_for(ill, extra=str(max_width))
         items.append({"illustration_id": ill["id"], "marker": marker, "asset_id": ill["asset_id"], "path": str(path),
                       "sha256": asset["sha256"], "media_type": asset["media_type"],
                       "file_name": f"emneklar-{asset['sha256'][:16]}.{EXT.get(asset['media_type'], 'png')}",
                       "width": asset["width"], "height": asset["height"], "anchor": ill["anchor"],
                       "alt": "" if ill["decorative"] else ill["alt_text"], "decorative": ill["decorative"],
-                      "caption": ill["caption"], "caption_enabled": ill["caption_enabled"] and bool(ill["caption"])})
+                      "caption": ill["caption"], "caption_enabled": ill["caption_enabled"] and bool(ill["caption"]),
+                      "credit": ill.get("credit") or "", "max_width": max_width,
+                      "lazy": lazy_for(Anchor.from_dict(ill["anchor"]))})
     figures = find_figures(body)
     existing = set(figures)
     stale = _stale_markers(existing, items)
@@ -234,10 +256,8 @@ async def build_page_change(c: AppContainer, course_id: str, page_url: str, illu
                        message="Sidens HTML er for uryddig til at bilder kan settes inn automatisk.")
     previews = []
     for item in items:
-        previews.append(Insertion(item["marker"], Anchor.from_dict(item["anchor"]), figure_html(
-            marker=item["marker"], src=f"/api/illustrations/assets/{item['asset_id']}", alt=item["alt"],
-            caption=item["caption"] if item["caption_enabled"] else None, width=item["width"], height=item["height"],
-            decorative=item["decorative"])))
+        previews.append(Insertion(item["marker"], Anchor.from_dict(item["anchor"]),
+                                  render(item, f"/api/illustrations/assets/{item['asset_id']}")))
     try:
         preview_body = insert(base, previews)
     except PlacementError as exc:

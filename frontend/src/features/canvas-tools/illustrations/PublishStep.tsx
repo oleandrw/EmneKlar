@@ -63,6 +63,7 @@ export function PublishStep({ runId, catalog }: { runId: number; catalog: Catalo
   if (run.isPending) return <Spinner label="Henter kjøringen …" />;
   const published = (run.data?.illustrations ?? []).filter((i) => i.status === "published");
   const publishedPages = [...new Map(published.map((i) => [i.page_url, i.page_title])).entries()];
+  const dropped = [...new Set(published.flatMap((i) => i.published.html_check?.dropped ?? []))];
   const data = preview.data;
   const rightsMissing = Boolean(data?.usage_rights_required && !rights);
   const okPages = data?.pages.filter((p) => p.ok) ?? [];
@@ -70,7 +71,7 @@ export function PublishStep({ runId, catalog }: { runId: number; catalog: Catalo
 
   return (
     <div className="ek-stack" data-gap="6">
-      <Card title="7. Publiser" description="Ingenting endres i Canvas før du publiserer. Alt går via endringskøen: konfliktsjekk, sikkerhetskopi, logg og angremulighet.">
+      <Card title="5. Publiser" description="Bare godkjente bilder publiseres. De settes inn på riktig sted via endringskøen: konfliktsjekk, sikkerhetskopi, logg og angremulighet.">
         <div className="ek-stack" data-gap="5">
           {jobId ? (
             <JobRunner jobId={jobId} wording={{ noun: "publiseringen", current: "Nå publiseres", findingsTitle: "Resultat", findingsEmpty: "",
@@ -82,7 +83,7 @@ export function PublishStep({ runId, catalog }: { runId: number; catalog: Catalo
                 void client.invalidateQueries({ queryKey: ["changelog"] });
               }} />
           ) : approvedCount === 0 ? (
-            <p>Ingen godkjente bilder venter på publisering. Godkjenn bilder i steg 6.</p>
+            <p>Ingen godkjente bilder venter på publisering. Godkjenn bilder i steg 4.</p>
           ) : preview.isPending ? <Spinner label="Beregner hva som endres …" /> : preview.error ? (
             <Alert tone="danger">{preview.error.message}</Alert>
           ) : data ? (
@@ -154,6 +155,12 @@ export function PublishStep({ runId, catalog }: { runId: number; catalog: Catalo
             ))}
           </ul>
         )}
+        {published.length ? (
+          <p className="ek-small">
+            Kontroll etter publisering: figur, bilde, alternativ tekst og bildetekst er bevart i Canvas.
+            {dropped.length ? ` Canvas fjernet disse attributtene ved lagring: ${dropped.join(", ")}. Bildet vises likevel riktig.` : " Alle attributtene ble beholdt."}
+          </p>
+        ) : null}
         <p className="ek-small ek-muted">Alle endringer finnes også i <Link to="/canvas-verktoy/endringslogg">Backup og endringslogg</Link>.</p>
         {undo.error ? <Alert tone="danger">{undo.error.message}</Alert> : null}
       </Card>

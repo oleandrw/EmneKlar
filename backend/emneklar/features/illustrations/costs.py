@@ -42,12 +42,13 @@ def text_call_cost(c: Any, model: dict[str, Any] | None, input_chars: int, outpu
     return pricing.text_cost(ptype, model["model_id"], estimate_tokens(input_chars, images), output_tokens)
 
 
-def image_call_cost(c: Any, choices: Choices, *, prompt_chars: int, references: int) -> float | None:
+def image_call_cost(c: Any, choices: Choices, *, prompt_chars: int, references: int,
+                    size: str | None = None) -> float | None:
     model = choices.image.model
     if not model:
         return None
     ptype = provider_type(choices, choices.image.provider_id, c)
-    return pricing.image_cost(ptype, model["id"], quality=choices.image.quality, size=choices.image.size,
+    return pricing.image_cost(ptype, model["id"], quality=choices.image.quality, size=size or choices.image.size,
                               prompt_tokens=prompt_chars // 4, reference_images=references)
 
 

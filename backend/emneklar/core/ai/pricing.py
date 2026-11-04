@@ -38,7 +38,15 @@ def image_output_tokens(quality: str, size: str) -> int | None:
     if not isinstance(row, dict):
         return None
     value = row.get(size)
-    return int(value) if value is not None else None
+    if value is not None:
+        return int(value)
+    # Sizes without a table entry (e.g. 1536x864 for 16:9): scale the 1536x1024 figure by the number of pixels.
+    try:
+        width, height = (int(v) for v in size.lower().split("x"))
+    except ValueError:
+        return None
+    base = row.get("1536x1024")
+    return int(int(base) * width * height / (1536 * 1024)) if base is not None else None
 
 
 def image_cost(provider_type: str, model_id: str, *, quality: str, size: str, prompt_tokens: int,

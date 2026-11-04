@@ -105,9 +105,11 @@ er brukt direkte i koden – ikke gjett nye verdier; kontroller mot dokumentasjo
 * **Bilder i HTML:** `<img src="/courses/:id/files/:file_id/preview" alt=… width=… height=…>` – som Rich Content
   Editor gjør (relativ `/preview`, uten spørring). Ikke bruk filens `url` (inneholder `verifier`). `data-api-endpoint`
   og `data-api-returntype` legges til av Canvas ved lesing og fjernes av editoren – EmneKlar skriver dem ikke.
-* **Sanering:** `figure` og `figcaption` er tillatt; `img` tillater `align alt height src usemap width longdesc`
-  (ikke `loading`); `src` bare http/https/relativ (ikke `data:`); `data-*` er tillatt; `style` med tillatte
-  CSS-egenskaper.
+* **Sanering:** `figure`, `figcaption` og `small` er tillatt; `img` tillater `align alt height src usemap width
+  longdesc` (ikke `loading` – det er bare tillatt på `iframe`, så `loading="lazy"` på bilder forventes fjernet ved
+  lagring); `src` bare http/https/relativ (ikke `data:`); `data-*` er tillatt; `style` med tillatte CSS-egenskaper
+  (`display`, `width`, `max-width`, `height`, `margin`, `font-size`, `text-align` m.fl.). EmneKlar leser siden
+  tilbake etter publisering og viser hvilke attributter Canvas fjernet.
 * **Synlighet:** en fil som er låst (`locked`, låst mappe eller låsedatoer) vises ikke for studenter. Skjulte filer
   virker via direkte lenke. Krever emnet opphavsrettsinformasjon (`course.usage_rights_required`), blir nye filer
   låst til den er satt: `PUT /api/v1/courses/:id/usage_rights` med `file_ids[]`, `publish=true` og

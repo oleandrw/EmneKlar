@@ -18,6 +18,10 @@ CATALOG_PATH = Path(__file__).resolve().parent / "image_models.json"
 IMAGE_PROVIDER_TYPES = ("openai", "azure_openai", "openai_compatible")
 DEFAULT_QUALITIES = ("low", "medium", "high")
 DEFAULT_SIZES = ("1536x1024", "1024x1024", "1024x1536")
+ASPECT_RATIOS = ("16:9", "3:2", "4:3", "1:1", "2:3")
+#: Models without arbitrary sizes (unknown deployments, own servers) get the nearest standard size.
+STANDARD_FOR_ASPECT = {"16:9": "1536x1024", "3:2": "1536x1024", "4:3": "1536x1024", "1:1": "1024x1024",
+                       "2:3": "1024x1536"}
 
 
 @dataclass(frozen=True)
@@ -35,13 +39,20 @@ class ImageModel:
     input_fidelity: bool = False
     default: bool = False
     known: bool = True  # False for a deployment/model name the user typed (capabilities unknown)
+    aspect_sizes: tuple[tuple[str, str], ...] = ()
+
+    def size_for(self, aspect_ratio: str) -> str:
+        """The request size for an aspect ratio (exact when the model supports it, else the nearest standard)."""
+        sizes = dict(self.aspect_sizes)
+        return sizes.get(aspect_ratio) or STANDARD_FOR_ASPECT.get(aspect_ratio, DEFAULT_SIZES[0])
 
     def as_dict(self) -> dict[str, Any]:
         return {"id": self.id, "label": self.label, "provider_type": self.provider_type,
                 "description": self.description, "quality_class": self.quality_class,
                 "speed_class": self.speed_class, "reference_images": self.reference_images,
                 "max_reference_images": self.max_reference_images, "qualities": list(self.qualities),
-                "sizes": list(self.sizes), "default": self.default, "known": self.known}
+                "sizes": list(self.sizes), "default": self.default, "known": self.known,
+                "aspect_sizes": dict(self.aspect_sizes)}
 
 
 @cache
@@ -57,7 +68,8 @@ def catalog() -> tuple[ImageModel, ...]:
                             max_reference_images=int(m.get("max_reference_images", 0)),
                             qualities=tuple(m.get("qualities") or DEFAULT_QUALITIES),
                             sizes=tuple(m.get("sizes") or DEFAULT_SIZES), input_fidelity=bool(m.get("input_fidelity")),
-                            default=bool(m.get("default"))) for m in catalog_data()["models"])
+                            default=bool(m.get("default")),
+                            aspect_sizes=tuple((m.get("aspect_sizes") or {}).items())) for m in catalog_data()["models"])
 
 
 def resolve(provider_type: str, model_id: str) -> ImageModel | None:

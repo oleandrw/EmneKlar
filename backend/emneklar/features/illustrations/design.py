@@ -27,7 +27,8 @@ from emneklar.core.storage.db import Database
 from emneklar.core.storage.models import IllustrationProfile
 
 STYLES_PATH = Path(__file__).resolve().parent / "styles.json"
-SIZES = {"3:2": "1536x1024", "1:1": "1024x1024", "2:3": "1024x1536"}
+#: «auto» = the planner picks the best format for each illustration; the others fix the format for the course.
+ASPECT_CHOICES = ("auto", "16:9", "3:2", "4:3", "1:1", "2:3")
 MAX_REFERENCES = 4
 
 
@@ -55,7 +56,7 @@ class DesignData(BaseModel):
     visual_traits: str = Field("", max_length=800)
     avoid: list[str] = Field(default_factory=list, max_length=30)
     people: str = Field("", max_length=500)
-    aspect_ratio: str = "3:2"
+    aspect_ratio: str = "auto"
 
     @field_validator("style_key")
     @classmethod
@@ -67,7 +68,7 @@ class DesignData(BaseModel):
     @field_validator("aspect_ratio")
     @classmethod
     def _ratio(cls, value: str) -> str:
-        if value not in SIZES:
+        if value not in ASPECT_CHOICES:
             raise ValueError("Ukjent bildeformat")
         return value
 
@@ -78,9 +79,6 @@ class DesignData(BaseModel):
 
         return [v.strip() for v in value if re.fullmatch(r"#[0-9A-Fa-f]{6}", v.strip())]
 
-    @property
-    def size(self) -> str:
-        return SIZES[self.aspect_ratio]
 
 
 def from_style(key: str) -> DesignData:
@@ -89,7 +87,7 @@ def from_style(key: str) -> DesignData:
     return DesignData(**{**fields, "style_key": base["key"], "name": base["label"]})
 
 
-def style_block(data: DesignData, *, version: int | None = None) -> str:
+def style_block(data: DesignData, *, version: int | None = None, labels: bool = False) -> str:
     """The course-wide style description added to every image prompt (English)."""
     parts = [f"Visual style (course design profile{f' v{version}' if version else ''}, keep consistent across all "
              f"images of the course): {data.illustration_style or style(data.style_key)['illustration_style']}."]
@@ -101,8 +99,10 @@ def style_block(data: DesignData, *, version: int | None = None) -> str:
                          ("Recurring visual traits", data.visual_traits), ("People", data.people)):
         if value:
             parts.append(f"{label}: {value}.")
-    avoid = list(dict.fromkeys([*data.avoid, "text", "logos", "watermarks"]))
-    parts.append(f"Never include: {', '.join(avoid)}.")
+    avoid = [a for a in dict.fromkeys([*data.avoid, "text", "logos", "watermarks"])
+             if not (labels and a.strip().lower() in ("text", "labels", "tekst", "numbers"))]
+    parts.append(f"Never include: {', '.join(avoid)}." + (" Only the short labels listed below may appear as text."
+                                                          if labels else ""))
     parts.append("Same visual universe as the other illustrations of the course, but a distinct motif – not a copy.")
     return " ".join(parts)
 
@@ -111,7 +111,7 @@ def profile_dict(row: IllustrationProfile) -> dict[str, Any]:
     data = DesignData.model_validate(row.data or {})
     return {"id": row.id, "course_id": row.course_id, "version": row.version, "name": row.name,
             "style_key": row.style_key, "style_label": style(row.style_key)["label"], "origin": row.origin,
-            "active": row.active, "data": data.model_dump(), "size": data.size,
+            "active": row.active, "data": data.model_dump(),
             "reference_assets": list(row.reference_assets or []),
             "created_at": row.created_at.isoformat() if row.created_at else None,
             "style_prompt": style_block(data, version=row.version)}

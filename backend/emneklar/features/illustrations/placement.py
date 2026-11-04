@@ -156,27 +156,87 @@ def resolve(structure: PageStructure, anchor: Anchor) -> int:
     return block.span.end
 
 
+DEFAULT_MAX_WIDTH = 900
+EAGER_PLACEMENTS = ("page_start", "after_intro")
+
+
+def display_width(max_width: int, width: int | None, height: int | None) -> int:
+    """Maximum display width: the configured width for landscape images, narrower for square and portrait images so
+    they do not fill the whole screen height."""
+    if not width or not height or width > height * 1.1:
+        return max_width
+    if width >= height * 0.9:
+        return min(max_width, 720)
+    return min(max_width, 560)
+
+
+def lazy_for(anchor: Anchor) -> bool:
+    """Lazy loading for images further down the page; images at the top load straight away."""
+    return anchor.placement not in EAGER_PLACEMENTS and anchor.block_index > 1
+
+
 def figure_html(*, marker: str, src: str, alt: str, caption: str | None, width: int | None, height: int | None,
-                decorative: bool, api_endpoint: str | None = None) -> str:
-    """Semantic, Canvas-safe HTML (``figure``/``figcaption`` are on Canvas' sanitiser allowlist; inline styles use
-    only allowed properties). Responsive: the image scales down with the page."""
+                decorative: bool, max_width: int = DEFAULT_MAX_WIDTH, lazy: bool = False,
+                credit: str | None = None) -> str:
+    """Semantic, responsive, Canvas-safe HTML: ``figure`` > ``img`` + ``figcaption`` (on Canvas' sanitiser allowlist).
+
+    The figure is at most ``max_width`` px wide and shrinks with the screen; the image fills the figure, so the
+    caption below it follows the image's width and is left-aligned. The credit line (e.g. «KI-generert illustrasjon»)
+    is a separate element after the caption, never part of it. ``loading="lazy"`` is set for images further down the
+    page (Canvas may remove it – what Canvas kept is checked after publishing)."""
     alt_value = "" if decorative else alt.strip()
     attrs = [f'src="{htmllib.escape(src, quote=True)}"', f'alt="{htmllib.escape(alt_value, quote=True)}"']
     if width and height:
         attrs.append(f'width="{int(width)}" height="{int(height)}"')
-    if api_endpoint:
-        attrs.append(f'data-api-endpoint="{htmllib.escape(api_endpoint, quote=True)}" data-api-returntype="File"')
+    if lazy:
+        attrs.append('loading="lazy"')
     if decorative:
         attrs.append('role="presentation"')
-    attrs.append('style="display: block; max-width: 100%; height: auto; margin: 0 auto;"')
+    attrs.append('style="display: block; width: 100%; max-width: 100%; height: auto;"')
+    shown = display_width(max_width, width, height)
     parts = [f'<figure class="emneklar-illustration" {MARKER_ATTR}="{htmllib.escape(marker, quote=True)}" '
-             'style="margin: 1.5em auto; max-width: 100%; text-align: center;">',
+             f'style="margin: 1.5em auto; max-width: {int(shown)}px;">',
              f"<img {' '.join(attrs)}>"]
-    if caption and caption.strip() and not decorative:
-        parts.append(f'<figcaption style="margin-top: 0.5em; font-size: 0.95em; text-align: left;">'
-                     f"{htmllib.escape(caption.strip())}</figcaption>")
+    caption_text = caption.strip() if caption and caption.strip() and not decorative else ""
+    credit_text = (credit or "").strip()
+    if caption_text or credit_text:
+        inner = htmllib.escape(caption_text)
+        if credit_text:
+            inner += (f'<small class="emneklar-credit" style="display: block; margin-top: 0.25em; font-size: 0.85em;">'
+                      f"{htmllib.escape(credit_text)}</small>")
+        parts.append(f'<figcaption style="margin-top: 0.5em; font-size: 0.95em; text-align: left;">{inner}</figcaption>')
     parts.append("</figure>")
     return "".join(parts)
+
+
+def check_figure(fragment: str | None, *, file_id: str, alt: str, caption: bool, lazy: bool) -> dict[str, Any]:
+    """What Canvas kept of a published figure: required parts (figure, image file, alt text, caption) and optional
+    attributes (loading, width/height, responsive style)."""
+    from bs4 import BeautifulSoup
+
+    if not fragment:
+        return {"ok": False, "missing": ["figuren"], "dropped": []}
+    soup = BeautifulSoup(fragment, "html.parser")
+    figure, img = soup.find("figure"), soup.find("img")
+    missing, dropped = [], []
+    if figure is None:
+        missing.append("figure")
+    if img is None or f"/files/{file_id}" not in str(img.get("src") or ""):
+        missing.append("bildet (img src)")
+    elif str(img.get("alt") if img.get("alt") is not None else "<mangler>").strip() != alt.strip():
+        missing.append("alternativ tekst")
+    if caption and soup.find("figcaption") is None:
+        missing.append("figcaption")
+    if img is not None:
+        if lazy and img.get("loading") != "lazy":
+            dropped.append('loading="lazy"')
+        if not (img.get("width") and img.get("height")):
+            dropped.append("width/height")
+        if "100%" not in str(img.get("style") or ""):
+            dropped.append("responsiv bredde (style)")
+    if figure is not None and "max-width" not in str(figure.get("style") or ""):
+        dropped.append("maksimal bredde (style)")
+    return {"ok": not missing, "missing": missing, "dropped": dropped}
 
 
 @dataclass

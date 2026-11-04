@@ -14,13 +14,50 @@ import {
   Checkbox,
   Dialog,
   Disclosure,
+  HtmlPreview,
   ImageFrame,
   KeyValue,
+  RadioGroup,
   SelectField,
+  Spinner,
   TextArea,
+  TextField,
   useToast,
+  type PreviewDevice,
 } from "../../../design-system";
 import { ILLUSTRATION_TONE, type Anchor, type Catalog, type Illustration } from "./api";
+
+const TEXT_STATUS: Record<string, string> = { none: "Ingen tekst", correct: "Etikettene er riktige og lesbare",
+  errors: "Feil i teksten", unwanted: "Uønsket tekst" };
+
+/** The live page with the image(s) inserted where they would go – desktop, tablet or mobile. */
+export function PagePreview({ illustrationId }: { illustrationId: number }) {
+  const [device, setDevice] = useState<PreviewDevice>("desktop");
+  const preview = useQuery({
+    queryKey: ["illustrations", "page-preview", illustrationId],
+    queryFn: () => api.get<{ html: string; title: string; skipped: string[]; page_changed: boolean }>(`/api/illustrations/${illustrationId}/page-preview`),
+  });
+  if (preview.isPending) return <Spinner label="Henter siden fra Canvas …" />;
+  if (preview.error || !preview.data) return <Alert tone="danger">Kunne ikke hente siden fra Canvas.</Alert>;
+  return (
+    <div className="ek-stack" data-gap="3">
+      <RadioGroup<PreviewDevice> legend="Vis som" name={`device-${illustrationId}`} columns={3} value={device} onChange={setDevice}
+        options={[{ value: "desktop", label: "PC" }, { value: "tablet", label: "Nettbrett" }, { value: "mobile", label: "Mobil" }]} />
+      {preview.data.page_changed ? <Alert tone="info">Siden er endret i Canvas etter analysen. Forhåndsvisningen viser siden slik den er nå.</Alert> : null}
+      {preview.data.skipped.length ? <Alert tone="warning">Et bilde kunne ikke plasseres fordi avsnittet det skulle stå ved, er endret. Velg plassering på nytt.</Alert> : null}
+      <HtmlPreview html={preview.data.html} title={`Forhåndsvisning av «${preview.data.title}» med illustrasjonene`} device={device} minHeight={760} />
+    </div>
+  );
+}
+
+export function PagePreviewDialog({ illustrationId, onClose }: { illustrationId: number; onClose: () => void }) {
+  return (
+    <Dialog open onClose={onClose} title="Forhåndsvisning av siden" size="xl"
+      description="Siden slik den blir med bildene som ikke er avvist. Ingenting er endret i Canvas ennå.">
+      <PagePreview illustrationId={illustrationId} />
+    </Dialog>
+  );
+}
 
 const RISK: Record<string, string> = { low: "Lav", medium: "Middels", high: "Høy" };
 const SCORES: [keyof Illustration["review"], string][] = [
@@ -42,6 +79,9 @@ export function IllustrationDetail({ item, catalog, onClose, onJob }: {
   const [captionOn, setCaptionOn] = useState(item.caption_enabled);
   const [prompt, setPrompt] = useState(item.prompt);
   const [style, setStyle] = useState(item.style_override ?? "");
+  const [labels, setLabels] = useState(item.labels.join(", "));
+  const [aspect, setAspect] = useState<string>(item.aspect_ratio);
+  const [credit, setCredit] = useState(item.credit);
   const [anchorKey, setAnchorKey] = useState<string>("");
   const [showPrompt, setShowPrompt] = useState(false);
   useEffect(() => {
@@ -51,7 +91,10 @@ export function IllustrationDetail({ item, catalog, onClose, onJob }: {
     setCaptionOn(item.caption_enabled);
     setPrompt(item.prompt);
     setStyle(item.style_override ?? "");
-  }, [item.id, item.alt_text, item.decorative, item.caption, item.caption_enabled, item.prompt, item.style_override]);
+    setLabels(item.labels.join(", "));
+    setAspect(item.aspect_ratio);
+    setCredit(item.credit);
+  }, [item.id, item.alt_text, item.decorative, item.caption, item.caption_enabled, item.prompt, item.style_override, item.labels, item.aspect_ratio, item.credit]);
 
   const refresh = () => client.invalidateQueries({ queryKey: ["illustrations"] });
   const locked = ["generating", "queued"].includes(item.status);
@@ -72,7 +115,10 @@ export function IllustrationDetail({ item, catalog, onClose, onJob }: {
     },
   });
   const regenerate = useMutation({
-    mutationFn: () => api.post<Job>(`/api/illustrations/${item.id}/regenerate`, { prompt, style_override: style, confirmed: true }),
+    mutationFn: () => api.post<Job>(`/api/illustrations/${item.id}/regenerate`, {
+      prompt, style_override: style, confirmed: true, aspect_ratio: aspect,
+      labels: labels.split(",").map((l) => l.trim()).filter(Boolean),
+    }),
     onSuccess: async (job) => {
       onJob(job.id);
       await refresh();
@@ -92,7 +138,8 @@ export function IllustrationDetail({ item, catalog, onClose, onJob }: {
     label: `${a.placement_label}${a.section_title ? ` – «${a.section_title}»` : ""}${a.block_text ? `: «${a.block_text.slice(0, 60)}…»` : ""}`,
   }));
   const chosenAnchor = anchors.data?.anchors.find((a) => `${a.placement}|${a.block_index}` === anchorKey);
-  const textChanged = alt !== item.alt_text || decorative !== item.decorative || caption !== item.caption || captionOn !== item.caption_enabled;
+  const textChanged = alt !== item.alt_text || decorative !== item.decorative || caption !== item.caption
+    || captionOn !== item.caption_enabled || credit !== item.credit;
   const error = patch.error ?? regenerate.error ?? reference.error;
   const plan = item.plan;
   const review = item.review;
@@ -103,7 +150,7 @@ export function IllustrationDetail({ item, catalog, onClose, onJob }: {
       footer={
         <div className="ek-cluster" data-gap="2">
           <Button variant="primary" icon={<Check aria-hidden="true" />} disabled={locked || !item.asset_id}
-            onClick={() => patch.mutate({ alt_text: alt, decorative, caption, caption_enabled: captionOn, status: "approved" })} loading={patch.isPending}>
+            onClick={() => patch.mutate({ alt_text: alt, decorative, caption, caption_enabled: captionOn, credit, status: "approved" })} loading={patch.isPending}>
             Godkjenn
           </Button>
           <Button icon={<X aria-hidden="true" />} disabled={locked || item.status === "published"} onClick={() => patch.mutate({ status: "rejected" })}>Forkast</Button>
@@ -129,12 +176,12 @@ export function IllustrationDetail({ item, catalog, onClose, onJob }: {
           <Alert tone="info">Publisert. Endrer du alt-tekst, bildetekst, plassering eller bilde, må illustrasjonen publiseres på nytt – den gamle figuren erstattes da.</Alert>
         ) : null}
         {item.error ? <Alert tone="danger">{item.error}</Alert> : null}
-        {plan.skip_reason ? <Alert tone="info">{plan.skip_reason}</Alert> : null}
         {error ? <Alert tone="danger">{error.message}</Alert> : null}
         <div className="ek-split" data-align="start">
           <div className="ek-stack" data-gap="3">
             <ImageFrame src={item.image_url} alt={decorative ? "" : alt || "Generert illustrasjon"} placeholder="Ikke generert ennå"
               caption={captionOn && caption && !decorative ? caption : undefined} />
+            {credit ? <p className="ek-xs ek-muted">{credit}</p> : null}
             {item.versions.length > 1 ? (
               <SelectField label="Versjon" value={item.asset_id ?? ""} disabled={locked}
                 onChange={(e) => patch.mutate({ asset_id: e.target.value })}
@@ -155,6 +202,11 @@ export function IllustrationDetail({ item, catalog, onClose, onJob }: {
             {anchors.data?.page_changed ? <Alert tone="info">Siden er endret i Canvas etter analysen. Kontroller plasseringen før publisering.</Alert> : null}
           </div>
         </div>
+        {item.image_url ? (
+          <Disclosure summary="Vis bildet på siden" defaultOpen>
+            <PagePreview illustrationId={item.id} />
+          </Disclosure>
+        ) : null}
         <KeyValue items={[
           ["Pedagogisk formål", plan.pedagogical_purpose ?? ""],
           ["Begrep bildet skal forklare", plan.concept ?? ""],
@@ -171,11 +223,11 @@ export function IllustrationDetail({ item, catalog, onClose, onJob }: {
             <div className="ek-stack" data-gap="2">
               <KeyValue items={[
                 ...SCORES.map(([key, label]) => [label, review[key] ? `${review[key]} av 5` : "–"] as [string, string]),
-                ["Tekst i bildet", review.text_in_image === "none" ? "Ingen" : review.text_in_image ?? "–"],
+                ["Tekst i bildet", TEXT_STATUS[review.text_status ?? ""] ?? "–"],
               ]} />
-              {[...(review.incorrect_details ?? []), ...(review.issues ?? [])].length ? (
+              {[...(review.text_issues ?? []), ...(review.incorrect_details ?? []), ...(review.issues ?? [])].length ? (
                 <ul className="ek-stack" data-gap="1">
-                  {[...(review.incorrect_details ?? []), ...(review.issues ?? [])].map((i) => <li key={i} className="ek-small">{i}</li>)}
+                  {[...(review.text_issues ?? []), ...(review.incorrect_details ?? []), ...(review.issues ?? [])].map((i) => <li key={i} className="ek-small">{i}</li>)}
                 </ul>
               ) : null}
             </div>
@@ -190,9 +242,11 @@ export function IllustrationDetail({ item, catalog, onClose, onJob }: {
           <TextArea label="Bildetekst" rows={2} value={caption} disabled={!captionOn || decorative || locked} onChange={(e) => setCaption(e.target.value)}
             hint="Forklarer hvordan bildet henger sammen med fagstoffet." />
           <Checkbox label="Vis bildetekst under bildet" checked={captionOn} disabled={decorative || locked} onChange={(e) => setCaptionOn(e.target.checked)} />
+          <TextField label="Kreditering" optional value={credit} disabled={locked} onChange={(e) => setCredit(e.target.value)}
+            hint="Egen linje under bildet, adskilt fra bildeteksten. Tom = ingen kreditering." />
           <div>
             <Button size="sm" disabled={!textChanged || locked} loading={patch.isPending}
-              onClick={() => patch.mutate({ alt_text: alt, decorative, caption, caption_enabled: captionOn })}>Lagre tekstene</Button>
+              onClick={() => patch.mutate({ alt_text: alt, decorative, caption, caption_enabled: captionOn, credit })}>Lagre tekstene</Button>
           </div>
         </div>
         <div className="ek-stack" data-gap="3">
@@ -210,6 +264,10 @@ export function IllustrationDetail({ item, catalog, onClose, onJob }: {
           <h3>Bildeprompt og stil</h3>
           <TextArea label="Bildeprompt (engelsk, til bildemodellen)" rows={5} value={prompt} disabled={locked} onChange={(e) => setPrompt(e.target.value)}
             hint="Emnets designprofil, den faglige konteksten og regelen om at bildet skal være uten tekst legges til automatisk." />
+          <TextField label="Etiketter i bildet (kommaseparert)" value={labels} disabled={locked} onChange={(e) => setLabels(e.target.value)}
+            hint="Korte begreper på innholdets språk, bare der tekst gjør bildet lettere å forstå. Tom = uten tekst." />
+          <SelectField label="Bildeformat" value={aspect} disabled={locked} onChange={(e) => setAspect(e.target.value)}
+            options={Object.entries(catalog.formats).filter(([value]) => value !== "auto").map(([value, label]) => ({ value, label }))} />
           <SelectField label="Bildestil for dette bildet" value={style} disabled={locked} onChange={(e) => setStyle(e.target.value)}
             options={[{ value: "", label: "Emnets designprofil" }, ...catalog.styles.filter((s) => s.key !== "custom").map((s) => ({ value: s.key, label: s.label }))]} />
           <div className="ek-cluster" data-gap="2">
