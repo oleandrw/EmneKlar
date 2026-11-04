@@ -98,6 +98,8 @@ export function ModuleRequirements() {
     require_sequential_progress: sequential === "" ? null : sequential === "yes",
   };
   const key = JSON.stringify(body);
+  // The key includes the policy derived from the options, so a preview is only shown for the choices it was made
+  // for. «Forhåndsvis» waits for the options: a preview requested before they load would never match.
   const preview = previewed?.key === key ? previewed.data : null;
   const previewMutation = useMutation({
     mutationFn: async (request: { key: string; body: typeof body }) => ({
@@ -156,6 +158,10 @@ export function ModuleRequirements() {
                 { value: "keep", label: "Behold eksisterende", hint: "Anbefalt. Elementer som allerede har krav, endres ikke." },
                 { value: "replace", label: "Erstatt eksisterende", hint: "Eksisterende krav byttes ut med forslaget." },
               ]} />
+            {options.isPending ? <Spinner label="Henter krav per elementtype …" /> : null}
+            {options.error ? (
+              <Alert tone="danger" role="alert">{(options.error as Error).message}</Alert>
+            ) : null}
             {options.data ? (
               <Fieldset legend="Krav per elementtype">
                 <div className="ek-grid" data-cols="2">
@@ -182,7 +188,7 @@ export function ModuleRequirements() {
             </p>
             <div className="ek-cluster">
               <Button icon={<Eye aria-hidden="true" />} onClick={() => previewMutation.mutate({ key, body })} loading={previewMutation.isPending}
-                disabled={scope === "modules" && moduleIds.length === 0}>
+                disabled={!options.data || (scope === "modules" && moduleIds.length === 0)}>
                 Forhåndsvis
               </Button>
               <Button variant="primary" icon={<ListPlus aria-hidden="true" />} onClick={() => stage.mutate()} loading={stage.isPending}

@@ -164,6 +164,9 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   loggen viser hvor mye EmneKlar fikk fra hver Canvas-liste.
 - Lange stier og adresser (for eksempel datamappen under *Innstillinger → Sikkerhet og personvern*) brytes nå over
   flere linjer i stedet for å gi sideveis rulling på mobil.
+- Automatiske modulkrav: trykket man «Forhåndsvis» før kravene per elementtype var lastet, ble forhåndsvisningen
+  laget uten krav og aldri vist. Knappen venter nå til valgene er lastet, og viser en feilmelding hvis de ikke kan
+  hentes.
 
 ### Sikkerhet
 - Oppdaterte avhengigheter med kjente sårbarheter: certifi 2026.10.19, pypdf 6.21.4, opentelemetry-api 1.45.1 og
