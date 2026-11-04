@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { BookOpenText, CircleCheck, CircleX, FlaskConical, History, ListChecks, Lock, Settings2, TriangleAlert, Undo2 } from "lucide-react";
+import { BookOpenText, CircleCheck, CircleX, FlaskConical, History, ImagePlus, ListChecks, Lock, Settings2, TriangleAlert, Undo2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Route, Routes } from "react-router";
 
@@ -23,6 +23,7 @@ import {
 import { BlueprintLocking } from "./BlueprintLocking";
 import { CanvasSettings } from "./CanvasSettings";
 import { ACTION, ChangeLog, type LogEntry } from "./ChangeLog";
+import { IllustrationAssistant } from "./illustrations/IllustrationAssistant";
 import { ModuleRequirements } from "./ModuleRequirements";
 import { CourseRag } from "./rag/CourseRag";
 
@@ -142,6 +143,12 @@ function Overview() {
               <Badge tone="info">Bare lesing fra Canvas</Badge>
             </FeatureCard>
           ) : null}
+          {session.flags.illustration_assistant !== false ? (
+            <FeatureCard to="bildeassistent" icon={<ImagePlus />} tone="violet" title="KI-bildeassistent" actionLabel="Åpne"
+              description="Faglig presise illustrasjoner for hele emnet, moduler eller én side – i én gjennomgående stil, med alt-tekst og bildetekst.">
+              <Badge tone="info">Godkjennes før Canvas endres</Badge>
+            </FeatureCard>
+          ) : null}
         </div>
       </div>
     </>
@@ -157,6 +164,7 @@ export function CanvasToolsPage() {
       <Route path="innstillinger" element={<Titled title="Canvas-innstillinger"><CanvasSettings /></Titled>} />
       <Route path="endringslogg" element={<Titled title="Backup og endringslogg"><ChangeLog /></Titled>} />
       <Route path="emne-rag" element={<Titled title="Emnets kunnskapsbase"><CourseRag /></Titled>} />
+      <Route path="bildeassistent" element={<Titled title="KI-bildeassistent"><IllustrationAssistant /></Titled>} />
     </Routes>
   );
 }

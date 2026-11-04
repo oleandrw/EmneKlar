@@ -27,6 +27,7 @@ ROUTERS = [
     "emneklar.features.homepage_builder.api",
     "emneklar.features.reporting.api",
     "emneklar.features.course_rag.api",
+    "emneklar.features.illustrations.api",
 ]
 
 

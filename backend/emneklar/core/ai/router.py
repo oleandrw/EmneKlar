@@ -53,11 +53,23 @@ TASKS: dict[str, TaskProfile] = {t.key: t for t in (
                 "Beskriver bilder, diagrammer og tekst i bilder (bildeanalyse).", 2, 2, True, True, 1200, 10_000),
     TaskProfile("rag_eval", "Emnets kunnskapsbase: testspørsmål",
                 "Lager testspørsmål for å måle hvor godt søket fungerer.", 1, 1, False, True, 1500, 20_000),
+    TaskProfile("illustration_analysis", "KI-bildeassistent: innholdsanalyse",
+                "Forstår emnet, modulene og sidene: fagområde, læringsmål, begreper og sammenheng.", 3, 3, False, True,
+                6000, 60_000),
+    TaskProfile("illustration_planning", "KI-bildeassistent: bildeplan og bildeprompt",
+                "Vurderer hvor illustrasjoner hjelper læringen, og skriver faglig presise bildebeskrivelser.", 3, 3,
+                False, True, 8000, 60_000),
+    TaskProfile("illustration_review", "KI-bildeassistent: kvalitetskontroll",
+                "Kontrollerer det ferdige bildet faglig og visuelt, og foreslår alt-tekst og bildetekst (bildeanalyse).",
+                3, 2, True, True, 2500, 20_000),
+    TaskProfile("illustration_design", "KI-bildeassistent: designprofil",
+                "Foreslår en felles visuell stil for emnets illustrasjoner.", 2, 2, False, True, 2500, 30_000),
 )}
 
 #: Usage log entries that are not routed tasks (embedding models are chosen under Emne-RAG, not by the router).
 USAGE_LABELS: dict[str, str] = {"rag_embedding": "Emnets kunnskapsbase: embedding",
-                                 "rag_transcription": "Emnets kunnskapsbase: transkripsjon"}
+                                 "rag_transcription": "Emnets kunnskapsbase: transkripsjon",
+                                 "illustration_image": "KI-bildeassistent: bildegenerering"}
 
 STRATEGY_LABEL = {"auto": "Automatisk", "low_cost": "Prioriter lav kostnad", "speed": "Prioriter hastighet",
                   "quality": "Prioriter kvalitet", "manual": "Manuell styring"}
@@ -164,7 +176,13 @@ def route(task: str, settings: AppSettings, models: list[dict[str, Any]], ready:
     # Fallbacks: other adequate models, then stronger ones if everything else fails.
     rest = list(ordered[1:]) + [m for m in sorted(usable, key=lambda m: -m["quality_class"])
                                        if m not in ordered]
-    decision.fallbacks = rest[:3]
+    fallbacks = rest[:3]
+    # A provider outage should not exhaust every fallback: keep at least one model from another provider.
+    if fallbacks and all(m["provider_id"] == ordered[0]["provider_id"] for m in fallbacks):
+        other = next((m for m in rest[3:] if m["provider_id"] != ordered[0]["provider_id"]), None)
+        if other is not None:
+            fallbacks[-1] = other
+    decision.fallbacks = fallbacks
     m = decision.primary
     why = {"auto": "rimeligste modell som forventes å holde nok kvalitet",
            "low_cost": "lavest mulig kostnad innenfor minimumskvaliteten",

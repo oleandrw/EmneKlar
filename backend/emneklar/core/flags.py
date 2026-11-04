@@ -40,6 +40,9 @@ FLAGS: tuple[FlagDef, ...] = (
     FlagDef("course_rag", "Emnets kunnskapsbase",
             "Samle emnets innhold lokalt og still spørsmål med kildehenvisninger (Canvas-verktøy).", "beta",
             True),
+    FlagDef("illustration_assistant", "KI-bildeassistent",
+            "Analyser emnet og lag faglig presise illustrasjoner med alt-tekst og bildetekst (Canvas-verktøy). "
+            "Krever en KI-leverandør med bildegenerering.", "beta", True),
     FlagDef("student_journey", "Studentreisen",
             "Visualisering av rekkefølgen studentene møter innholdet i.", "stable", True),
 )

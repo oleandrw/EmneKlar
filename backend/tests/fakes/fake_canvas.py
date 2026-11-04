@@ -77,6 +77,9 @@ class FakeCanvasState:
     fail: dict[str, int] = field(default_factory=dict)  # path substring -> status
     ignored_fields: set[str] = field(default_factory=set)  # fields a PUT accepts without storing (tests)
     origin: str = "http://canvas.test"
+    pending_uploads: dict[str, dict[str, Any]] = field(default_factory=dict)  # upload token -> preflight data
+    upload_redirect: bool = True  # step 2 answers 302 (S3 style) or 201 with Location (InstFS style)
+    upload_requests: list[dict[str, Any]] = field(default_factory=list)  # what step 2 received (headers, order)
 
 
 # ---------------------------------------------------------------------------------------- seed
@@ -292,6 +295,19 @@ def seed_state(origin: str = "http://canvas.test") -> FakeCanvasState:
 
 
 # ------------------------------------------------------------------------------------- the app
+
+
+def parse_multipart(raw: bytes, content_type: str) -> list[tuple[str, bytes]]:
+    """multipart/form-data → [(field name, bytes)] in order (the stdlib email parser; no extra dependency)."""
+    from email.parser import BytesParser
+    from email.policy import HTTP
+
+    message = BytesParser(policy=HTTP).parsebytes(f"Content-Type: {content_type}\r\n\r\n".encode() + raw)
+    out = []
+    for part in message.iter_parts():
+        name = part.get_param("name", header="content-disposition") or ""
+        out.append((str(name), part.get_payload(decode=True) or b""))
+    return out
 
 
 def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
@@ -605,7 +621,76 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
         return JSONResponse(d)
 
     async def files(request: Request) -> Response:
-        return paginate(request, list(course(request).files.values()))
+        c = course(request)
+        if request.method == "POST":  # step 1 of a file upload (preflight)
+            data = await body(request)
+            token = f"up{next_id()}"
+            state.pending_uploads[token] = {"course": c.course["id"], "name": data.get("name"),
+                                            "content_type": data.get("content_type"),
+                                            "folder": data.get("parent_folder_path") or "",
+                                            "on_duplicate": data.get("on_duplicate", "overwrite"),
+                                            "size": data.get("size")}
+            return JSONResponse({"upload_url": f"{state.origin}/upload/{token}", "file_param": "file",
+                                 "upload_params": {"filename": data.get("name"), "content_type":
+                                                   data.get("content_type"), "signature": f"sig-{token}"}})
+        items = list(c.files.values())
+        term = request.query_params.get("search_term")
+        if term:
+            items = [f for f in items if term.lower() in str(f.get("display_name", "")).lower()]
+        return paginate(request, items)
+
+    async def upload(request: Request) -> Response:  # step 2: the storage host (no Canvas token allowed)
+        token = request.path_params["token"]
+        pending = state.pending_uploads.pop(token, None)
+        if pending is None:
+            return err(404, "unknown upload")
+        parts = parse_multipart(await request.body(), request.headers.get("content-type", ""))
+        keys = [name for name, _ in parts]
+        fields = dict(parts)
+        state.upload_requests.append({"authorization": request.headers.get("authorization"), "keys": keys})
+        if request.headers.get("authorization"):
+            return err(400, "the access token must not be sent to the upload url")
+        if not keys or keys[-1] != "file" or fields.get("signature") != f"sig-{token}".encode():
+            return err(400, "upload params changed or file not last")
+        data = fields["file"]
+        c = state.courses[pending["course"]]
+        name = pending["name"]
+        if pending["on_duplicate"] == "rename":
+            existing = {f["display_name"] for f in c.files.values()}
+            base, dot, ext = name.rpartition(".")
+            n = 1
+            while name in existing:
+                n += 1
+                name = f"{base}-{n}.{ext}" if dot else f"{pending['name']}-{n}"
+        fid = next_id()
+        locked = bool(c.settings.get("usage_rights_required"))
+        c.files[fid] = {"id": fid, "display_name": name, "filename": name, "content-type": pending["content_type"],
+                        "size": len(data), "url": f"{state.origin}/files/{fid}/download?download_frd=1&verifier=v{fid}",
+                        "folder_id": "77", "folder_path": pending["folder"], "hidden": False, "locked": locked,
+                        "created_at": now(), "updated_at": now(), "usage_rights": None}
+        state.file_bytes[fid] = (data, pending["content_type"])
+        location = f"{state.origin}/api/v1/files/{fid}/create_success?uuid=u{fid}"
+        if state.upload_redirect:
+            return Response(status_code=302, headers={"Location": location})
+        return JSONResponse({"id": fid}, status_code=201, headers={"Location": location})
+
+    async def create_success(request: Request) -> Response:  # step 3 (with the token)
+        fid = request.path_params["fid"]
+        for c in state.courses.values():
+            if fid in c.files:
+                return JSONResponse(c.files[fid])
+        return err(404, "not found")
+
+    async def usage_rights(request: Request) -> Response:
+        c = course(request)
+        data = await body(request)
+        for fid in data.get("file_ids") or []:
+            if fid in c.files:
+                c.files[fid]["usage_rights"] = data.get("usage_rights")
+                if data.get("publish"):
+                    c.files[fid]["locked"] = False
+        return JSONResponse({"use_justification": (data.get("usage_rights") or {}).get("use_justification"),
+                             "file_ids": data.get("file_ids") or []})
 
     async def file_info(request: Request) -> Response:
         fid = request.path_params["fid"]
@@ -792,7 +877,10 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
         Route("/api/v1/courses/{cid}/assignments/{aid}", assignment, methods=["GET", "PUT"]),
         Route("/api/v1/courses/{cid}/discussion_topics", discussions),
         Route("/api/v1/courses/{cid}/discussion_topics/{did}", discussion, methods=["GET", "PUT"]),
-        Route("/api/v1/courses/{cid}/files", files),
+        Route("/api/v1/courses/{cid}/files", files, methods=["GET", "POST"]),
+        Route("/upload/{token}", upload, methods=["POST"]),
+        Route("/api/v1/files/{fid}/create_success", create_success, methods=["GET", "POST"]),
+        Route("/api/v1/courses/{cid}/usage_rights", usage_rights, methods=["PUT"]),
         Route("/api/v1/files/{fid}", file_info),
         Route("/files/{fid}/download", file_download),
         Route("/api/v1/courses/{cid}/media_objects", media_objects),
@@ -825,7 +913,8 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
         if not request.headers.get("user-agent"):
             response = JSONResponse({"error": "Forbidden", "message": "not provided a valid user agent."},
                                     status_code=403)
-        elif not request.url.path.startswith("/files/") and                 request.headers.get("authorization") != f"Bearer {state.token}":
+        elif not request.url.path.startswith(("/files/", "/upload/")) and \
+                request.headers.get("authorization") != f"Bearer {state.token}":
             response = err(401, "Invalid access token.")
         elif state.rate_limit_failures > 0:
             state.rate_limit_failures -= 1

@@ -19,6 +19,7 @@ const PAGES: [string, string][] = [
   ["/canvas-verktoy/innstillinger", "Canvas-innstillinger"],
   ["/canvas-verktoy/endringslogg", "Backup og endringslogg"],
   ["/canvas-verktoy/emne-rag", "Emnets kunnskapsbase"],
+  ["/canvas-verktoy/bildeassistent", "KI-bildeassistent"],
   ["/rapporter", "Rapporter"],
   ["/innstillinger/generelt", "Innstillinger"],
   ["/innstillinger/ki-assistenter", "Innstillinger"],

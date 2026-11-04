@@ -113,6 +113,11 @@ class RuntimeConfig:
         return self.data_dir / "rag"
 
     @property
+    def illustrations_dir(self) -> Path:
+        """KI-bildeassistent: generated images (``<course>/<asset>.<ext>``), never stored in the database."""
+        return self.data_dir / "illustrations"
+
+    @property
     def models_dir(self) -> Path:
         """Downloaded local models (embedding, reranker, speech-to-text). Never shared with other programs."""
         return self.data_dir / "models"

@@ -271,3 +271,10 @@ def test_routing_endpoint_explains_decisions(canvas_client: TestClient, task: st
     tasks = {t["key"]: t for t in canvas_client.get("/api/ai/routing").json()["tasks"]}
     assert tasks[task]["decision"]["primary"] is not None
     assert tasks[task]["decision"]["reason"]
+
+
+def test_fallbacks_include_another_provider_when_one_provider_has_many_models() -> None:
+    many = [model("openai", f"o{i}", q=3, c=1 + i % 2) for i in range(5)] + [model("anthropic", "a1", q=3, c=3)]
+    decision = route("text_standard", settings(), many, READY)
+    assert decision.primary["provider_id"] == "openai"
+    assert any(m["provider_id"] == "anthropic" for m in decision.fallbacks), "an outage at one provider is survivable"

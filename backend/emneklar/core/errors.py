@@ -94,6 +94,16 @@ MESSAGES: dict[str, str] = {
         "lokale modeller."
     ),
     "rag_query_empty": "Skriv et spørsmål.",
+    # KI-bildeassistent
+    "illustration_nothing_selected": "Velg hva som skal behandles: hele emnet, minst én modul eller én side.",
+    "illustration_file_locked": (
+        "Emnet krever opphavsrettsinformasjon for filer. Velg opphavsrettsgrunnlag før publisering, ellers blir "
+        "bildet låst og usynlig for studentene."
+    ),
+    "illustration_page_changed": "Siden er endret i Canvas etter analysen. Velg plassering på nytt før publisering.",
+    "illustration_cost_limit": "Kostnadsgrensen for jobben er nådd. Jobben er stoppet.",
+    "illustration_busy": "KI-bildeassistenten arbeider allerede med dette emnet. Vent til jobben er ferdig.",
+    "illustration_image_unavailable": "Ingen bildemodell er tilgjengelig. Se Innstillinger → KI-assistenter.",
     # Reports / updates
     "report_not_found": "Fant ikke rapporten.",
     "update_check_failed": "Kunne ikke sjekke etter oppdateringer.",
