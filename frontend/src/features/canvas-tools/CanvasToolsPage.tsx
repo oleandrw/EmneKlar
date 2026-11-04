@@ -137,8 +137,8 @@ function Overview() {
           <FeatureCard to="endringslogg" icon={<History />} tone="orange" title="Backup og endringslogg" actionLabel="Se logg"
             description="Se alt EmneKlar har endret, last ned sikkerhetskopier og angre endringer der det er trygt." />
           {session.flags.course_rag !== false ? (
-            <FeatureCard to="emne-rag" icon={<BookOpenText />} tone="teal" title="Emne-RAG" actionLabel="Åpne"
-              description="Lag en lokal kunnskapsbase av emnet – tekst, dokumenter, bilder og video – og still spørsmål med kildehenvisninger.">
+            <FeatureCard to="emne-rag" icon={<BookOpenText />} tone="teal" title="Emnets kunnskapsbase" actionLabel="Åpne"
+              description="Samle tekst, dokumenter, bilder og video fra emnet på denne maskinen, og still spørsmål med kildehenvisninger.">
               <Badge tone="info">Bare lesing fra Canvas</Badge>
             </FeatureCard>
           ) : null}
@@ -156,7 +156,7 @@ export function CanvasToolsPage() {
       <Route path="blueprint" element={<Titled title="Blueprint-låsing"><BlueprintLocking /></Titled>} />
       <Route path="innstillinger" element={<Titled title="Canvas-innstillinger"><CanvasSettings /></Titled>} />
       <Route path="endringslogg" element={<Titled title="Backup og endringslogg"><ChangeLog /></Titled>} />
-      <Route path="emne-rag" element={<Titled title="Emne-RAG"><CourseRag /></Titled>} />
+      <Route path="emne-rag" element={<Titled title="Emnets kunnskapsbase"><CourseRag /></Titled>} />
     </Routes>
   );
 }

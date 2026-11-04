@@ -38,7 +38,7 @@ FORMATS: dict[str, tuple[str, str]] = {
     "pdf": ("application/pdf", "pdf"),
     "txt": ("text/plain; charset=utf-8", "txt"),
 }
-README = """# Emne-RAG-eksport fra EmneKlar
+README = """# Eksport av emnets kunnskapsbase fra EmneKlar
 
 Denne mappen inneholder en kunnskapsbase laget av et Canvas-emne. Den inneholder bare lærerprodusert innhold.
 

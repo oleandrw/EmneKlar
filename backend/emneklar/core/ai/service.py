@@ -213,7 +213,7 @@ class AIService:
         return {"available": reason is None, "reason": reason, "payload_summary": summary, "external": external,
                 "needs_confirmation": external and settings.privacy.confirm_before_send,
                 "route": None if config is None else {"provider": config.id, "model": model,
-                                                      "reason": "Valgt under Emne-RAG → Innstillinger."}}
+                                                      "reason": "Valgt under Emnets kunnskapsbase → Innstillinger."}}
 
     async def embed(self, provider_id: str, model: str, texts: list[str], *, summary: str, confirmed: bool,
                     course_id: str | None = None) -> EmbeddingResult:
@@ -250,7 +250,7 @@ class AIService:
         elif config.type == "anthropic":
             reason = "Anthropic tilbyr ikke transkripsjon. Velg OpenAI, Azure OpenAI eller en egen server."
         elif model is None:
-            reason = "Ingen transkripsjonsmodell er valgt for leverandøren (Emne-RAG → Innstillinger)."
+            reason = "Ingen transkripsjonsmodell er valgt for leverandøren (Emnets kunnskapsbase → Innstillinger)."
         elif not is_local(config) and not settings.privacy.allow_external_ai:
             reason = MESSAGES_SHARING_OFF
         external = config is not None and not is_local(config)
@@ -258,7 +258,7 @@ class AIService:
                 "needs_confirmation": external and settings.privacy.confirm_before_send,
                 "model": model.as_dict() if model else None,
                 "route": None if config is None or model is None else {
-                    "provider": config.id, "model": model.id, "reason": "Valgt under Emne-RAG → Innstillinger."}}
+                    "provider": config.id, "model": model.id, "reason": "Valgt under Emnets kunnskapsbase → Innstillinger."}}
 
     async def transcribe(self, provider_id: str, model_id: str, audio: bytes, filename: str, *, segments: bool,
                          summary: str, confirmed: bool, seconds: float, language: str | None = None,
@@ -292,7 +292,7 @@ class AIService:
                    error: str | None, tokens: int, summary: str, course_id: str | None) -> None:
         with self.c.db.session() as session:
             session.add(AIUsage(course_id=course_id, task_type=task, provider_id=provider_id, model_id=model,
-                                strategy=settings.ai.strategy, reason="Valgt under Emne-RAG → Innstillinger.",
+                                strategy=settings.ai.strategy, reason="Valgt under Emnets kunnskapsbase → Innstillinger.",
                                 fallback_used=False, success=success, error_code=error, input_tokens=tokens,
                                 output_tokens=0, payload_summary={"summary": summary}))
 

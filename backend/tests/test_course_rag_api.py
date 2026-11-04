@@ -516,7 +516,7 @@ def test_video_transcribed_by_openai_with_consent_and_cache(rag: TestClient, rag
     assert lab[0]["citation"] == "Video «Lab-demo.mp4» – 0:00"
     usage = rag.get("/api/ai/usage").json()
     transcribed = [u for u in usage["items"] if u["task"] == "rag_transcription"]
-    assert transcribed and transcribed[0]["task_label"] == "Emne-RAG: transkripsjon"
+    assert transcribed and transcribed[0]["task_label"] == "Emnets kunnskapsbase: transkripsjon"
     assert all(u["success"] for u in transcribed)
     build(rag, video=True, documents=False, confirmed=True, mode="full")
     assert len(uploads) == 2  # cached by the file's SHA-256: never transcribed twice

@@ -79,7 +79,8 @@ MESSAGES: dict[str, str] = {
     "file_parse_failed": "Kunne ikke lese filen.",
     "url_blocked": "Adressen er blokkert av sikkerhetshensyn.",
     # Emne-RAG
-    "rag_index_missing": "Det finnes ingen kunnskapsbase for emnet ennå. Opprett den under Emne-RAG først.",
+    "rag_index_missing": ("Det finnes ingen kunnskapsbase for emnet ennå. Opprett den under Canvas-verktøy → Emnets "
+                          "kunnskapsbase først."),
     "rag_index_busy": "Kunnskapsbasen for emnet bygges eller oppdateres akkurat nå. Vent til jobben er ferdig.",
     "rag_index_foreign": "Filen med kunnskapsbasen tilhører ikke EmneKlar og ble ikke åpnet.",
     "rag_index_outdated": "Kunnskapsbasen er laget av en eldre versjon av EmneKlar. Bygg den på nytt.",

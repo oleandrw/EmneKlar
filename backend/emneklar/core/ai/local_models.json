@@ -1,6 +1,6 @@
 {
   "version": "2026-11-03",
-  "note": "Lokale modeller for Emne-RAG (embedding, rerangering og tale-til-tekst). Størrelsene er omtrentlige nedlastingsstørrelser (ca.) for vektene i full presisjon. Modellene lastes ned fra Hugging Face første gang de brukes og lagres i datamappen (models). Hugging Face-format for NB-Whisper konverteres lokalt til CTranslate2.",
+  "note": "Lokale modeller for emnets kunnskapsbase (embedding, rerangering og tale-til-tekst). Størrelsene er omtrentlige nedlastingsstørrelser (ca.) for vektene i full presisjon. Modellene lastes ned fra Hugging Face første gang de brukes og lagres i datamappen (models). Hugging Face-format for NB-Whisper konverteres lokalt til CTranslate2.",
   "models": [
     {"id": "BAAI/bge-m3", "kind": "embedding", "label": "BGE-M3 (flerspråklig, god på norsk)", "size_mb": 2270, "dim": 1024, "max_tokens": 8192, "default": true, "license": "MIT"},
     {"id": "NbAiLab/nb-sbert-v2-large", "kind": "embedding", "label": "NB-SBERT v2 large (rent norsk innhold)", "size_mb": 1420, "dim": 1024, "max_tokens": 512, "default": false, "license": "Apache-2.0", "notes": "Kortere kontekst enn BGE-M3: lange utdrag kan bli avkortet."},

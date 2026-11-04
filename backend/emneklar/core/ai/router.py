@@ -42,21 +42,22 @@ TASKS: dict[str, TaskProfile] = {t.key: t for t in (
     TaskProfile("course_structure", "Emnestruktur", "Semantisk vurdering av hele emnets struktur.", 3, 3, False, True,
                 3000, 30_000),
     TaskProfile("homepage_content", "Emneforside", "Tekstforslag til emnets forside.", 2, 2, False, True, 3000, 30_000),
-    TaskProfile("rag_answer", "Emne-RAG: svar", "Svarer på spørsmål ut fra utdrag fra emnet, med kildehenvisninger.", 2,
-                2, False, True, 2500, 30_000),
-    TaskProfile("rag_query", "Emne-RAG: omskriving av søk", "Gjør vage spørsmål om til presise søk.", 1, 1, False, True,
-                400, 20_000),
-    TaskProfile("rag_context", "Emne-RAG: kontekstuell berikelse",
+    TaskProfile("rag_answer", "Emnets kunnskapsbase: svar",
+                "Svarer på spørsmål ut fra utdrag fra emnet, med kildehenvisninger.", 2, 2, False, True, 2500, 30_000),
+    TaskProfile("rag_query", "Emnets kunnskapsbase: omskriving av søk", "Gjør vage spørsmål om til presise søk.", 1, 1,
+                False, True, 400, 20_000),
+    TaskProfile("rag_context", "Emnets kunnskapsbase: kontekstuell berikelse",
                 "Én til to setninger som plasserer hvert utdrag i dokumentet og modulen.", 1, 1, False, True, 2000,
                 60_000),
-    TaskProfile("rag_image", "Emne-RAG: bildebeskrivelse",
+    TaskProfile("rag_image", "Emnets kunnskapsbase: bildebeskrivelse",
                 "Beskriver bilder, diagrammer og tekst i bilder (bildeanalyse).", 2, 2, True, True, 1200, 10_000),
-    TaskProfile("rag_eval", "Emne-RAG: testspørsmål", "Lager testspørsmål for å måle hvor godt søket fungerer.", 1, 1,
-                False, True, 1500, 20_000),
+    TaskProfile("rag_eval", "Emnets kunnskapsbase: testspørsmål",
+                "Lager testspørsmål for å måle hvor godt søket fungerer.", 1, 1, False, True, 1500, 20_000),
 )}
 
 #: Usage log entries that are not routed tasks (embedding models are chosen under Emne-RAG, not by the router).
-USAGE_LABELS: dict[str, str] = {"rag_embedding": "Emne-RAG: embedding", "rag_transcription": "Emne-RAG: transkripsjon"}
+USAGE_LABELS: dict[str, str] = {"rag_embedding": "Emnets kunnskapsbase: embedding",
+                                 "rag_transcription": "Emnets kunnskapsbase: transkripsjon"}
 
 STRATEGY_LABEL = {"auto": "Automatisk", "low_cost": "Prioriter lav kostnad", "speed": "Prioriter hastighet",
                   "quality": "Prioriter kvalitet", "manual": "Manuell styring"}

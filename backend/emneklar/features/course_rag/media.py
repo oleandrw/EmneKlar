@@ -261,7 +261,7 @@ def _youtube_rows(item: SourceItem) -> tuple[list[Any], str | None, bool]:
 async def youtube_captions(state: BuildState, item: SourceItem) -> tuple[Transcript | None, str | None]:
     """YouTube captions via youtube-transcript-api (only the video id is sent). Returns (transcript, reason)."""
     if not state.c.settings.get().rag.youtube_captions:
-        return None, Waiting(f"Henting av YouTube-teksting er slått av (Emne-RAG → Innstillinger). {NO_AUDIO}")
+        return None, Waiting(f"Henting av YouTube-teksting er slått av (Emnets kunnskapsbase → Innstillinger). {NO_AUDIO}")
     cached = online_cached(state, "youtube", item)
     if cached is not None:
         return cached, None
@@ -339,7 +339,8 @@ async def vimeo_captions(state: BuildState, item: SourceItem) -> tuple[Transcrip
     Referer or anything from the course. Videos restricted to certain sites or with a password cannot be read.
     """
     if not state.c.settings.get().rag.vimeo_captions:
-        return None, Waiting(f"Henting av Vimeo-teksting er slått av (Emne-RAG → Innstillinger). {VIMEO_NO_AUDIO}")
+        return None, Waiting("Henting av Vimeo-teksting er slått av (Emnets kunnskapsbase → Innstillinger). "
+                             f"{VIMEO_NO_AUDIO}")
     cached = online_cached(state, "vimeo", item)
     if cached is not None:
         return cached, None
@@ -485,7 +486,8 @@ async def download_media(state: BuildState, item: SourceItem, name: str) -> tupl
         await state.api.client.download(url, target, max_bytes=rag.max_video_mb * 1024 * 1024)
     except AppError as exc:
         if exc.code == "file_too_large":
-            return None, Waiting(f"Videoen er større enn grensen på {rag.max_video_mb} MB (Emne-RAG → Innstillinger).")
+            return None, Waiting(f"Videoen er større enn grensen på {rag.max_video_mb} MB (Emnets kunnskapsbase → "
+                                 "Innstillinger).")
         raise
     return target, None
 
@@ -583,7 +585,8 @@ async def process_media(state: BuildState, item: SourceItem) -> None:
             elif mode == "local":
                 transcript, reason = await local_transcript(state, item)
             else:
-                reason = Waiting("Videoen har ingen teksting, og transkripsjon er slått av (Emne-RAG → Innstillinger).")
+                reason = Waiting("Videoen har ingen teksting, og transkripsjon er slått av (Emnets kunnskapsbase → "
+                                 "Innstillinger).")
     if transcript is None or not transcript.segments:
         mark(state, item, "skipped", reason or "Fant ingen tale å transkribere.")
         return

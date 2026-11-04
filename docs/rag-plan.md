@@ -1,5 +1,8 @@
 # Emne-RAG – plan
 
+> I appen heter verktøyet **Emnets kunnskapsbase** (Canvas-verktøy). I koden og den tekniske dokumentasjonen
+> brukes navnet Emne-RAG (`course_rag`).
+
 *Skrevet før implementeringen (november 2026). Planen beskriver valg og antakelser; brukerveiledningen står i
 README og i programmets hjelp.*
 

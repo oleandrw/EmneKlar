@@ -185,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--strict", action="store_true",
                         help="bruk bare de testede versjonene av avhengighetene (ingen reserve)")
     parser.add_argument("--rag", action="store_true",
-                        help="installer også lokale modeller for Emne-RAG (PyTorch, sentence-transformers, "
+                        help="installer også lokale modeller for emnets kunnskapsbase (PyTorch, sentence-transformers, "
                              "faster-whisper – flere GB); update.bat beholder dem")
     parser.add_argument("--no-pause", action="store_true", help=argparse.SUPPRESS)  # handled by setup.bat
     args = parser.parse_args(argv)
@@ -207,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
         reporter.info()
         reporter.info(f"Oppsettet er ferdig – EmneKlar {version} er klar til bruk.")
         if "rag" not in update.chosen_extras(ROOT):
-            reporter.info("Valgfritt: setup-emne-rag.bat installerer lokale modeller for Emne-RAG (flere GB).")
+            reporter.info("Valgfritt: setup-emne-rag.bat installerer lokale modeller for emnets kunnskapsbase (flere GB).")
         reporter.info("Neste steg: Kjør start.bat")
         return 0
     except (SetupError, update.UpdateError) as exc:

@@ -78,7 +78,8 @@ def embedding_choice(settings: AppSettings, local: LocalModels, ai: AIService | 
     rag = settings.rag
     if rag.embedding_backend == "none":
         return EmbeddingChoice("none", None, "Bare nøkkelordsøk (BM25)", False,
-                               "Semantisk søk er slått av under Emne-RAG → Innstillinger. Søket bruker bare nøkkelord.")
+                               "Semantisk søk er slått av under Emnets kunnskapsbase → Innstillinger. Søket bruker "
+                               "bare nøkkelord.")
     if rag.embedding_backend == "provider":
         provider_id, provider_model = rag.embedding_provider_id, rag.embedding_provider_model
         label = f"{provider_model or '(ingen modell)'} hos {provider_id}"

@@ -241,7 +241,8 @@ async def process_document(state: BuildState, item: SourceItem) -> None:
     max_mb = state.c.settings.get().rag.max_file_mb
     size = int(item.meta.get("size") or 0)
     if size > max_mb * 1024 * 1024:
-        mark(state, item, "skipped", Waiting(f"Filen er større enn grensen på {max_mb} MB (Emne-RAG → Innstillinger)."))
+        mark(state, item, "skipped", Waiting(f"Filen er større enn grensen på {max_mb} MB (Emnets kunnskapsbase → "
+                                             "Innstillinger)."))
         return
     work = state.tmp / hashlib.sha1(item.key.encode()).hexdigest()[:12]  # noqa: S324 - folder name only
     try:

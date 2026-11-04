@@ -1,4 +1,4 @@
-// Canvas-verktøy → Emne-RAG: a local knowledge base of the course with cited answers.
+// Canvas-verktøy → Emnets kunnskapsbase (internally Emne-RAG, course_rag): a local knowledge base of the course with cited answers.
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { BookOpenText, Download, Gauge, Hammer, MessageSquareText, RefreshCw, Settings2, Trash2 } from "lucide-react";
 import { useState } from "react";
@@ -157,8 +157,8 @@ export function CourseRag() {
   const current: TabId = tab ?? (ready ? "spor" : "bygg");
   return (
     <>
-      <PageHeader title="Emne-RAG"
-        description="Lag en lokal kunnskapsbase av emnet – tekst, dokumenter, bilder og video – og still spørsmål med klikkbare kilder."
+      <PageHeader title="Emnets kunnskapsbase"
+        description="Samle tekst, dokumenter, bilder og video fra emnet på denne maskinen, og still spørsmål med klikkbare kilder."
         status={status.data && !status.data.index ? <Badge dot>Ingen kunnskapsbase opprettet ennå</Badge> : undefined}
         actions={<HelpLink topic="emne-rag" />} />
       <div className="ek-stack" data-gap="6">
@@ -168,7 +168,7 @@ export function CourseRag() {
           <>
             {status.data.error ? <Alert tone="danger" role="alert">{status.data.error.message}</Alert> : null}
             <IndexCard status={status.data} courseId={courseId} />
-            <Tabs<TabId> label="Emne-RAG" selected={current} onSelect={setTab} tabs={[
+            <Tabs<TabId> label="Emnets kunnskapsbase" selected={current} onSelect={setTab} tabs={[
               { id: "bygg", label: "Kunnskapsbase", icon: <Hammer aria-hidden="true" /> },
               { id: "spor", label: "Spør emnet", icon: <MessageSquareText aria-hidden="true" /> },
               { id: "kvalitet", label: "Kvalitet", icon: <Gauge aria-hidden="true" /> },

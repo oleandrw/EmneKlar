@@ -66,7 +66,7 @@ const status = (partial: Partial<RagStatus> = {}): RagStatus => ({
     youtube_captions: true, vimeo_captions: true, candidates: 40, top_k: 6, query_rewrite: false, max_file_mb: 50, max_video_mb: 2000 },
   file_groups: [{ key: "pdf", label: "PDF" }, { key: "word", label: "Word" }],
   chunk_types: [{ key: "text", label: "Tekst" }, { key: "table", label: "Tabeller" }],
-  not_available: { video: "Video og lyd kommer i neste versjon av Emne-RAG." },
+  not_available: { video: "Video og lyd er ikke tilgjengelig i denne versjonen." },
   providers: [{ id: "openai", name: "OpenAI", type: "openai" }],
   transcription: { mode: "local", plan: null },
   transcription_models: [{ id: "gpt-transcribe", label: "GPT Transcribe", provider_type: "openai", segments: false, default: true }],
@@ -133,9 +133,11 @@ describe("BuildPanel", () => {
     expect(screen.getByText(/Bilder tas ikke med fordi KI ikke er satt opp/)).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: /Tekst fra Canvas/ })).not.toBeInTheDocument();
     // One short note on content, KI and privacy by the main button; the details are behind «Les mer».
-    expect(screen.getByText(/Bare lærerens innhold brukes/)).toBeInTheDocument();
-    expect(screen.queryByText(/Leses aldri/)).not.toBeInTheDocument();
+    expect(screen.getByText("Kunnskapsbasen lagres på denne maskinen. Du godkjenner eventuell nedlasting og sending " +
+      "til KI først.")).toBeInTheDocument();
+    expect(screen.queryByText(/Bare lærerens innhold brukes/)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Les mer om innhold, KI og personvern" }));
+    expect(screen.getByText(/Bare lærerens innhold brukes: sider/)).toBeInTheDocument();
     expect(screen.getByText(/Leses aldri: innleveringer, karakterer/)).toBeInTheDocument();
     expect(screen.getByText("Video uten teksting transkriberes på denne maskinen med NB-Whisper.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Opprett kunnskapsbase" }));

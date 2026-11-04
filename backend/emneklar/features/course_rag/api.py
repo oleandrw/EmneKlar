@@ -122,8 +122,8 @@ async def build(course_id: str, body: BuildRequest, c: AppContainer = Depends(ge
         return await run_build(ctx, c, course_id, body)
 
     exists = engine.has_index(c, course_id)
-    title = ("Emne-RAG: oppretter kunnskapsbasen" if not exists else "Emne-RAG: bygger kunnskapsbasen på nytt"
-             if body.mode == "full" else "Emne-RAG: oppdaterer kunnskapsbasen")
+    title = ("Oppretter emnets kunnskapsbase" if not exists else "Bygger emnets kunnskapsbase på nytt"
+             if body.mode == "full" else "Oppdaterer emnets kunnskapsbase")
     state = c.jobs.submit(kind=engine.JOB_KIND, title=title, runner=runner, course_id=course_id,
                           params=body.model_dump(), supports_pause=True, hard_cancel=True)
     return state.public()
@@ -253,7 +253,7 @@ async def run_evaluate(course_id: str, body: EvaluateBody, c: AppContainer = Dep
         engine.update_registry(c, course_id, evaluation=result)
         return {"health": result.get("health"), "recall_at_5": result.get("recall_at_5"), "mrr": result.get("mrr")}
 
-    state = c.jobs.submit(kind=engine.EVAL_JOB_KIND, title="Emne-RAG: evaluering av søket", runner=runner,
+    state = c.jobs.submit(kind=engine.EVAL_JOB_KIND, title="Evaluerer søket i emnets kunnskapsbase", runner=runner,
                           course_id=course_id, params=body.model_dump(), supports_pause=False, hard_cancel=True)
     return state.public()
 

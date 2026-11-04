@@ -18,7 +18,7 @@ const PAGES: [string, string][] = [
   ["/canvas-verktoy/blueprint", "Blueprint-låsing"],
   ["/canvas-verktoy/innstillinger", "Canvas-innstillinger"],
   ["/canvas-verktoy/endringslogg", "Backup og endringslogg"],
-  ["/canvas-verktoy/emne-rag", "Emne-RAG"],
+  ["/canvas-verktoy/emne-rag", "Emnets kunnskapsbase"],
   ["/rapporter", "Rapporter"],
   ["/innstillinger/generelt", "Innstillinger"],
   ["/innstillinger/ki-assistenter", "Innstillinger"],

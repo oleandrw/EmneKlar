@@ -172,20 +172,21 @@ function PrivacySummary({ status }: { status: RagStatus }) {
     <div className="ek-stack" data-gap="1">
       <p className="ek-icon-text">
         <ShieldCheck aria-hidden="true" />
-        <span>
-          Bare lærerens innhold brukes, og kunnskapsbasen lagres bare på denne maskinen. Skal noe lastes ned eller
-          sendes til en KI-leverandør, ser du hva og godkjenner det først.
-        </span>
+        <span>Kunnskapsbasen lagres på denne maskinen. Du godkjenner eventuell nedlasting og sending til KI først.</span>
       </p>
       <Disclosure summary="Les mer om innhold, KI og personvern">
         <ul className="ek-small">
           <li>
-            Leses: sider, oppgave- og quizbeskrivelser, emneplanen, diskusjonsinnlegg skrevet av lærere og filer lastet
-            opp av lærere. Video fra emnets medieliste tas bare med når lærerens innhold peker på den (listen kan ha
-            studentopptak).
+            Bare lærerens innhold brukes: sider, oppgave- og quizbeskrivelser, emneplanen, diskusjonsinnlegg skrevet av
+            lærere og filer lastet opp av lærere. Video fra emnets medieliste tas bare med når lærerens innhold peker på
+            den (listen kan ha studentopptak).
           </li>
           <li>Leses aldri: innleveringer, karakterer, meldinger, studentenes innlegg og svar i diskusjoner.</li>
           <li>Ingenting endres i Canvas.</li>
+          <li>
+            Før noe lastes ned eller sendes til en KI-leverandør, ser du et estimat med hva som sendes og hvor, og
+            godkjenner det.
+          </li>
           <li>{search}</li>
           <li>{transcription}</li>
           {online ? (

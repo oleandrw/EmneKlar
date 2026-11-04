@@ -271,7 +271,7 @@ def pins_unavailable(pip_output: str) -> bool:
 
 
 EXTRAS_FILE = "emneklar-extras.txt"  # in backend/.venv: optional parts the user chose to install (e.g. "rag")
-KNOWN_EXTRAS = {"rag": "lokale modeller for Emne-RAG"}
+KNOWN_EXTRAS = {"rag": "lokale modeller for emnets kunnskapsbase"}
 
 
 def chosen_extras(root: Path) -> list[str]:
@@ -303,7 +303,7 @@ def install_optional_extras(venv_python: Path, root: Path, reporter: Reporter) -
             base += ["-c", constraints]
         done = run([*base, "-e", f"{backend}[{extra}]"], cwd=root, reporter=reporter, check=False)
         if done.returncode != 0:
-            reporter.warn(f"Klarte ikke å installere {KNOWN_EXTRAS[extra]}. EmneKlar virker likevel; Emne-RAG bruker "
+            reporter.warn(f"Klarte ikke å installere {KNOWN_EXTRAS[extra]}. EmneKlar virker likevel; kunnskapsbasen bruker "
                           "da nøkkelordsøk. Se loggen, og prøv setup-emne-rag.bat på nytt senere.")
 
 
