@@ -410,6 +410,31 @@ def test_images_filtered_described_and_cited(rag: TestClient, rag_container: App
                 == "bildebeskrivelse"]) == 1
 
 
+def test_duplicate_images_keep_the_first_in_page_order(rag: TestClient, rag_container: AppContainer,
+                                                       monkeypatch: pytest.MonkeyPatch) -> None:
+    """Which copy of a duplicate is described must not depend on which download finishes first."""
+    import asyncio
+
+    from emneklar.features.course_rag import images
+
+    real_fetch = images.fetch_image
+
+    async def slow_first(state: Any, src: str, target: Any) -> None:
+        if "/files/7201/" in src:  # «Fargehjul», the first copy on the page
+            await asyncio.sleep(0.3)
+        await real_fetch(state, src, target)
+
+    monkeypatch.setattr(images, "fetch_image", slow_first)
+    calls = enable_ai(rag, rag_container, image_answers)
+    build(rag, images=True, confirmed=True)
+    vision_calls = [c for c in calls if (c.get("response_format") or {}).get("json_schema", {}).get("name")
+                    == "bildebeskrivelse"]
+    assert len(vision_calls) == 1
+    prompt = vision_calls[0]["messages"][-1]["content"][1]["text"]
+    assert "«Fargehjul»" in prompt and "Fargehjul igjen" not in prompt
+    assert "Fargehjulet viser primærfarger" in prompt
+
+
 def test_images_without_ai_are_skipped_with_reason(rag: TestClient) -> None:
     build(rag, images=True, text=True, documents=False)
     skipped = rag.get(f"/api/courses/{RAG_COURSE}/rag").json()["index"]["skipped"]

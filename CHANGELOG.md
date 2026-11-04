@@ -92,6 +92,8 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   titler. «YouTube video», «Embedded video» og titler med kolon eller punktum til slutt regnes nå også som generelle.
 
 ### Rettet
+- Emnets kunnskapsbase: når samme bilde står flere steder, beskrives nå alltid det første (i sidens rekkefølge),
+  med alt-teksten og teksten rundt det. Før avhang det av hvilken nedlasting som ble ferdig først.
 - Fanerader (for eksempel i Emnets kunnskapsbase) viste et lite loddrett rullefelt helt til høyre på Windows. Streken under
   aktiv fane stakk én piksel ut av raden; nå ruller raden bare sideveis, og bare på smale skjermer.
 - Emnets kunnskapsbase: et nytt forsøk som feilet eller måtte vente (for eksempel fordi YouTube blokkerte), erstattet innhold som

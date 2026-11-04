@@ -137,6 +137,27 @@ class Deduplicator:
         self.seen.append((dhash, label))
 
 
+class InOrder:
+    """Lets concurrent tasks pass one point strictly in list order, so the first copy of a duplicate image in the
+    course is the one that is described, however fast each download is."""
+
+    def __init__(self) -> None:
+        self._next = 0
+        self._changed = asyncio.Condition()
+
+    async def wait(self, index: int) -> None:
+        async with self._changed:
+            await self._changed.wait_for(lambda: self._next >= index)
+
+    async def done(self, index: int) -> None:
+        """Pass the turn on (exactly once per index; waits for the turn first, also after a failure)."""
+        await self.wait(index)
+        async with self._changed:
+            if self._next == index:
+                self._next = index + 1
+                self._changed.notify_all()
+
+
 # -------------------------------------------------------------------------------------------- fetch
 
 
@@ -240,19 +261,38 @@ def ai_ready(state: BuildState) -> str | None:
     return None if plan["available"] else (plan["reason"] or "Ingen bildemodell er tilgjengelig.")
 
 
-async def describe_file(state: BuildState, path: Path, context: dict[str, Any], dedupe: Deduplicator,
-                        label: str) -> tuple[ChunkDraft | None, str | None]:
-    """Filter, deduplicate and describe one local image file. Returns (chunk, reason when skipped)."""
+async def inspect_file(state: BuildState, path: Path) -> tuple[dict[str, Any] | None, str | None]:
+    """Read and filter one local image file (no KI). Returns (image info, reason when skipped)."""
     info = await prepare(state, path)
     if info.get("error"):
         return None, "Filen kunne ikke leses som bilde." if info["error"] != "too_large" else "Bildet er for stort."
     reason = pixel_reason(info)
-    if reason:
-        return None, reason
+    return (None, reason) if reason else (info, None)
+
+
+def claim(info: dict[str, Any], dedupe: Deduplicator, label: str) -> str | None:
+    """Register the image unless it duplicates one seen before. Returns the reason when it is a duplicate."""
     duplicate = dedupe.duplicate_of(str(info["dhash"]))
     if duplicate:
-        return None, f"Samme bilde som {duplicate}."
+        return f"Samme bilde som {duplicate}."
     dedupe.add(str(info["dhash"]), label)
+    return None
+
+
+async def describe_file(state: BuildState, path: Path, context: dict[str, Any], dedupe: Deduplicator,
+                        label: str) -> tuple[ChunkDraft | None, str | None]:
+    """Filter, deduplicate and describe one local image file. Returns (chunk, reason when skipped)."""
+    info, reason = await inspect_file(state, path)
+    if info is None:
+        return None, reason
+    reason = claim(info, dedupe, label)
+    if reason:
+        return None, reason
+    return await describe_inspected(state, path, info, context)
+
+
+async def describe_inspected(state: BuildState, path: Path, info: dict[str, Any],
+                             context: dict[str, Any]) -> tuple[ChunkDraft | None, str | None]:
     sha = _sha256(path)
     description = await describe(state, info, sha, context)
     if not description["relevant"] or not description["description"]:
@@ -276,31 +316,41 @@ async def process_images(state: BuildState, items: list[SourceItem], _inventory:
     unavailable = ai_ready(state)
     dedupe = state.images_seen
     semaphore = asyncio.Semaphore(AI_CONCURRENCY)
+    in_order = InOrder()  # downloads and descriptions run in parallel; duplicate decisions follow the page order
 
-    async def one(item: SourceItem) -> None:
+    async def one(index: int, item: SourceItem) -> None:
         async def work() -> None:
             meta = item.meta
-            reason = metadata_reason(meta)
-            if reason:
-                mark(state, item, "skipped", reason)
+            try:
+                reason = metadata_reason(meta)
+                if reason:
+                    mark(state, item, "skipped", reason)
+                    return
+                if unavailable:
+                    mark(state, item, "skipped", Waiting(f"Bildebeskrivelser krever en bildemodell via KI: {unavailable}"))
+                    return
+                target = state.tmp / hashlib.sha1(item.key.encode()).hexdigest()[:12] / "bilde"  # noqa: S324
+                if item.kind == "file":
+                    url = str(meta.get("download_url") or "")
+                    if not url:
+                        raise AppError("file_unsupported", message="Bildefilen har ingen nedlastingsadresse.")
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    await state.api.client.download(url, target, max_bytes=MAX_IMAGE_BYTES)
+                else:
+                    await fetch_image(state, str(meta.get("src")), target)
+                info, reason = await inspect_file(state, target)
+                await in_order.wait(index)
+                if info is not None:
+                    reason = claim(info, dedupe, f"på «{meta.get('page_title') or item.title}»")
+            finally:
+                await in_order.done(index)
+            if info is None or reason:
+                mark(state, item, "skipped", reason or "Bildet ble ikke beskrevet.")
                 return
-            if unavailable:
-                mark(state, item, "skipped", Waiting(f"Bildebeskrivelser krever en bildemodell via KI: {unavailable}"))
-                return
-            target = state.tmp / hashlib.sha1(item.key.encode()).hexdigest()[:12] / "bilde"  # noqa: S324
-            if item.kind == "file":
-                url = str(meta.get("download_url") or "")
-                if not url:
-                    raise AppError("file_unsupported", message="Bildefilen har ingen nedlastingsadresse.")
-                target.parent.mkdir(parents=True, exist_ok=True)
-                await state.api.client.download(url, target, max_bytes=MAX_IMAGE_BYTES)
-            else:
-                await fetch_image(state, str(meta.get("src")), target)
             context = {"page_title": meta.get("page_title") or item.title, "heading": meta.get("heading"),
                        "alt": meta.get("alt"), "text": meta.get("context"), "src": meta.get("src") or item.url}
             async with semaphore:
-                draft, reason = await describe_file(state, target, context, dedupe,
-                                                    f"på «{meta.get('page_title') or item.title}»")
+                draft, reason = await describe_inspected(state, target, info, context)
             if draft is None:
                 mark(state, item, "skipped", reason or "Bildet ble ikke beskrevet.")
                 return
@@ -309,7 +359,7 @@ async def process_images(state: BuildState, items: list[SourceItem], _inventory:
 
         await guarded(state, item, "image", "Filtrerer og beskriver bildet", work)
 
-    await asyncio.gather(*(one(item) for item in items))
+    await asyncio.gather(*(one(index, item) for index, item in enumerate(items)))
 
 
 async def document_image_records(state: BuildState, item: SourceItem, images: list[dict[str, Any]],
