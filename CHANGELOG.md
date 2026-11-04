@@ -60,6 +60,10 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   endres.
 
 ### Endret
+- Avhengigheter oppdatert samlet og testet sammen (erstatter Dependabot-PR-ene #2–#11): pydantic 2.14.2 (med
+  pydantic-core 2.50.2, som Dependabot-oppdateringen manglet), starlette 1.10.0, alembic 1.20.1, msgpack 1.2.4 og
+  pytest 9.2.0 i backend; react-router 8.5.1, @tanstack/react-query 5.105.3, vite 8.3.5, @playwright/test 1.64.1
+  og @axe-core/playwright 4.14.0 i frontend.
 - Verktøyet heter nå **Emnets kunnskapsbase** i stedet for Emne-RAG – i menyen, på siden, i KI-oppgavene, jobbene
   og meldingene. Adressen (`/canvas-verktoy/emne-rag`) og `setup-emne-rag.bat` er uendret.
 - Lenken «← Canvas-verktøy» øverst på verktøysidene (Emnets kunnskapsbase, Automatiske modulkrav, Blueprint-låsing,
