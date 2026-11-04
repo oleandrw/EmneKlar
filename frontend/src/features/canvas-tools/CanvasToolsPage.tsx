@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { CircleCheck, CircleX, FlaskConical, History, ListChecks, Lock, Settings2, TriangleAlert, Undo2 } from "lucide-react";
+import { BookOpenText, CircleCheck, CircleX, FlaskConical, History, ListChecks, Lock, Settings2, TriangleAlert, Undo2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Route, Routes } from "react-router";
 
@@ -24,6 +24,7 @@ import { BlueprintLocking } from "./BlueprintLocking";
 import { CanvasSettings } from "./CanvasSettings";
 import { ACTION, ChangeLog, type LogEntry } from "./ChangeLog";
 import { ModuleRequirements } from "./ModuleRequirements";
+import { CourseRag } from "./rag/CourseRag";
 
 interface Capabilities {
   capabilities: { key: string; label: string; granted: boolean }[];
@@ -97,6 +98,7 @@ function DryRunCard() {
 function Overview() {
   usePageTitle("Canvas-verktøy");
   const { courseId } = useCurrentCourse();
+  const session = useSession();
   const caps = useQuery({
     queryKey: ["capabilities", courseId],
     queryFn: () => api.get<Capabilities>(`/api/courses/${courseId}/capabilities`),
@@ -134,6 +136,12 @@ function Overview() {
           </FeatureCard>
           <FeatureCard to="endringslogg" icon={<History />} tone="orange" title="Backup og endringslogg" actionLabel="Se logg"
             description="Se alt EmneKlar har endret, last ned sikkerhetskopier og angre endringer der det er trygt." />
+          {session.flags.course_rag !== false ? (
+            <FeatureCard to="emne-rag" icon={<BookOpenText />} tone="teal" title="Emnets kunnskapsbase" actionLabel="Åpne"
+              description="Samle tekst, dokumenter, bilder og video fra emnet på denne maskinen, og still spørsmål med kildehenvisninger.">
+              <Badge tone="info">Bare lesing fra Canvas</Badge>
+            </FeatureCard>
+          ) : null}
         </div>
       </div>
     </>
@@ -148,6 +156,7 @@ export function CanvasToolsPage() {
       <Route path="blueprint" element={<Titled title="Blueprint-låsing"><BlueprintLocking /></Titled>} />
       <Route path="innstillinger" element={<Titled title="Canvas-innstillinger"><CanvasSettings /></Titled>} />
       <Route path="endringslogg" element={<Titled title="Backup og endringslogg"><ChangeLog /></Titled>} />
+      <Route path="emne-rag" element={<Titled title="Emnets kunnskapsbase"><CourseRag /></Titled>} />
     </Routes>
   );
 }

@@ -33,6 +33,10 @@ TYPE_LABELS: dict[str, str] = {
     "question": "Quizspørsmål",
     "ai": "KI-forespørsler",
     "change": "Endringer",
+    "file": "Filer",
+    "transcript": "Transkripsjon",
+    "evaluation": "Testspørsmål",
+    "enrich": "Kontekstuell berikelse",
 }
 
 

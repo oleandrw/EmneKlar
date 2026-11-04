@@ -30,6 +30,7 @@ from emneklar.core.storage.models import WebSession
 from emneklar.core.storage.settings import AppSettings, SettingsStore
 
 if TYPE_CHECKING:
+    from emneklar.core.ai.local import LocalModels
     from emneklar.core.ai.service import AIService
     from emneklar.core.changes.engine import ChangeEngine
     from emneklar.core.updates.service import UpdateService
@@ -68,6 +69,7 @@ class AppContainer:
         link_transport: httpx.AsyncBaseTransport | None = None,
         ai_transport: httpx.AsyncBaseTransport | None = None,
         update_transport: httpx.AsyncBaseTransport | None = None,
+        local_models: LocalModels | None = None,
     ) -> None:
         self.db = Database(config.db_path)  # refuses a database that belongs to another program
         config.ensure_dirs()
@@ -88,6 +90,7 @@ class AppContainer:
         self._ai: AIService | None = None
         self._parsers: Any = None
         self._updates: UpdateService | None = None
+        self._local_models = local_models  # test seam: a fake with deterministic models
         self.started_at = datetime.now(UTC)
 
     # -- lifecycle ---------------------------------------------------------------------
@@ -224,6 +227,15 @@ class AppContainer:
 
             self._ai = AIService(self)
         return self._ai
+
+    @property
+    def local_models(self) -> LocalModels:
+        """Local embedding, reranking and speech-to-text models (Emne-RAG); loaded lazily on first use."""
+        if self._local_models is None:
+            from emneklar.core.ai.local import LocalModels
+
+            self._local_models = LocalModels(self.config.models_dir)
+        return self._local_models
 
     @property
     def updates(self) -> UpdateService:

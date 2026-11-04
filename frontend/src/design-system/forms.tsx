@@ -165,18 +165,21 @@ export function Fieldset({
   error,
   children,
   hideLegend,
+  nested,
 }: {
   legend: ReactNode;
   hint?: ReactNode;
   error?: ReactNode;
   children: ReactNode;
   hideLegend?: boolean;
+  /** Indented under the control it belongs to (for example file types under «Dokumenter»). */
+  nested?: boolean;
 }) {
   const hintId = useId();
   const errorId = useId();
   return (
     <fieldset
-      className="ek-fieldset"
+      className={cx("ek-fieldset", nested && "ek-fieldset--nested")}
       aria-describedby={[hint ? hintId : null, error ? errorId : null].filter(Boolean).join(" ") || undefined}
     >
       <legend className={cx("ek-legend", hideLegend && "ek-visually-hidden")}>{legend}</legend>

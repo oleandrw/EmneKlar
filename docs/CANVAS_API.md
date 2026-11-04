@@ -69,6 +69,25 @@ er brukt direkte i koden – ikke gjett nye verdier; kontroller mot dokumentasjo
   med `kind` `captions|subtitles` og `workflow_state=ready`. Ikke bruk `media_objects/:id/media_tracks`
   (returnerer bare brukerens egne spor). YouTube, Studio og andre LTI kan ikke kontrolleres via API.
 
+## Emne-RAG (lesing)
+
+*Kontrollert mot canvas-lms-kildekoden 3. november 2026 (`media_tracks_controller.rb`, `lib/api/v1/media_object.rb`,
+`lib/api/v1/discussion_topics.rb`, `courses_controller.rb`).*
+
+* Lærere i emnet: `GET /api/v1/courses/:id/users?enrollment_type[]=teacher&enrollment_type[]=ta&enrollment_type[]=designer`
+  (`enrollment_type[]`: `teacher | student | student_view | ta | observer | designer`). Emne-RAG bruker bare `id`.
+* Diskusjonstema: `author` (`user_display_json`, `null` når temaet er anonymt) og `user_name`. Svar
+  (`…/entries`, `…/view`) hentes aldri.
+* Filer: `GET …/files?include[]=user` gir opplasteren (`user.id`).
+* Teksting for opplastede mediefiler: `GET /api/v1/media_attachments/:attachment_id/media_tracks?include[]=webvtt_content`
+  (`include[]`: `content | webvtt_content | updated_at | created_at`; standard er bare `id, locale, kind,
+  media_object_id, user_id`). Gir alle spor for vedlegget, også originalene.
+* Medieobjekter: `GET /api/v1/courses/:id/media_objects` gir `media_tracks[]` med `url`
+  (`/media_objects/:media_id/media_tracks/:id`, ikke-API-rute som svarer med WebVTT og godtar token) og
+  `media_sources[]` (`url`, `content_type`, `bitrate` i kbit/s, `size` i KB, `isOriginal`, `fileExt`) når `sources` ikke
+  er utelatt. Varighet finnes ikke i API-et; den anslås som `size × 8 / bitrate` sekunder.
+* `GET /api/v1/media_objects/:id/media_tracks` gir bare brukerens egne spor og brukes ikke.
+
 ## Klassiske quizer
 
 * Status: Instructure har **ingen** annonsert sluttdato (vedlikeholdsmodus, april 2026). API-ene fungerer.

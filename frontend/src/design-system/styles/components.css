@@ -590,6 +590,9 @@ button.ek-card--link:hover {
   justify-content: flex-end;
   gap: var(--space-3) var(--space-5);
 }
+.ek-page-header__status {
+  margin-top: var(--space-1);
+}
 .ek-page-header__meta {
   font-size: var(--text-sm);
   color: var(--color-text-subtle);
@@ -672,6 +675,31 @@ button.ek-card--link:hover {
   font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
+/* Comfortable reading for pages where the explanations carry the decision (Emne-RAG): hints and secondary text at
+   body size with stronger contrast. */
+.ek-readable .ek-hint,
+.ek-readable .ek-small {
+  font-size: var(--text-base);
+}
+.ek-readable .ek-hint,
+.ek-readable .ek-muted {
+  color: var(--color-text-secondary);
+}
+/* A short inline list («A · B · C»); screen readers hear a list, the separators are decoration. */
+.ek-inline-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ek-inline-list > li + li::before {
+  content: "·";
+  content: "·" / "";
+  margin-inline: var(--space-2);
+  color: var(--color-text-subtle);
+}
 .ek-error {
   display: flex;
   gap: var(--space-1);
@@ -723,6 +751,11 @@ button.ek-card--link:hover {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+.ek-fieldset--nested {
+  margin-inline-start: calc(var(--space-2) + 2px);
+  padding-inline-start: var(--space-4);
+  border-inline-start: 2px solid var(--color-border);
 }
 .ek-legend {
   padding: 0;
@@ -926,7 +959,10 @@ button.ek-card--link:hover {
   gap: var(--space-2);
   border-bottom: 1px solid var(--color-border);
   margin-bottom: var(--space-8);
+  /* Scrolls sideways on narrow screens. overflow-x alone makes overflow-y «auto» too, which showed a small vertical
+     scrollbar on Windows; nothing in the list may stick out downwards (see the indicator below). */
   overflow-x: auto;
+  overflow-y: hidden;
 }
 .ek-tabs__tab {
   position: relative;
@@ -960,7 +996,7 @@ button.ek-card--link:hover {
   position: absolute;
   left: var(--space-2);
   right: var(--space-2);
-  bottom: -1px;
+  bottom: 0;
   height: 3px;
   border-radius: 3px 3px 0 0;
   background: var(--color-link);

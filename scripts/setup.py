@@ -184,6 +184,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Installerer eller reparerer EmneKlar i denne mappen.")
     parser.add_argument("--strict", action="store_true",
                         help="bruk bare de testede versjonene av avhengighetene (ingen reserve)")
+    parser.add_argument("--rag", action="store_true",
+                        help="installer også lokale modeller for emnets kunnskapsbase (PyTorch, sentence-transformers, "
+                             "faster-whisper – flere GB); update.bat beholder dem")
     parser.add_argument("--no-pause", action="store_true", help=argparse.SUPPRESS)  # handled by setup.bat
     args = parser.parse_args(argv)
     if args.strict:
@@ -196,11 +199,15 @@ def main(argv: list[str] | None = None) -> int:
     try:
         base_python = check_python(reporter)
         python = ensure_venv(reporter, base_python)
+        if args.rag:
+            update.remember_extra(ROOT, "rag")
         install_dependencies(reporter, python)
         ensure_frontend(reporter)
         version = verify(reporter, python)
         reporter.info()
         reporter.info(f"Oppsettet er ferdig – EmneKlar {version} er klar til bruk.")
+        if "rag" not in update.chosen_extras(ROOT):
+            reporter.info("Valgfritt: setup-emne-rag.bat installerer lokale modeller for emnets kunnskapsbase (flere GB).")
         reporter.info("Neste steg: Kjør start.bat")
         return 0
     except (SetupError, update.UpdateError) as exc:

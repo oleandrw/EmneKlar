@@ -25,7 +25,7 @@ import {
   type Column,
   type Tone,
 } from "../../design-system";
-import { BackToTools, type ContentIndex } from "./shared";
+import type { ContentIndex } from "./shared";
 
 interface Options {
   item_types: { type: string; label: string; default: string | null; allowed: { value: string; label: string }[] }[];
@@ -137,7 +137,6 @@ export function ModuleRequirements() {
     <>
       <PageHeader title="Automatiske modulkrav" description="Foreslår fullføringskrav ut fra elementtype. Bare kombinasjoner Canvas støtter, kan velges." />
       <div className="ek-stack" data-gap="6">
-        <BackToTools />
         <Card title="Valg" headingLevel={2}>
           <div className="ek-stack" data-gap="6">
             <RadioGroup legend="Omfang" name="scope" value={scope} onChange={setScope}

@@ -34,6 +34,11 @@ MAX_RESULT_BYTES = 64 * 1024 * 1024
 # Only these functions may run in a worker ("module:function"). Jobs are JSON: {"job": name, "args": {...}}.
 ALLOWED_JOBS = {
     "inspect_document": "emneklar.features.accessibility.documents:inspect_document",
+    "rag_convert": "emneklar.features.course_rag.convert.documents:convert_document",
+    "rag_render_pdf": "emneklar.features.course_rag.convert.ocr:render_pdf_pages",
+    "rag_image_prepare": "emneklar.features.course_rag.convert.imageprep:prepare_image",
+    "rag_keyframes": "emneklar.features.course_rag.convert.imageprep:extract_keyframes",
+    "rag_audio_pieces": "emneklar.features.course_rag.convert.audio:audio_pieces",
 }
 
 

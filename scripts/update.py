@@ -270,6 +270,43 @@ def pins_unavailable(pip_output: str) -> bool:
             and not any(marker in pip_output for marker in NETWORK_ERROR_MARKERS))
 
 
+EXTRAS_FILE = "emneklar-extras.txt"  # in backend/.venv: optional parts the user chose to install (e.g. "rag")
+KNOWN_EXTRAS = {"rag": "lokale modeller for emnets kunnskapsbase"}
+
+
+def chosen_extras(root: Path) -> list[str]:
+    path = root / "backend" / ".venv" / EXTRAS_FILE
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    return [name for name in (line.strip() for line in lines) if name in KNOWN_EXTRAS]
+
+
+def remember_extra(root: Path, extra: str) -> None:
+    path = root / "backend" / ".venv" / EXTRAS_FILE
+    current = chosen_extras(root)
+    if extra not in current:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join([*current, extra]) + "\n", encoding="utf-8")
+
+
+def install_optional_extras(venv_python: Path, root: Path, reporter: Reporter) -> None:
+    """Optional parts (``backend[rag]``) the user chose earlier. Never fails setup or update: EmneKlar works
+    without them, so a failed install is reported as a warning."""
+    backend = root / "backend"
+    constraints = backend / "constraints.txt"
+    for extra in chosen_extras(root):
+        reporter.info(f"Installerer {KNOWN_EXTRAS[extra]} (kan ta lang tid første gang – flere GB) …")
+        base: list[str | Path] = [venv_python, "-m", "pip", "install", "--disable-pip-version-check", "--no-input"]
+        if constraints.is_file():
+            base += ["-c", constraints]
+        done = run([*base, "-e", f"{backend}[{extra}]"], cwd=root, reporter=reporter, check=False)
+        if done.returncode != 0:
+            reporter.warn(f"Klarte ikke å installere {KNOWN_EXTRAS[extra]}. EmneKlar virker likevel; kunnskapsbasen bruker "
+                          "da nøkkelordsøk. Se loggen, og prøv setup-emne-rag.bat på nytt senere.")
+
+
 def install_python_dependencies(venv_python: Path, root: Path, reporter: Reporter) -> None:
     """``pip install -c backend/constraints.txt -e backend`` – the tested versions.
 
@@ -283,6 +320,7 @@ def install_python_dependencies(venv_python: Path, root: Path, reporter: Reporte
     if not constraints.is_file():
         reporter.warn("Fant ikke backend\\constraints.txt – installerer nyeste tillatte versjoner.")
         run([*base, "-e", backend], cwd=root, reporter=reporter)
+        install_optional_extras(venv_python, root, reporter)
         return
     try:
         run([*base, "-c", constraints, "-e", backend], cwd=root, reporter=reporter)
@@ -293,6 +331,7 @@ def install_python_dependencies(venv_python: Path, root: Path, reporter: Reporte
                       "backend\\.venv. Installerer de nyeste versjonene EmneKlar tillater i stedet. "
                       "Python 3.11–3.14 anbefales.")
         run([*base, "-e", backend], cwd=root, reporter=reporter)
+    install_optional_extras(venv_python, root, reporter)
 
 
 def npm_unsafe_character(path: Path) -> str | None:

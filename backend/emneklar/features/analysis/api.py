@@ -149,8 +149,8 @@ async def content_index(course_id: str, c: AppContainer = Depends(get_container)
             items.append({"object_type": kind, "object_id": ident, "title": row.get(title_key) or "",
                           "module": module_of.get(f"{kind}:{ident}")})
     return {
-        "modules": [{"id": str(m["id"]), "name": m.get("name") or "", "items_count": len(m.get("items") or [])}
-                    for m in ok(modules)],
+        "modules": [{"id": str(m["id"]), "name": m.get("name") or "", "items_count": len(m.get("items") or []),
+                     "published": m.get("published") is not False} for m in ok(modules)],
         "items": items,
         "partial": any(isinstance(x, BaseException) for x in (modules, pages, assignments, discussions, quizzes)),
     }

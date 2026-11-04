@@ -108,6 +108,16 @@ class RuntimeConfig:
         return self.data_dir / "tmp"
 
     @property
+    def rag_dir(self) -> Path:
+        """Emne-RAG: one search index file per course (derived data that can be rebuilt)."""
+        return self.data_dir / "rag"
+
+    @property
+    def models_dir(self) -> Path:
+        """Downloaded local models (embedding, reranker, speech-to-text). Never shared with other programs."""
+        return self.data_dir / "models"
+
+    @property
     def run_dir(self) -> Path:
         """Files describing the running instance (port, control secret) for start/update scripts."""
         return self.data_dir / "run"

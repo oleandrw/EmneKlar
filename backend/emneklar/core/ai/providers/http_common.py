@@ -34,10 +34,21 @@ def _retry_delay(response: httpx.Response, attempt: int) -> float:
 
 async def post_json(client: httpx.AsyncClient, url: str, payload: dict[str, Any], headers: dict[str, str], *,
                     retries: int = 1) -> dict[str, Any]:
+    return await _post(client, url, headers, retries=retries, json=payload)
+
+
+async def post_multipart(client: httpx.AsyncClient, url: str, data: dict[str, Any], files: dict[str, Any],
+                         headers: dict[str, str], *, retries: int = 1) -> dict[str, Any]:
+    """multipart/form-data (file uploads such as audio for transcription)."""
+    return await _post(client, url, headers, retries=retries, data=data, files=files)
+
+
+async def _post(client: httpx.AsyncClient, url: str, headers: dict[str, str], *, retries: int,
+                **body: Any) -> dict[str, Any]:
     attempt = 0
     while True:
         try:
-            response = await client.post(url, json=payload, headers=headers)
+            response = await client.post(url, headers=headers, **body)
         except httpx.TimeoutException as exc:
             if attempt < retries:
                 attempt += 1

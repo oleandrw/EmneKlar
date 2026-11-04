@@ -54,7 +54,10 @@ class AnthropicProvider(AIProvider):
                 out.append({"type": "image", "source": {"type": "base64", "media_type": part.media_type,
                                                          "data": part.data_b64}})
             else:
-                out.append({"type": "text", "text": part.text})
+                block: dict[str, Any] = {"type": "text", "text": part.text}
+                if part.cache:
+                    block["cache_control"] = {"type": "ephemeral"}
+                out.append(block)
         return out
 
     def payload(self, request: AIRequest, *, legacy_tool: bool) -> dict[str, Any]:

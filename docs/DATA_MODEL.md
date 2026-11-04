@@ -44,6 +44,13 @@ Leverandøroppsett (endepunkt, API-versjon, aktivert) ligger i innstillingene; n
 | `homepage_drafts` | Forsideutkast: modus, stil, seksjoner, HTML, merknader om usikkert innhold, KI brukt |
 | `reports` | Genererte rapporter (type, format, filnavn i `reports\`, kjøringer som inngår) |
 
+## Emne-RAG
+
+| Tabell / fil | Innhold |
+|---|---|
+| `rag_indexes` | Register med én rad per emne: status (tom/bygges/klar/ufullstendig/feilet), valg (omfang, kildetyper, filtyper), embedding-modell, statistikk, hoppede elementer med begrunnelse, begrensninger, siste evaluering (recall@5, MRR, helsescore, testspørsmål), siste jobb og når indeksen sist ble bygget. |
+| `rag\course-<id>.sqlite` | Selve indeksen (egen SQLite-fil, `application_id` «EkRG», skjemaversjon): `items` (element, modul, `updated_at`, `content_hash`, signatur, status), `chunks` (tekst, kontekst, type `text/table/image/transcript/slide`, overskriftssti, modul, kilde-URL, sidetall, tidsstempel, metadata, vektor som float32) og `chunks_fts` (FTS5 over norske ordstammer). Kan bygges på nytt fra Canvas. |
+
 ## Filer i datamappen
 
 ```
@@ -53,7 +60,11 @@ Leverandøroppsett (endepunkt, API-versjon, aktivert) ligger i innstillingene; n
   backups\database\     kopi av databasen før migrering/oppdatering
   reports\              genererte rapporter (HTML/CSV)
   logs\emneklar.log     strukturert logg (JSON-linjer, sensurert)
-  cache\                midlertidige nedlastinger (dokumentanalyse)
+  cache\                midlertidige nedlastinger (dokumentanalyse); cache\rag\ har transkripsjoner (lokale og
+                        fra KI-leverandør), bildebeskrivelser og kontekstsetninger for Emne-RAG (nøkkel = SHA-256),
+                        og YouTube-/Vimeo-teksting (nøkkel = tjeneste og video-id, brukes i 30 dager)
+  rag\                  Emne-RAG-indekser, én SQLite-fil per emne
+  models\               lokale modeller for Emne-RAG (Hugging Face-buffer og konverterte NB-Whisper-modeller)
   run\instance.json     kjørende instans (port, kontrollhemmelighet) – slettes ved avslutning
 ```
 

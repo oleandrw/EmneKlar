@@ -18,7 +18,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
-from emneklar.core.ai.base import AIError, AIProvider, AIRequest, AIResult
+from emneklar.core.ai.base import AIError, AIProvider, AIRequest, AIResult, EmbeddingResult, TranscriptionResult
 from emneklar.core.ai.catalog import ModelRegistry
 from emneklar.core.ai.providers.anthropic import AnthropicProvider
 from emneklar.core.ai.providers.openai_compat import AzureOpenAIProvider, OpenAICompatibleProvider
@@ -32,6 +32,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 AI_LABEL = "KI-forslag – må vurderes"
+MESSAGES_SHARING_OFF = ("Sending av emneinnhold til ekstern KI er slått av. Slå det på under Innstillinger → "
+                        "Sikkerhet og personvern, eller bruk en lokal modell.")
 
 
 def is_local(provider: ProviderConfig) -> bool:
@@ -191,6 +193,108 @@ class AIService:
                 decision.reason += f" Reservemodell brukt: {model['display_name']}."
             return result, decision
         raise AIError("ai_all_failed", status=502, detail=last.message if last else None)
+
+    # -- embeddings (Emne-RAG with a provider instead of a local model) ---------------------------------
+
+    def embedding_plan(self, provider_id: str, model: str, *, summary: str) -> dict[str, Any]:
+        """Like :meth:`plan`, for an embeddings endpoint chosen in the Emne-RAG settings (not by the router)."""
+        settings = self.c.settings.get()
+        config = settings.provider(provider_id)
+        reason: str | None = None
+        if config is None or not self.configured(config):
+            reason = "Leverandøren som er valgt for embedding, er ikke satt opp. Se Innstillinger → KI-assistenter."
+        elif config.type == "anthropic":
+            reason = "Anthropic tilbyr ikke embedding. Velg en OpenAI-kompatibel leverandør eller lokale modeller."
+        elif not model:
+            reason = "Ingen embedding-modell er valgt for leverandøren."
+        elif not is_local(config) and not settings.privacy.allow_external_ai:
+            reason = MESSAGES_SHARING_OFF
+        external = config is not None and not is_local(config)
+        return {"available": reason is None, "reason": reason, "payload_summary": summary, "external": external,
+                "needs_confirmation": external and settings.privacy.confirm_before_send,
+                "route": None if config is None else {"provider": config.id, "model": model,
+                                                      "reason": "Valgt under Emnets kunnskapsbase → Innstillinger."}}
+
+    async def embed(self, provider_id: str, model: str, texts: list[str], *, summary: str, confirmed: bool,
+                    course_id: str | None = None) -> EmbeddingResult:
+        plan = self.embedding_plan(provider_id, model, summary=summary)
+        if not plan["available"]:
+            raise AIError("ai_not_configured", status=409, message=plan["reason"])
+        if plan["needs_confirmation"] and not confirmed:
+            raise AIError("ai_consent_required", status=409)
+        settings = self.c.settings.get()
+        config = settings.provider(provider_id)
+        assert config is not None
+        try:
+            result = await self.provider(config).embed(model, texts)
+        except AIError as exc:
+            self._log_embedding(provider_id, model, settings, success=False, error=exc.code, tokens=0,
+                                summary=summary, course_id=course_id)
+            raise
+        self._log_embedding(provider_id, model, settings, success=True, error=None, tokens=result.input_tokens,
+                            summary=summary, course_id=course_id)
+        return result
+
+    # -- transcription (Emne-RAG, when a video has no captions and local transcription is not used) -----------
+
+    def transcription_plan(self, provider_id: str, model_id: str, *, summary: str) -> dict[str, Any]:
+        from emneklar.core.ai.transcription import resolve
+
+        settings = self.c.settings.get()
+        config = settings.provider(provider_id)
+        model = resolve(config.type, model_id) if config is not None else None
+        reason: str | None = None
+        if config is None or not self.configured(config):
+            reason = ("Leverandøren som er valgt for transkripsjon, er ikke satt opp. Se Innstillinger → "
+                      "KI-assistenter.")
+        elif config.type == "anthropic":
+            reason = "Anthropic tilbyr ikke transkripsjon. Velg OpenAI, Azure OpenAI eller en egen server."
+        elif model is None:
+            reason = "Ingen transkripsjonsmodell er valgt for leverandøren (Emnets kunnskapsbase → Innstillinger)."
+        elif not is_local(config) and not settings.privacy.allow_external_ai:
+            reason = MESSAGES_SHARING_OFF
+        external = config is not None and not is_local(config)
+        return {"available": reason is None, "reason": reason, "payload_summary": summary, "external": external,
+                "needs_confirmation": external and settings.privacy.confirm_before_send,
+                "model": model.as_dict() if model else None,
+                "route": None if config is None or model is None else {
+                    "provider": config.id, "model": model.id, "reason": "Valgt under Emnets kunnskapsbase → Innstillinger."}}
+
+    async def transcribe(self, provider_id: str, model_id: str, audio: bytes, filename: str, *, segments: bool,
+                         summary: str, confirmed: bool, seconds: float, language: str | None = None,
+                         prompt: str | None = None, course_id: str | None = None) -> TranscriptionResult:
+        plan = self.transcription_plan(provider_id, model_id, summary=summary)
+        if not plan["available"]:
+            raise AIError("ai_not_configured", status=409, message=plan["reason"])
+        if plan["needs_confirmation"] and not confirmed:
+            raise AIError("ai_consent_required", status=409)
+        settings = self.c.settings.get()
+        config = settings.provider(provider_id)
+        assert config is not None and plan["model"] is not None
+        model = str(plan["model"]["id"])
+        try:
+            result = await self.provider(config).transcribe(model, audio, filename, segments=segments,
+                                                            language=language, prompt=prompt)
+        except AIError as exc:
+            self._log_usage("rag_transcription", provider_id, model, settings, success=False, error=exc.code,
+                            tokens=0, summary=summary, course_id=course_id)
+            raise
+        self._log_usage("rag_transcription", provider_id, model, settings, success=True, error=None, tokens=0,
+                        summary=f"{summary} ({round(seconds)} s lyd)", course_id=course_id)
+        return result
+
+    def _log_embedding(self, provider_id: str, model: str, settings: AppSettings, *, success: bool, error: str | None,
+                       tokens: int, summary: str, course_id: str | None) -> None:
+        self._log_usage("rag_embedding", provider_id, model, settings, success=success, error=error, tokens=tokens,
+                        summary=summary, course_id=course_id)
+
+    def _log_usage(self, task: str, provider_id: str, model: str, settings: AppSettings, *, success: bool,
+                   error: str | None, tokens: int, summary: str, course_id: str | None) -> None:
+        with self.c.db.session() as session:
+            session.add(AIUsage(course_id=course_id, task_type=task, provider_id=provider_id, model_id=model,
+                                strategy=settings.ai.strategy, reason="Valgt under Emnets kunnskapsbase → Innstillinger.",
+                                fallback_used=False, success=success, error_code=error, input_tokens=tokens,
+                                output_tokens=0, payload_summary={"summary": summary}))
 
     def _log(self, task: str, model: dict[str, Any], settings: AppSettings, decision: RouteDecision, *,
              fallback: bool, success: bool, summary: str, course_id: str | None, error: str | None = None,

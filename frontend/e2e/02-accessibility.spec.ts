@@ -18,6 +18,7 @@ const PAGES: [string, string][] = [
   ["/canvas-verktoy/blueprint", "Blueprint-låsing"],
   ["/canvas-verktoy/innstillinger", "Canvas-innstillinger"],
   ["/canvas-verktoy/endringslogg", "Backup og endringslogg"],
+  ["/canvas-verktoy/emne-rag", "Emnets kunnskapsbase"],
   ["/rapporter", "Rapporter"],
   ["/innstillinger/generelt", "Innstillinger"],
   ["/innstillinger/ki-assistenter", "Innstillinger"],
@@ -37,6 +38,24 @@ test.describe("axe – lyst tema", () => {
       await expectNoAxeViolations(page, path);
     });
   }
+});
+
+test("axe – Emne-RAG: «Tilpass kilder»", async ({ page }) => {
+  await login(page);
+  await page.goto("/canvas-verktoy/emne-rag");
+  await expect(page.getByText("Ingen kunnskapsbase opprettet ennå")).toBeVisible();  // compact status by the title
+  await expect(page.getByRole("button", { name: "Opprett kunnskapsbase" })).toBeVisible();
+  await page.getByRole("button", { name: "Tilpass kilder" }).click();
+  const panel = page.getByRole("dialog", { name: "Tilpass kilder" });
+  const advanced = panel.getByRole("button", { name: /^Avansert: KI og transkribering/ });
+  await expect(advanced).toHaveAttribute("aria-expanded", "false");
+  await expectNoAxeViolations(page, "emne-rag-tilpass-kilder");
+  await advanced.click();
+  await panel.getByRole("radio", { name: /Ekstern KI-tjeneste/ }).check();
+  await expect(panel.getByRole("combobox", { name: "Språk i opptakene" })).toBeVisible();
+  await expectNoAxeViolations(page, "emne-rag-tilpass-kilder-avansert");
+  await panel.getByRole("button", { name: "Avbryt" }).click();
+  await expect(page.getByRole("button", { name: "Tilpass kilder" })).toBeFocused();
 });
 
 test("axe – mørkt tema og dialoger", async ({ page }) => {
