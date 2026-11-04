@@ -77,7 +77,7 @@ function IndexCard({ status, courseId }: { status: RagStatus; courseId: string }
   if (!index || !stats) return null;  // the page header says «Ingen kunnskapsbase opprettet ennå»
   const types = stats.chunk_types;
   return (
-    <Card title="Kunnskapsbase" headingLevel={2}
+    <Card title="Status" headingLevel={2}
       actions={<Badge tone={STATUS_TONE[index.status] ?? "neutral"}>{STATUS_LABEL[index.status] ?? index.status}</Badge>}>
       <div className="ek-stack" data-gap="4">
         <p className="ek-small">
@@ -134,7 +134,7 @@ function IndexCard({ status, courseId }: { status: RagStatus; courseId: string }
         </div>
         <p className="ek-xs ek-muted">
           «Oppdater kunnskapsbasen» bruker de samme valgene som sist og behandler bare nye og endrede elementer. Må
-          noe lastes ned eller sendes til KI, går du via fanen «Oppdater kunnskapsbasen», der du ser estimatet først.
+          noe lastes ned eller sendes til KI, går du via fanen «Kunnskapsbase», der du ser estimatet først.
         </p>
         {update.error ? <Alert tone="warning" role="alert">{(update.error as Error).message}</Alert> : null}
       </div>
@@ -159,7 +159,7 @@ export function CourseRag() {
     <>
       <PageHeader title="Emne-RAG"
         description="Lag en lokal kunnskapsbase av emnet – tekst, dokumenter, bilder og video – og still spørsmål med klikkbare kilder."
-        meta={status.data && !status.data.index ? "Ingen kunnskapsbase opprettet ennå" : undefined}
+        status={status.data && !status.data.index ? <Badge dot>Ingen kunnskapsbase opprettet ennå</Badge> : undefined}
         actions={<HelpLink topic="emne-rag" />} />
       <div className="ek-stack" data-gap="6">
         {status.isPending ? <Spinner label="Henter status for kunnskapsbasen …" /> : status.error ? (
@@ -169,8 +169,7 @@ export function CourseRag() {
             {status.data.error ? <Alert tone="danger" role="alert">{status.data.error.message}</Alert> : null}
             <IndexCard status={status.data} courseId={courseId} />
             <Tabs<TabId> label="Emne-RAG" selected={current} onSelect={setTab} tabs={[
-              { id: "bygg", label: status.data.index ? "Oppdater kunnskapsbasen" : "Opprett kunnskapsbase",
-                icon: <Hammer aria-hidden="true" /> },
+              { id: "bygg", label: "Kunnskapsbase", icon: <Hammer aria-hidden="true" /> },
               { id: "spor", label: "Spør emnet", icon: <MessageSquareText aria-hidden="true" /> },
               { id: "kvalitet", label: "Kvalitet", icon: <Gauge aria-hidden="true" /> },
               { id: "eksport", label: "Eksport", icon: <Download aria-hidden="true" /> },

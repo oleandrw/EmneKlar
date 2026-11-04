@@ -90,38 +90,39 @@ export function effectiveOptions(options: BuildOptions, status: RagStatus): Buil
   };
 }
 
-const SOURCE_SHORT: [keyof Pick<BuildOptions, "text" | "documents" | "video" | "images">, string][] = [
-  ["text", "Canvas-tekst"], ["documents", "dokumenter"], ["video", "video/lyd"], ["images", "bilder"]];
-const GROUP_SHORT: Record<FileGroup, string> = { pdf: "PDF", word: "Word-dokumenter", powerpoint: "presentasjoner",
+const SOURCE_KEYS = ["text", "documents", "video", "images"] as const;
+const GROUP_SHORT: Record<FileGroup, string> = { pdf: "PDF", word: "Word", powerpoint: "presentasjoner",
   excel: "regneark", text: "tekstfiler" };
 
 export function listNb(items: string[]): string {
   return items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} og ${items[items.length - 1]}`;
 }
 
-const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
-
 export interface SourceSummary {
   customized: boolean;
   nothing: boolean;
-  text: string;
+  /** What is included, in order: «Canvas-tekst», «Dokumenter», «Video og lyd», «Bilder», then any extras. */
+  items: string[];
   notes: string[];
 }
 
-/** The one-line summary on the main page («Inkluderer …» or «Tilpassede kilder · … er utelatt.»). */
+/** The summary on the main page: the actual choices, marked «Tilpasset» when they differ from the defaults. */
 export function sourceSummary(options: BuildOptions, status: RagStatus): SourceSummary {
   const effective = effectiveOptions(options, status);
-  const off = SOURCE_SHORT.filter(([key]) => !options[key]).map(([, label]) => label);
-  if (options.documents) {
-    off.push(...status.file_groups.filter((g) => !options.file_groups.includes(g.key)).map((g) => GROUP_SHORT[g.key]));
-  }
-  const extras: string[] = [];
-  if (options.scope === "course" && options.include_unpublished) extras.push("Upublisert innhold tas med.");
-  if (effective.contextual_enrichment) extras.push("Kontekstuell berikelse med KI er på.");
-  if (effective.keyframes) extras.push("Nøkkelbilder fra video er på.");
-  const customized = off.length > 0 || extras.length > 0;
-  const included = [effective.text && "Canvas-tekst", effective.documents && "dokumenter",
-    ...(effective.video ? ["video", "lyd"] : []), effective.images && "bilder"].filter((x): x is string => Boolean(x));
+  const groups = status.file_groups.filter((g) => options.file_groups.includes(g.key)).map((g) => GROUP_SHORT[g.key]);
+  const allGroups = groups.length === status.file_groups.length;
+  const items = [
+    effective.text && "Canvas-tekst",
+    effective.documents && (allGroups ? "Dokumenter" : `Dokumenter (${listNb(groups)})`),
+    effective.video && "Video og lyd",
+    effective.images && "Bilder",
+    options.scope === "course" && options.include_unpublished && "Upublisert innhold",
+    effective.contextual_enrichment && "Kontekstuell berikelse",
+    effective.keyframes && "Nøkkelbilder",
+  ].filter((x): x is string => Boolean(x));
+  const customized = SOURCE_KEYS.some((key) => options[key] !== DEFAULT_OPTIONS[key]) ||
+    (options.documents && !allGroups) || (options.scope === "course" && options.include_unpublished) ||
+    options.contextual_enrichment || options.keyframes;
   const notes: string[] = [];
   const aiMissing = status.ai.reason ? `: ${status.ai.reason}` : ".";
   if (options.images && !effective.images) notes.push(`Bilder tas ikke med fordi KI ikke er satt opp${aiMissing}`);
@@ -129,12 +130,8 @@ export function sourceSummary(options: BuildOptions, status: RagStatus): SourceS
   if (options.contextual_enrichment && !effective.contextual_enrichment) {
     notes.push(`Kontekstuell berikelse er valgt, men krever KI${aiMissing}`);
   }
-  const nothing = included.length === 0;
-  const text = nothing ? "Ingen kilder er valgt."
-    : customized ? ["Tilpassede kilder", off.length ? `${capitalise(listNb(off))} er utelatt.` : null, ...extras]
-      .filter(Boolean).join(" · ")
-      : `Inkluderer ${listNb(included)}.`;
-  return { customized, nothing, text, notes };
+  const nothing = !(effective.text || effective.documents || effective.video || effective.images);
+  return { customized, nothing, items, notes };
 }
 
 export interface SkippedItem {

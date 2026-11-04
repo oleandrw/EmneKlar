@@ -336,6 +336,7 @@ export function PageHeader({
   actions,
   eyebrow,
   meta,
+  status,
 }: {
   title: ReactNode;
   description?: ReactNode;
@@ -343,6 +344,8 @@ export function PageHeader({
   eyebrow?: ReactNode;
   /** Quiet status text on the right, e.g. «Sist analysert: …». */
   meta?: ReactNode;
+  /** A status right under the title and description, e.g. a Badge «Ingen kunnskapsbase opprettet ennå». */
+  status?: ReactNode;
 }) {
   return (
     <header className="ek-page-header">
@@ -352,6 +355,7 @@ export function PageHeader({
           {title}
         </h1>
         {description ? <p className="ek-page-header__description">{description}</p> : null}
+        {status ? <div className="ek-page-header__status">{status}</div> : null}
       </div>
       {actions || meta ? (
         <div className="ek-page-header__aside">

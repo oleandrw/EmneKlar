@@ -84,6 +84,7 @@
   --color-border-input: #7a7f8c; /* 3.9:1 on white */
   --color-text: #161d2d; /* 16.5:1 */
   --color-text-muted: #4b5466; /* 7.4:1 */
+  --color-text-secondary: #384152; /* 10.3:1 – explanations that carry a decision (.ek-readable) */
   --color-text-subtle: #5f6779; /* 5.6:1, also on the page plane */
   --color-link: #1f5bd0;
   --color-primary: #1e3a5f; /* navy; white text 11.6:1 */
@@ -169,6 +170,7 @@
   --color-border-input: #707d96; /* 3.5:1 on surface */
   --color-text: #e9edf4;
   --color-text-muted: #b6c0d0;
+  --color-text-secondary: #c9d1de; /* 10.9:1 on the surface */
   --color-text-subtle: #9da8bb;
   --color-link: #92b4ff;
   --color-primary: #3466b0; /* white text 5.6:1 */

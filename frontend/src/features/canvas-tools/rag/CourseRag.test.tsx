@@ -113,6 +113,9 @@ const baseEstimate = (partial: Partial<Estimate> = {}): Estimate => ({
   ...partial,
 });
 const withAi = () => status({ stats: null, ai: { available: true, reason: null }, not_available: {} });
+const sourceItems = () => within(screen.getByRole("list", { name: "Kilder som er med" })).getAllByRole("listitem")
+  .map((li) => li.textContent);
+const customised = () => screen.queryByText("Tilpasset");
 
 describe("BuildPanel", () => {
   it("keeps the main page short and builds after accepting first-time downloads", async () => {
@@ -125,7 +128,8 @@ describe("BuildPanel", () => {
     const calls = mockApi({ "/rag/estimate": estimate, "/rag/build": { id: "job-1" } });
     const { container } = render(wrap(<BuildPanel courseId="104" status={status({ stats: null })} />));
     // No KI and no video in this version: the summary says what is included and why the rest is not.
-    expect(screen.getByText("Inkluderer Canvas-tekst og dokumenter.")).toBeInTheDocument();
+    expect(sourceItems()).toEqual(["Canvas-tekst", "Dokumenter"]);
+    expect(customised()).not.toBeInTheDocument();
     expect(screen.getByText(/Bilder tas ikke med fordi KI ikke er satt opp/)).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: /Tekst fra Canvas/ })).not.toBeInTheDocument();
     // One short note on content, KI and privacy by the main button; the details are behind «Les mer».
@@ -151,7 +155,8 @@ describe("BuildPanel", () => {
   it("starts at once when there is nothing to approve", async () => {
     const calls = mockApi({ "/rag/estimate": baseEstimate(), "/rag/build": { id: "job-1" } });
     render(wrap(<BuildPanel courseId="104" status={withAi()} />));
-    expect(screen.getByText("Inkluderer Canvas-tekst, dokumenter, video, lyd og bilder.")).toBeInTheDocument();
+    expect(sourceItems()).toEqual(["Canvas-tekst", "Dokumenter", "Video og lyd", "Bilder"]);
+    expect(customised()).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Opprett kunnskapsbase" }));
     await waitFor(() => expect(calls.some((c) => c.url.includes("/rag/build"))).toBe(true));
     expect(calls.find((c) => c.url.includes("/rag/build"))?.body).toMatchObject({
@@ -196,7 +201,8 @@ describe("BuildPanel", () => {
     expect(within(panel).queryByRole("checkbox", { name: /Nøkkelbilder/ })).not.toBeInTheDocument();
     await userEvent.click(within(panel).getByRole("checkbox", { name: /Bildebeskrivelser med KI/ }));
     await userEvent.click(within(panel).getByRole("button", { name: "Lagre valg" }));
-    expect(await screen.findByText("Tilpassede kilder · Video/lyd og bilder er utelatt.")).toBeInTheDocument();
+    expect(await screen.findByText("Tilpasset")).toBeInTheDocument();
+    expect(sourceItems()).toEqual(["Canvas-tekst", "Dokumenter"]);
     expect(calls.find((c) => c.url.includes("/api/settings/rag"))?.body).toMatchObject({ transcription: "provider" });
     expect(JSON.parse(window.localStorage.getItem("emneklar.rag.sources.104") ?? "{}")).toMatchObject({
       video: false, images: false, text: true });
@@ -205,7 +211,8 @@ describe("BuildPanel", () => {
     const again = await screen.findByRole("dialog", { name: "Tilpass kilder" });
     await userEvent.click(within(again).getByRole("button", { name: "Tilbakestill kilder" }));
     await userEvent.click(within(again).getByRole("button", { name: "Lagre valg" }));
-    expect(await screen.findByText("Inkluderer Canvas-tekst, dokumenter, video, lyd og bilder.")).toBeInTheDocument();
+    await waitFor(() => expect(customised()).not.toBeInTheDocument());
+    expect(sourceItems()).toEqual(["Canvas-tekst", "Dokumenter", "Video og lyd", "Bilder"]);
     // Images go to an external provider: the estimate is shown and needs consent first.
     await userEvent.click(screen.getByRole("button", { name: "Opprett kunnskapsbase" }));
     const start = await screen.findByRole("button", { name: "Start bygging" });
@@ -214,11 +221,20 @@ describe("BuildPanel", () => {
     await waitFor(() => expect(start).toBeEnabled());
   });
 
+  it("shows the chosen file types when only some are included", () => {
+    saveSources("104", { ...DEFAULT_OPTIONS, file_groups: ["pdf"] });
+    mockApi({});
+    render(wrap(<BuildPanel courseId="104" status={withAi()} />));
+    expect(sourceItems()).toEqual(["Canvas-tekst", "Dokumenter (PDF)", "Video og lyd", "Bilder"]);
+    expect(customised()).toBeInTheDocument();
+  });
+
   it("uses the source choices saved for the course", () => {
     saveSources("104", { ...DEFAULT_OPTIONS, documents: false });
     mockApi({});
     render(wrap(<BuildPanel courseId="104" status={withAi()} />));
-    expect(screen.getByText("Tilpassede kilder · Dokumenter er utelatt.")).toBeInTheDocument();
+    expect(sourceItems()).toEqual(["Canvas-tekst", "Video og lyd", "Bilder"]);
+    expect(customised()).toBeInTheDocument();
   });
 
   it("explains an empty estimate caused by unpublished content", async () => {

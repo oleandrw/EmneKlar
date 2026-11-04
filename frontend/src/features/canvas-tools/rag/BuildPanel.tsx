@@ -170,7 +170,7 @@ function PrivacySummary({ status }: { status: RagStatus }) {
   const online = [rag.youtube_captions && "YouTube", rag.vimeo_captions && "Vimeo"].filter(Boolean).join(" og ");
   return (
     <div className="ek-stack" data-gap="1">
-      <p className="ek-small ek-muted ek-icon-text">
+      <p className="ek-icon-text">
         <ShieldCheck aria-hidden="true" />
         <span>
           Bare lærerens innhold brukes, og kunnskapsbasen lagres bare på denne maskinen. Skal noe lastes ned eller
@@ -294,7 +294,7 @@ export function BuildPanel({ courseId, status }: { courseId: string; status: Rag
   return (
     <div className="ek-stack" data-gap="6">
       <Card title="Hva skal med?" headingLevel={2}>
-        <div className="ek-stack" data-gap="6">
+        <div className="ek-stack ek-readable" data-gap="6">
           <RadioGroup legend="Omfang" name="rag-scope" value={options.scope} onChange={(scope) => set({ scope })}
             options={[
               { value: "course", label: "Hele emnet", hint: "Alt lærerinnhold, også det som ikke ligger i moduler." },
@@ -315,7 +315,14 @@ export function BuildPanel({ courseId, status }: { courseId: string; status: Rag
           ) : null}
           <section className="ek-stack" data-gap="2" aria-labelledby="rag-kilder">
             <h3 id="rag-kilder" className="ek-small">Kilder</h3>
-            <p>{summary.text}</p>
+            {summary.nothing ? <p>Ingen kilder er valgt.</p> : (
+              <div className="ek-cluster" data-gap="2">
+                <ul className="ek-inline-list" aria-label="Kilder som er med">
+                  {summary.items.map((item) => <li key={item}>{item}</li>)}
+                </ul>
+                {summary.customized ? <Badge tone="info">Tilpasset</Badge> : null}
+              </div>
+            )}
             {summary.notes.map((note) => <p key={note} className="ek-small ek-muted">{note}</p>)}
             <div className="ek-cluster">
               <Button icon={<SlidersHorizontal aria-hidden="true" />}

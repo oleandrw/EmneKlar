@@ -53,7 +53,7 @@ export function SourcesDrawer({ status, draft, onChange, onCancel, onSave, savin
         </>
       ) : null}>
       {draft && options ? (
-        <div className="ek-stack" data-gap="6">
+        <div className="ek-stack ek-readable" data-gap="6">
           <div className="ek-stack" data-gap="3">
             <Fieldset legend="Kilder" hint="Gjelder dette emnet.">
               <Checkbox label="Tekst fra Canvas" checked={options.text} onChange={(e) => set({ text: e.target.checked })}

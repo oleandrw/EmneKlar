@@ -64,8 +64,11 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   Canvas-innstillinger, Backup og endringslogg) er fjernet. Den gjentok menyen til venstre, der «Canvas-verktøy»
   allerede er markert.
 - Emne-RAG er roligere og bruker ordet «kunnskapsbase» i stedet for «indeks». Hovedknappen heter **Opprett
-  kunnskapsbase** (eller **Oppdater kunnskapsbasen**) og er større. I stedet for en tom indeksboks står «Ingen
-  kunnskapsbase opprettet ennå» ved sidetittelen. Den blå boksen øverst og teksten nederst er erstattet av én kort
+  kunnskapsbase** (eller **Oppdater kunnskapsbasen**) og er større, og den første fanen heter «Kunnskapsbase» både
+  før og etter. I stedet for en tom indeksboks står statusen «Ingen kunnskapsbase opprettet ennå» rett under
+  sidetittelen; kortet over fanene heter «Status». Kildene vises som en liste («Canvas-tekst · Dokumenter · Video og
+  lyd · Bilder») med de faktiske valgene og merket «Tilpasset» når de avviker fra standard. Hjelpetekstene og
+  forklaringen under hovedknappen er større og har sterkere kontrast. Den blå boksen øverst og teksten nederst er erstattet av én kort
   forklaring ved hovedknappen («Bare lærerens innhold brukes …») med detaljer bak «Les mer» – også om søk og
   transkripsjon skjer lokalt eller hos KI-leverandøren du har valgt (den gamle teksten sa alltid «lokalt»).
 - Emne-RAG → «Opprett kunnskapsbase» er forenklet: hovedsiden har omfang (hele emnet eller valgte moduler), en kort
