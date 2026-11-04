@@ -33,9 +33,47 @@ export const DEFAULT_OPTIONS: BuildOptions = {
   keyframes: false,
 };
 
-/** The sources and file types of the defaults, keeping scope and modules (which are chosen on the main page). */
+/** «Tilbakestill kilder»: the default sources, file types and unpublished choice; scope, modules and the KI add-ons
+ * under «Avansert» are kept. */
 export function resetSources(options: BuildOptions): BuildOptions {
-  return { ...DEFAULT_OPTIONS, scope: options.scope, module_ids: options.module_ids };
+  const { text, documents, video, images, file_groups, include_unpublished } = DEFAULT_OPTIONS;
+  return { ...options, text, documents, video, images, file_groups: [...file_groups], include_unpublished };
+}
+
+// «Lagre valg» keeps the source choices per course in this browser (nothing secret; see core/api/client.ts). The
+// transcription choice is a server setting that applies to all courses.
+const SAVED_FLAGS = ["text", "documents", "video", "images", "include_unpublished", "contextual_enrichment",
+  "keyframes"] as const;
+const savedKey = (courseId: string) => `emneklar.rag.sources.${courseId}`;
+
+export function loadSavedSources(courseId: string): Partial<BuildOptions> {
+  try {
+    const raw = window.localStorage.getItem(savedKey(courseId));
+    if (!raw) return {};
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    const out: Partial<BuildOptions> = {};
+    for (const key of SAVED_FLAGS) {
+      const value = data[key];
+      if (typeof value === "boolean") out[key] = value;
+    }
+    if (Array.isArray(data.file_groups)) {
+      out.file_groups = DEFAULT_OPTIONS.file_groups.filter((g) => (data.file_groups as unknown[]).includes(g));
+    }
+    return out;
+  } catch {
+    return {};  // storage blocked or unreadable: the defaults apply
+  }
+}
+
+export function saveSources(courseId: string, options: BuildOptions): boolean {
+  const data: Record<string, unknown> = { file_groups: options.file_groups };
+  for (const key of SAVED_FLAGS) data[key] = options[key];
+  try {
+    window.localStorage.setItem(savedKey(courseId), JSON.stringify(data));
+    return true;
+  } catch {
+    return false;  // storage blocked: the choices apply until the page is closed
+  }
 }
 
 /** What is actually sent: options that need KI are off when KI is not set up (the summary says why). */

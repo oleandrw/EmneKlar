@@ -69,9 +69,15 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   oppsummering av kildene («Inkluderer Canvas-tekst, dokumenter, video, lyd og bilder.»), **Tilpass kilder** og
   hovedknappen. Alle kildetyper er på som standard (bilder bare når KI er satt opp). «Tilpass kilder» åpner et
   sidepanel med kilder og filtyper, upublisert innhold og en **Avansert**-del med KI-tilleggene (kontekstuell
-  berikelse, nøkkelbilder) og valg av transkriberingstjeneste, der det står hva som kan gi ekstra kostnad, samt
-  **Tilbakestill til standard**. Endrede valg vises i oppsummeringen («Tilpassede kilder · Video/lyd og bilder er
-  utelatt.»). Hovedknappen beregner estimatet først og viser det bare når noe må godkjennes (nedlasting, sending
+  berikelse, nøkkelbilder) og valg av transkriberingstjeneste. Endrede valg vises i oppsummeringen («Tilpassede
+  kilder · Video/lyd og bilder er utelatt.»). Panelet er gjort lettere: «Avansert» er lukket som standard; filtyper
+  vises bare med «Dokumenter», transkribering og nøkkelbilder bare med «Video og lyd», og leverandør, modell, språk
+  (nedtrekksmeny med «Oppdag automatisk») og personvernboksen bare ved ekstern tjeneste. Hvert valg har én kort
+  forklaring, og detaljene ligger bak «Les mer». Transkribering heter *På denne maskinen*, *Ekstern KI-tjeneste* og
+  *Bare eksisterende undertekster*, og er merket «Gjelder alle emner». «Bilder» heter nå «Bildebeskrivelser med
+  KI» (alt-tekst er alltid med), og alt som kan koste penger, er merket «Kan koste ekstra». Knappene heter
+  **Lagre valg** (kildene lagres for emnet i nettleseren, transkriberingsvalget for alle emner) og **Tilbakestill
+  kilder** (påvirker bare kildene, filtypene og upublisert innhold). Hovedknappen beregner estimatet først og viser det bare når noe må godkjennes (nedlasting, sending
   til KI, upublisert innhold) eller ingenting ble funnet; ellers starter byggingen med en gang.
 - Kontrollen av innebygd innhold (Universell utforming) og videostandardiseringen bruker samme liste over generelle
   titler. «YouTube video», «Embedded video» og titler med kolon eller punktum til slutt regnes nå også som generelle.

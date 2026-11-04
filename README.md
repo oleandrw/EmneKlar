@@ -37,10 +37,12 @@ tilbake hvis noe går galt. Større versjoner installeres aldri uten at du bekre
 
 1. Gå til **Canvas-verktøy → Emne-RAG** (emnet velges i toppen av siden).
 2. Velg **Hele emnet** eller **Valgte moduler**. Alle kildetyper er med som standard: tekst fra Canvas, dokumenter
-   (PDF, Word, PowerPoint, Excel, OpenDocument, RTF, CSV, tekst), video og lyd, og bilder (bilder krever KI).
-   **Tilpass kilder** lar deg slå av kilder og filtyper, ta med upublisert innhold og – under **Avansert** – velge
-   KI-tillegg (kontekstuell berikelse, nøkkelbilder) og transkriberingstjeneste, med forklaring av hva som koster.
-   **Tilbakestill til standard** slår alt på igjen.
+   (PDF, Word, PowerPoint, Excel, OpenDocument, RTF, CSV, tekst), video og lyd, og bildebeskrivelser med KI (krever
+   KI). **Tilpass kilder** lar deg slå av kilder og filtyper og ta med upublisert innhold. Under **Avansert** (lukket
+   som standard) velger du KI-tillegg (kontekstuell berikelse, nøkkelbilder) og hva som skjer med lyd uten teksting:
+   *På denne maskinen*, *Ekstern KI-tjeneste* eller *Bare eksisterende undertekster*. Valg som kan gi kostnad, er
+   merket «Kan koste ekstra». **Lagre valg** lagrer kildene for emnet og transkriberingsvalget for alle emner;
+   **Tilbakestill kilder** slår kildene på igjen.
 3. Trykk **Opprett kunnskapsbase**. Lastes noe ned første gang eller sendes noe til KI, ser du først et estimat (hvor mye som
    leses, omtrentlig tid og hva som sendes) og godtar det; ellers starter byggingen med en gang. Byggingen går i
    bakgrunnen og kan settes på pause eller avbrytes; **Oppdater kunnskapsbasen** fortsetter der den slapp og behandler bare
@@ -54,7 +56,8 @@ Bare lærerens innhold leses – aldri innleveringer, karakterer, meldinger elle
 rerangering og transkripsjon kjører lokalt med valgfrie modeller (flere GB): lukk EmneKlar og dobbeltklikk
 **`setup-emne-rag.bat`** (eller kjør `setup.bat --rag`). `update.bat` beholder dem senere. Uten lokale modeller bruker
 Emne-RAG nøkkelordsøk og eksisterende teksting. Video uten teksting kan i stedet transkriberes av OpenAI, Azure
-OpenAI eller en egen OpenAI-kompatibel server (Emne-RAG → Innstillinger → Transkripsjon); da sendes bare lyden, og
+OpenAI eller en egen OpenAI-kompatibel server (Tilpass kilder → Avansert → Ekstern KI-tjeneste, eller Emne-RAG →
+Innstillinger); da sendes bare lyden, og
 bare etter at du har sett estimatet og godtatt sendingen. Standardinstallasjonen kjører på CPU; har maskinen en NVIDIA-GPU med
 CUDA-utgaven av PyTorch og CUDA-bibliotekene for CTranslate2, brukes GPU automatisk (kan overstyres under
 Emne-RAG → Innstillinger). Skannede PDF-er leses med Tesseract hvis det er installert med norsk språkpakke.

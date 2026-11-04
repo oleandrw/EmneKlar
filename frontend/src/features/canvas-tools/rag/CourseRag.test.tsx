@@ -7,7 +7,7 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ToastProvider } from "../../../design-system";
-import { DEFAULT_OPTIONS, type Estimate, type Hit, type RagStatus, type SearchResult } from "./api";
+import { DEFAULT_OPTIONS, saveSources, type Estimate, type Hit, type RagStatus, type SearchResult } from "./api";
 import { AnswerText, AskPanel } from "./AskPanel";
 import { BuildPanel } from "./BuildPanel";
 
@@ -37,7 +37,10 @@ function mockApi(routes: Record<string, unknown>) {
   return calls;
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  window.localStorage.clear();
+});
 
 const hit = (id: string, citation: string, extra: Partial<Hit> = {}): Hit => ({
   id, chunk_id: Number(id.slice(1)), type: "text", item_kind: "page", title: "Raster og vektor", heading_path: ["Rasterbilder"],
@@ -156,26 +159,52 @@ describe("BuildPanel", () => {
     expect(screen.queryByText("Før du bygger")).not.toBeInTheDocument();
   });
 
-  it("customises sources in a panel, summarises the change and resets to the defaults", async () => {
+  it("shows only relevant choices, keeps «Avansert» closed and saves the choices", async () => {
     const calls = mockApi({ "/api/settings/rag": {}, "/rag/estimate": baseEstimate({ ai: [{ task: "rag_images",
       label: "Bildebeskrivelser", calls: 4, input_tokens: 4000, available: true, reason: null, external: true,
       route: { provider: "openai", model: "x", reason: "" } }] }) });
     const { container } = render(wrap(<BuildPanel courseId="104" status={withAi()} />));
     await userEvent.click(screen.getByRole("button", { name: "Tilpass kilder" }));
     const panel = await screen.findByRole("dialog", { name: "Tilpass kilder" });
-    expect(within(panel).getByRole("heading", { name: "Avansert" })).toBeInTheDocument();
-    expect(within(panel).getByText(/ett KI-kall per åtte utdrag/)).toBeInTheDocument();
+    // Only the sources at first; «Avansert» is closed.
+    const advanced = within(panel).getByRole("button", { name: /^Avansert: KI og transkribering/ });
+    expect(advanced).toHaveAttribute("aria-expanded", "false");
+    expect(within(panel).queryByRole("radio", { name: /Ekstern KI-tjeneste/ })).not.toBeInTheDocument();
+    expect(within(panel).getByRole("checkbox", { name: /Bildebeskrivelser med KI.*Kan koste ekstra/ })).toBeChecked();
+    // File types only with «Dokumenter».
+    await userEvent.click(within(panel).getByRole("checkbox", { name: /^Dokumenter/ }));
+    expect(within(panel).queryByRole("checkbox", { name: "PDF" })).not.toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("checkbox", { name: /^Dokumenter/ }));
+    expect(within(panel).getByRole("checkbox", { name: "PDF" })).toBeInTheDocument();
+    await userEvent.click(advanced);
+    expect(within(panel).getByText("Gjelder alle emner.")).toBeInTheDocument();
+    expect(within(panel).getByRole("radio", { name: /^På denne maskinen/ })).toBeChecked();
+    expect(within(panel).getByRole("radio", { name: /^Bare eksisterende undertekster/ })).toBeInTheDocument();
+    // Provider, model, language and the privacy note only with an external service.
+    expect(within(panel).queryByRole("combobox", { name: "Leverandør" })).not.toBeInTheDocument();
+    expect(within(panel).queryByText("Personvern")).not.toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("radio", { name: /Ekstern KI-tjeneste/ }));
+    expect(within(panel).getByRole("combobox", { name: "Leverandør" })).toBeInTheDocument();
+    expect(within(panel).getByRole("combobox", { name: "Språk i opptakene" })).toHaveValue("");
+    expect(within(panel).getByRole("option", { name: "Oppdag automatisk" })).toBeInTheDocument();
+    expect(within(panel).getByText("Personvern")).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: /ekstern transkribering er på/ })).toBeInTheDocument();
     expect(await axeViolations(container)).toEqual([]);
+    // Transcription and keyframes only with «Video og lyd».
     await userEvent.click(within(panel).getByRole("checkbox", { name: /Video og lyd/ }));
-    await userEvent.click(within(panel).getByRole("checkbox", { name: /^Bilder/ }));
-    await userEvent.click(within(panel).getByRole("radio", { name: /KI-leverandør/ }));
-    await userEvent.click(within(panel).getByRole("button", { name: "Bruk valgene" }));
+    expect(within(panel).queryByRole("radio", { name: /Ekstern KI-tjeneste/ })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("checkbox", { name: /Nøkkelbilder/ })).not.toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("checkbox", { name: /Bildebeskrivelser med KI/ }));
+    await userEvent.click(within(panel).getByRole("button", { name: "Lagre valg" }));
     expect(await screen.findByText("Tilpassede kilder · Video/lyd og bilder er utelatt.")).toBeInTheDocument();
     expect(calls.find((c) => c.url.includes("/api/settings/rag"))?.body).toMatchObject({ transcription: "provider" });
+    expect(JSON.parse(window.localStorage.getItem("emneklar.rag.sources.104") ?? "{}")).toMatchObject({
+      video: false, images: false, text: true });
+    // «Tilbakestill kilder» brings the sources back; the saved choice is used next time too.
     await userEvent.click(screen.getByRole("button", { name: "Tilpass kilder" }));
     const again = await screen.findByRole("dialog", { name: "Tilpass kilder" });
-    await userEvent.click(within(again).getByRole("button", { name: "Tilbakestill til standard" }));
-    await userEvent.click(within(again).getByRole("button", { name: "Bruk valgene" }));
+    await userEvent.click(within(again).getByRole("button", { name: "Tilbakestill kilder" }));
+    await userEvent.click(within(again).getByRole("button", { name: "Lagre valg" }));
     expect(await screen.findByText("Inkluderer Canvas-tekst, dokumenter, video, lyd og bilder.")).toBeInTheDocument();
     // Images go to an external provider: the estimate is shown and needs consent first.
     await userEvent.click(screen.getByRole("button", { name: "Opprett kunnskapsbase" }));
@@ -183,6 +212,13 @@ describe("BuildPanel", () => {
     expect(start).toBeDisabled();
     await userEvent.click(screen.getByRole("checkbox", { name: /Jeg har sett hva som sendes/ }));
     await waitFor(() => expect(start).toBeEnabled());
+  });
+
+  it("uses the source choices saved for the course", () => {
+    saveSources("104", { ...DEFAULT_OPTIONS, documents: false });
+    mockApi({});
+    render(wrap(<BuildPanel courseId="104" status={withAi()} />));
+    expect(screen.getByText("Tilpassede kilder · Dokumenter er utelatt.")).toBeInTheDocument();
   });
 
   it("explains an empty estimate caused by unpublished content", async () => {

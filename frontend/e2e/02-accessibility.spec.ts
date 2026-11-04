@@ -47,8 +47,13 @@ test("axe – Emne-RAG: «Tilpass kilder»", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Opprett kunnskapsbase" })).toBeVisible();
   await page.getByRole("button", { name: "Tilpass kilder" }).click();
   const panel = page.getByRole("dialog", { name: "Tilpass kilder" });
-  await expect(panel.getByRole("heading", { name: "Avansert" })).toBeVisible();
+  const advanced = panel.getByRole("button", { name: /^Avansert: KI og transkribering/ });
+  await expect(advanced).toHaveAttribute("aria-expanded", "false");
   await expectNoAxeViolations(page, "emne-rag-tilpass-kilder");
+  await advanced.click();
+  await panel.getByRole("radio", { name: /Ekstern KI-tjeneste/ }).check();
+  await expect(panel.getByRole("combobox", { name: "Språk i opptakene" })).toBeVisible();
+  await expectNoAxeViolations(page, "emne-rag-tilpass-kilder-avansert");
   await panel.getByRole("button", { name: "Avbryt" }).click();
   await expect(page.getByRole("button", { name: "Tilpass kilder" })).toBeFocused();
 });

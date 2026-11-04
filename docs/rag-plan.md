@@ -162,7 +162,9 @@ backend/tests/test_course_rag_*.py         enhetstester + integrasjonstest mot f
 ## Transkripsjon via KI-leverandør
 
 Lagt til etter fase 4, for maskiner uten GPU eller uten plass til lokale modeller. Valget står under
-Emne-RAG → Innstillinger → Transkripsjon (lokalt / via KI-leverandør / av), med leverandør, modell og språk.
+Emne-RAG → Tilpass kilder → Avansert (og Emne-RAG → Innstillinger): *På denne maskinen* / *Ekstern KI-tjeneste* /
+*Bare eksisterende undertekster*, med leverandør, modell og språk (nedtrekksmeny, «Oppdag automatisk» som standard).
+Valget lagres som innstilling og gjelder alle emner.
 
 * Leverandører: OpenAI, Azure OpenAI (deploymentnavnet er modell-id-en) og egne OpenAI-kompatible servere
   (`/audio/transcriptions`, multipart). Andre leverandørtyper vises som utilgjengelige med forklaring.

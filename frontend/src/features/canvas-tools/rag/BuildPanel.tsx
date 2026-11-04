@@ -29,6 +29,8 @@ import {
   effectiveOptions,
   formatMb,
   KIND_ORDER,
+  loadSavedSources,
+  saveSources,
   sourceSummary,
   type BuildOptions,
   type Estimate,
@@ -49,8 +51,8 @@ const WORDING: JobWording = {
   countOnly: "utdrag i kunnskapsbasen",
 };
 
-function optionsFrom(status: RagStatus): BuildOptions {
-  return { ...DEFAULT_OPTIONS, ...(status.index?.options ?? {}) };
+function optionsFrom(status: RagStatus, courseId: string): BuildOptions {
+  return { ...DEFAULT_OPTIONS, ...(status.index?.options ?? {}), ...loadSavedSources(courseId) };
 }
 
 function EstimateView({ estimate, accept, setAccept, consent, setConsent }: {
@@ -209,7 +211,7 @@ function needsReview(estimate: Estimate): boolean {
 export function BuildPanel({ courseId, status }: { courseId: string; status: RagStatus }) {
   const client = useQueryClient();
   const toast = useToast();
-  const [options, setOptions] = useState<BuildOptions>(() => optionsFrom(status));
+  const [options, setOptions] = useState<BuildOptions>(() => optionsFrom(status, courseId));
   const [draft, setDraft] = useState<SourcesDraft | null>(null);
   const [estimated, setEstimated] = useState<{ key: string; mode: Mode; data: Estimate } | null>(null);
   const [accept, setAccept] = useState(false);
@@ -248,10 +250,15 @@ export function BuildPanel({ courseId, status }: { courseId: string; status: Rag
   const apply = async () => {
     if (!draft) return;
     if (!sameTranscription(draft.transcription, transcriptionOf(status.settings))) {
-      await saveTranscription.mutateAsync(draft.transcription);
+      try {
+        await saveTranscription.mutateAsync(draft.transcription);
+      } catch {
+        return;  // the panel stays open and shows the error
+      }
       await client.invalidateQueries({ queryKey: ["rag", courseId] });
     }
     setOptions(draft.options);
+    saveSources(courseId, draft.options);
     setDraft(null);
   };
   const exists = Boolean(status.index);
@@ -345,7 +352,7 @@ export function BuildPanel({ courseId, status }: { courseId: string; status: Rag
       </Card>
 
       <SourcesDrawer status={status} draft={draft} onChange={setDraft} onCancel={() => setDraft(null)}
-        onApply={() => { void apply(); }} saving={saveTranscription.isPending}
+        onSave={() => { void apply(); }} saving={saveTranscription.isPending}
         error={saveTranscription.error ? (saveTranscription.error as Error).message : null} />
 
       {estimate && estimated && needsReview(estimate) ? (
