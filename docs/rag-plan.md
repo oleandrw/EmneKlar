@@ -71,8 +71,9 @@ backend/tests/test_course_rag_*.py         enhetstester + integrasjonstest mot f
   Låses i `backend/constraints.txt`.
 * **Valgfritt, «lokale modeller»** (`pip install -e "backend[rag]"`): `sentence-transformers` (BGE-M3,
   bge-reranker-v2-m3; drar med PyTorch), `faster-whisper` (CTranslate2 + PyAV, som har FFmpeg innebygd – ingen
-  egen ffmpeg-installasjon). Installeres med `setup.bat --rag` eller dobbeltklikk på
-  `setup-emne-rag.bat`. Valget huskes i `backend\.venv\emneklar-extras.txt`, så `update.bat` beholder det.
+  egen ffmpeg-installasjon). `setup.bat` spør om dem under oppsettet (standard nei, bare når noen kan svare);
+  `setup.bat --rag` velger dem uten å spørre. Valget huskes i `backend\.venv\emneklar-extras.txt`, så `update.bat`
+  beholder det.
   Grunnen til at dette er valgfritt: PyTorch og modellene er flere GB; resten av EmneKlar skal fortsatt
   installeres raskt.
 * **Ikke valgt:** Docling (drar med PyTorch og egne layoutmodeller, og kjører ikke i de isolerte

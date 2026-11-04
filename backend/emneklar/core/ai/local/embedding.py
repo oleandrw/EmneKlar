@@ -94,7 +94,8 @@ def embedding_choice(settings: AppSettings, local: LocalModels, ai: AIService | 
     if not local.packages()["sentence_transformers"]:
         return EmbeddingChoice("local", f"local:{model.id}", model.label, False,
                                "Lokale modeller er ikke installert. Søket bruker bare nøkkelord til de er installert "
-                               "(lukk EmneKlar og kjør setup-emne-rag.bat).", model=model)
+                               "(lukk EmneKlar, kjør setup.bat på nytt og svar «j» på spørsmålet om lokale "
+                               "modeller).", model=model)
     downloaded = local.is_downloaded(model.id)
     return EmbeddingChoice("local", f"local:{model.id}", model.label, True, None, needs_download=not downloaded,
                            download_mb=0 if downloaded else model.size_mb, model=model)

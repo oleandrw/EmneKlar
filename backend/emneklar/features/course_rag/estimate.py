@@ -124,7 +124,7 @@ async def _video(c: AppContainer, api: CanvasAPI, inv: Inventory, device: str) -
     elif to_transcribe:
         if not worker.available():
             notes.append(f"{to_transcribe} video(er) uten teksting kan ikke transkriberes fordi lokale modeller ikke er "
-                         "installert (setup-emne-rag.bat).")
+                         "installert (lukk EmneKlar, kjør setup.bat på nytt og svar «j» på spørsmålet om lokale modeller).")
             transcribe_seconds = 0.0
         elif worker.downloads_needed():
             downloads.append({"label": f"{nb.label} (konverteres lokalt første gang)", "size_mb": nb.size_mb,

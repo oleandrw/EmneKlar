@@ -49,8 +49,8 @@ export function TranscriptionFields({ status, value, onChange, name }: {
         ]} />
       {value.transcription === "local" && !status.local.installed.whisper ? (
         <Alert tone="info">
-          Den lokale modellen er ikke installert. Lukk EmneKlar og kjør setup-emne-rag.bat, eller velg et annet
-          alternativ.
+          Den lokale modellen er ikke installert. Lukk EmneKlar, kjør setup.bat på nytt og svar «j» på spørsmålet om
+          lokale modeller, eller velg et annet alternativ.
         </Alert>
       ) : null}
       {value.transcription === "provider" ? (

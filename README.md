@@ -31,7 +31,9 @@ Du trenger 64-biters Windows 10 eller 11 og internett under installasjonen. Admi
    kan ikke EmneKlar oppdatere seg selv.
    * Advarer Windows om filene? Høyreklikk ZIP-filen før du pakker ut, velg **Egenskaper**, kryss av for
      **Opphev blokkering** (på engelsk «Unblock») og trykk **OK**.
-4. Dobbeltklikk **`setup.bat`**. Den lager et eget Python-miljø for EmneKlar. Det tar noen minutter første gang.
+4. Dobbeltklikk **`setup.bat`**. Den lager et eget Python-miljø for EmneKlar og installerer alt programmet trenger.
+   Det tar noen minutter første gang. Underveis spør den om du også vil ha lokale modeller for Emnets kunnskapsbase
+   (flere GB). Svarer du ikke «j», installeres de ikke, og du kan legge dem til senere.
 5. Dobbeltklikk **`start.bat`**. Nettleseren åpnes med EmneKlar. Lukk vinduet til EmneKlar for å avslutte.
 6. Følg oppsettveiviseren: Canvas-adresse, API-token, test av tilkoblingen og valg av emne. Tokenet lager du i Canvas
    under **Konto → Innstillinger → Godkjente integrasjoner**.
@@ -59,8 +61,9 @@ merket «KI-forslag – må vurderes». Bare lærerens innhold brukes, aldri inn
 studentinnlegg.
 
 Kunnskapsbasen virker uten ekstra installasjon, med nøkkelordsøk og eksisterende teksting. For bedre søk og
-transkripsjon av video uten teksting på din egen maskin kan du installere lokale modeller. Lukk EmneKlar og
-dobbeltklikk **`setup-emne-rag.bat`**. Det laster ned flere GB, og `update.bat` beholder modellene senere. Video uten
+transkripsjon av video uten teksting på din egen maskin kan du installere lokale modeller. `setup.bat` spør om du
+vil ha dem (svar «j»). Har du sagt nei, lukker du EmneKlar og kjører `setup.bat` på nytt. Det laster ned flere GB, og
+oppdateringer beholder modellene senere. Video uten
 teksting kan også transkriberes av en ekstern KI-tjeneste som OpenAI. Da sendes bare lyden, og bare etter at du har
 godkjent det.
 

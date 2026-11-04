@@ -304,7 +304,7 @@ def install_optional_extras(venv_python: Path, root: Path, reporter: Reporter) -
         done = run([*base, "-e", f"{backend}[{extra}]"], cwd=root, reporter=reporter, check=False)
         if done.returncode != 0:
             reporter.warn(f"Klarte ikke å installere {KNOWN_EXTRAS[extra]}. EmneKlar virker likevel; kunnskapsbasen bruker "
-                          "da nøkkelordsøk. Se loggen, og prøv setup-emne-rag.bat på nytt senere.")
+                          "da nøkkelordsøk. Se loggen, og kjør setup.bat på nytt senere.")
 
 
 def install_python_dependencies(venv_python: Path, root: Path, reporter: Reporter) -> None:

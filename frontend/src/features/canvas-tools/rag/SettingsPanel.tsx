@@ -149,9 +149,9 @@ export function SettingsPanel({ status, courseId }: { status: RagStatus; courseI
             </p>
           ) : (
             <Alert tone="info" title="Lokale modeller er ikke installert">
-              Uten dem bruker kunnskapsbasen nøkkelordsøk og eksisterende teksting. Lukk EmneKlar og dobbeltklikk{" "}
-              <strong>setup-emne-rag.bat</strong> i EmneKlar-mappen (eller kjør <code>setup.bat --rag</code>). Det laster ned
-              flere GB. <code>update.bat</code> beholder dem senere.
+              Uten dem bruker kunnskapsbasen nøkkelordsøk og eksisterende teksting. Lukk EmneKlar, dobbeltklikk{" "}
+              <strong>setup.bat</strong> i EmneKlar-mappen og svar «j» på spørsmålet om lokale modeller. Det laster ned
+              flere GB. Oppdateringer beholder dem senere.
             </Alert>
           )}
           <DataTable caption="Lokale modeller" captionHidden columns={columns} rows={models} rowKey={(m) => m.id} />
