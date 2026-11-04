@@ -6,7 +6,37 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
 
 ## [Unreleased]
 
+## [0.1.0] – 2026-11-04
+
 ### Lagt til
+- Én lokal applikasjon (FastAPI + React) for Windows med `setup.bat`, `start.bat` og `update.bat`. Tjenesten
+  lytter bare på 127.0.0.1; innlogging skjer med engangslenke, og data lagres i `%LOCALAPPDATA%\EmneKlar-Claude`.
+- Oppsettveiviser i ni steg med test av Canvas-tilkobling, identitet, tilganger, standardemne og regulatorisk
+  profil. Canvas-token og KI-nøkler lagres bare i Windows Legitimasjonsbehandling.
+- Global emnevelger, global analyse med normalisert øyeblikksbilde av emnet, ekte fremdrift (prosent, X av Y,
+  per innholdstype, funn underveis, estimert tid med intervall), pause, avbryt og kjøring i bakgrunnen.
+- Universell utforming: versjonert regelregister og regulatoriske profiler, kontroller av bilder, overskrifter,
+  lenker, tabeller, lister, språk, kontrast, innebygd innhold, video og dokumenter, med forklaring, kriterium,
+  juridisk status, testmetode og forslag til retting.
+- Innholdskvalitet: SSRF-beskyttet lenkesjekk med seks tilstander, interne Canvas-lenker, medier, HTML-hygiene
+  og konservativ opprydding med diff.
+- Emnestruktur: veiledende forslag med begrunnelse, belegg og sikkerhet, og studentreisen.
+- Quizassistent for klassiske quizer: kvalitetssjekk, kildeforankret KI-vurdering, KI-spørsmålsbank med
+  kontrollerte kildesitater, dekningsanalyse og quizbygger med forhåndsinnstillinger og «X av Y».
+- Emneforside: tre moduser, fire stiler, elleve seksjoner, Canvas-trygg HTML, forhåndsvisning på PC, nettbrett og
+  mobil, «Opprett som ny side», «Erstatt eksisterende forside» med sikkerhetskopi og «Bruk som forside».
+- Canvas-verktøy: automatiske modulkrav, Blueprint-låsing, analyse av Canvas-innstillinger og backup/endringslogg
+  med angring.
+- Felles endringskø med forhåndsvisning, godkjenning, konfliktsjekk, sikkerhetskopi, logg og angring, og global
+  Dry run som blokkerer alle skrivende kall til Canvas.
+- Valgfrie KI-leverandører (OpenAI, Anthropic, Azure OpenAI, lokal OpenAI-kompatibel), modellregister,
+  kostnads- og kvalitetsbevisst modellvalg med reserve, og personvern med samtykke før sending.
+- Rapporter i HTML (kan lagres som PDF fra nettleseren) og CSV.
+- Innstillinger i åtte deler, funksjonsflagg, hjelpesenter og oppdateringssjekk mot GitHub Releases.
+- Oppdatering i ti steg (`update.bat` eller fra Innstillinger) med sikkerhetskopi av databasen, helsesjekk og
+  tilbakerulling ved feil. Nye hovedversjoner installeres bare etter bekreftelse. Utgivelsespakker (zip med
+  SHA-256) bygges av GitHub Actions. Se `docs/UPDATING.md`.
+- Automatiske tester: backend (pytest), frontend (Vitest + axe) og ende-til-ende (Playwright + axe).
 - Canvas-verktøy → **Emnets kunnskapsbase**: en lokal kunnskapsbase av emnet (hele emnet eller valgte moduler) med søk og
   KI-svar med klikkbare kildehenvisninger. Leser bare lærerprodusert innhold (sider, oppgave- og quizbeskrivelser,
   emneplan, lærerens diskusjonsinnlegg og filer lastet opp av lærere) – aldri innleveringer, karakterer, meldinger
@@ -60,6 +90,14 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   endres.
 
 ### Endret
+- Nytt visuelt uttrykk i hele programmet: mørk marineblå meny, lys og lett varm bakgrunn, store hvite kort,
+  pastellfarger per område (UU lilla, innholdskvalitet blå, emnestruktur grønn, quiz oransje), større og tydeligere
+  typografi (Inter, pakket med appen) og et samlet designsystem med tokens og gjenbrukbare komponenter
+  (`docs/DESIGN_SYSTEM.md`). Bare utseendet er endret – funksjonene er de samme.
+- Oversikt er bygget om med store statuskort per område, anbefalte steg som handlingsrader, siste aktivitet, et
+  tilgjengelig diagram over åpne funn per område (med tabellvisning) og innholdet i emnet som ikonfliser.
+- Funnlistene har nøkkeltallkort, filterpiller for kategori og klassifisering og ryddigere rader. Canvas-verktøy har
+  siste handlinger, Dry run-status og verktøykort. Quizassistent og Rapporter har nøkkeltall øverst.
 - Avhengigheter oppdatert samlet og testet sammen (erstatter Dependabot-PR-ene #2–#11): pydantic 2.14.2 (med
   pydantic-core 2.50.2, som Dependabot-oppdateringen manglet), starlette 1.10.0, alembic 1.20.1, msgpack 1.2.4 og
   pytest 9.2.0 i backend; react-router 8.5.1, @tanstack/react-query 5.105.3, vite 8.3.5, @playwright/test 1.64.1
@@ -96,6 +134,10 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   titler. «YouTube video», «Embedded video» og titler med kolon eller punktum til slutt regnes nå også som generelle.
 
 ### Rettet
+- EmneKlar startet ikke når et annet program med samme navn brukte `%LOCALAPPDATA%\EmneKlar` («no such table:
+  jobs»). EmneKlar har nå egen datamappe (`%LOCALAPPDATA%\EmneKlar-Claude`), egen oppføring i Windows
+  Legitimasjonsbehandling, en innloggingskapsel per port og standardport 8770. En database som tilhører et annet
+  program, blir aldri åpnet for skriving – EmneKlar forklarer i stedet hva som er galt.
 - Emnets kunnskapsbase: når samme bilde står flere steder, beskrives nå alltid det første (i sidens rekkefølge),
   med alt-teksten og teksten rundt det. Før avhang det av hvilken nedlasting som ble ferdig først.
 - Fanerader (for eksempel i Emnets kunnskapsbase) viste et lite loddrett rullefelt helt til høyre på Windows. Streken under
@@ -123,51 +165,3 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
 ### Sikkerhet
 - Oppdaterte avhengigheter med kjente sårbarheter: certifi 2026.10.19, pypdf 6.21.4, opentelemetry-api 1.45.1 og
   filelock 4.2.1.
-
-## [0.1.0] – under utvikling
-
-### Lagt til
-- Én lokal applikasjon (FastAPI + React) for Windows med `setup.bat`, `start.bat` og `update.bat`. Tjenesten
-  lytter bare på 127.0.0.1; innlogging skjer med engangslenke, og data lagres i `%LOCALAPPDATA%\EmneKlar-Claude`.
-- Oppsettveiviser i ni steg med test av Canvas-tilkobling, identitet, tilganger, standardemne og regulatorisk
-  profil. Canvas-token og KI-nøkler lagres bare i Windows Legitimasjonsbehandling.
-- Global emnevelger, global analyse med normalisert øyeblikksbilde av emnet, ekte fremdrift (prosent, X av Y,
-  per innholdstype, funn underveis, estimert tid med intervall), pause, avbryt og kjøring i bakgrunnen.
-- Universell utforming: versjonert regelregister og regulatoriske profiler, kontroller av bilder, overskrifter,
-  lenker, tabeller, lister, språk, kontrast, innebygd innhold, video og dokumenter, med forklaring, kriterium,
-  juridisk status, testmetode og forslag til retting.
-- Innholdskvalitet: SSRF-beskyttet lenkesjekk med seks tilstander, interne Canvas-lenker, medier, HTML-hygiene
-  og konservativ opprydding med diff.
-- Emnestruktur: veiledende forslag med begrunnelse, belegg og sikkerhet, og studentreisen.
-- Quizassistent for klassiske quizer: kvalitetssjekk, kildeforankret KI-vurdering, KI-spørsmålsbank med
-  kontrollerte kildesitater, dekningsanalyse og quizbygger med forhåndsinnstillinger og «X av Y».
-- Emneforside: tre moduser, fire stiler, elleve seksjoner, Canvas-trygg HTML, forhåndsvisning på PC, nettbrett og
-  mobil, «Opprett som ny side», «Erstatt eksisterende forside» med sikkerhetskopi og «Bruk som forside».
-- Canvas-verktøy: automatiske modulkrav, Blueprint-låsing, analyse av Canvas-innstillinger og backup/endringslogg
-  med angring.
-- Felles endringskø med forhåndsvisning, godkjenning, konfliktsjekk, sikkerhetskopi, logg og angring, og global
-  Dry run som blokkerer alle skrivende kall til Canvas.
-- Valgfrie KI-leverandører (OpenAI, Anthropic, Azure OpenAI, lokal OpenAI-kompatibel), modellregister,
-  kostnads- og kvalitetsbevisst modellvalg med reserve, og personvern med samtykke før sending.
-- Rapporter i HTML (kan lagres som PDF fra nettleseren) og CSV.
-- Innstillinger i åtte deler, funksjonsflagg, hjelpesenter og oppdateringssjekk mot GitHub Releases.
-- Oppdatering i ti steg (`update.bat` eller fra Innstillinger) med sikkerhetskopi av databasen, helsesjekk og
-  tilbakerulling ved feil. Nye hovedversjoner installeres bare etter bekreftelse. Utgivelsespakker (zip med
-  SHA-256) bygges av GitHub Actions. Se `docs/UPDATING.md`.
-- Automatiske tester: backend (pytest), frontend (Vitest + axe) og ende-til-ende (Playwright + axe).
-
-### Endret
-- Nytt visuelt uttrykk i hele programmet: mørk marineblå meny, lys og lett varm bakgrunn, store hvite kort,
-  pastellfarger per område (UU lilla, innholdskvalitet blå, emnestruktur grønn, quiz oransje), større og tydeligere
-  typografi (Inter, pakket med appen) og et samlet designsystem med tokens og gjenbrukbare komponenter
-  (`docs/DESIGN_SYSTEM.md`). Bare utseendet er endret – funksjonene er de samme.
-- Oversikt er bygget om med store statuskort per område, anbefalte steg som handlingsrader, siste aktivitet, et
-  tilgjengelig diagram over åpne funn per område (med tabellvisning) og innholdet i emnet som ikonfliser.
-- Funnlistene har nøkkeltallkort, filterpiller for kategori og klassifisering og ryddigere rader. Canvas-verktøy har
-  siste handlinger, Dry run-status og verktøykort. Quizassistent og Rapporter har nøkkeltall øverst.
-
-### Rettet
-- EmneKlar startet ikke når et annet program med samme navn brukte `%LOCALAPPDATA%\EmneKlar` («no such table:
-  jobs»). EmneKlar har nå egen datamappe (`%LOCALAPPDATA%\EmneKlar-Claude`), egen oppføring i Windows
-  Legitimasjonsbehandling, en innloggingskapsel per port og standardport 8770. En database som tilhører et annet
-  program, blir aldri åpnet for skriving – EmneKlar forklarer i stedet hva som er galt.
