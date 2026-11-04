@@ -432,7 +432,7 @@ async def local_transcript(state: BuildState, item: SourceItem) -> tuple[Transcr
     worker = transcriber(state)
     if not worker.available():
         return None, Waiting("Videoen har ingen teksting, og lokale modeller for transkripsjon er ikke installert "
-                             "(setup-emne-rag.bat).")
+                             "(lukk EmneKlar, kjør setup.bat på nytt og svar «j» på spørsmålet om lokale modeller).")
     if worker.downloads_needed() and not state.request.accept_downloads:
         return None, Waiting("Videoen har ingen teksting, og NB-Whisper er ikke lastet ned ennå. Trykk «Oppdater "
                              "kunnskapsbasen» og godta nedlastingen i estimatet for å transkribere.")

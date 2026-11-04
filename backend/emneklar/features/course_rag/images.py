@@ -418,9 +418,9 @@ async def keyframe_records(state: BuildState, item: SourceItem) -> list[ChunkRec
     result = await state.c.parsers.run({"job": "rag_keyframes", "args": {"path": str(video), "out_dir": str(work)}},
                                        timeout=600.0)
     if result.get("error"):
+        missing = result["error"] == "unsupported"
         state.ctx.progress.note(f"Nøkkelbilder fra «{item.title}» kunne ikke hentes"
-                                + (" (krever lokale modeller – setup-emne-rag.bat)." if result["error"] == "unsupported"
-                                   else "."))
+                                + (" (krever lokale modeller – kjør setup.bat på nytt og svar «j»)." if missing else "."))
         return []
     drafts: list[ChunkDraft] = []
     for frame in result.get("frames") or []:

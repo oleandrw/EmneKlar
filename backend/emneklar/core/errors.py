@@ -90,7 +90,8 @@ MESSAGES: dict[str, str] = {
     "rag_nothing_selected": "Velg minst én kildetype, og minst én modul hvis du har valgt «Valgte moduler».",
     "rag_download_required": "Lokale modeller må lastes ned første gang. Bekreft nedlastingen før du starter.",
     "rag_local_models_missing": (
-        "Lokale modeller er ikke installert. Lukk EmneKlar og kjør setup-emne-rag.bat (eller setup.bat --rag)."
+        "Lokale modeller er ikke installert. Lukk EmneKlar, kjør setup.bat på nytt og svar «j» på spørsmålet om "
+        "lokale modeller."
     ),
     "rag_query_empty": "Skriv et spørsmål.",
     # Reports / updates

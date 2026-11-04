@@ -2,7 +2,8 @@
 
 Steps ("Steg N av 5 – …"):
 
-  1  check Python (3.11 or newer; for a new venv a tested version 3.11–3.14 is preferred if installed)
+  1  check Python (3.11 or newer; for a new venv a tested version 3.11–3.14 is preferred if installed), then ask
+     once whether to install the optional local models for Emnets kunnskapsbase (only in a console; default no)
   2  create or repair the virtual environment backend\\.venv
   3  install the pinned dependencies: pip install -c backend/constraints.txt -e backend
   4  the user interface: release zips include frontend\\dist; otherwise it is built with npm (Node.js LTS)
@@ -22,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import traceback
+from collections.abc import Callable
 from pathlib import Path
 
 MIN_PYTHON = (3, 11)
@@ -47,6 +49,35 @@ from emneklar.manage import data_dir_from_env, running_instance  # noqa: E402
 
 class SetupError(Exception):
     """Setup cannot continue; the message tells the user what to do."""
+
+
+LOCAL_MODELS_QUESTION = (
+    "Emnets kunnskapsbase kan bruke lokale modeller for bedre søk og for transkripsjon av video uten teksting,\n"
+    "uten KI-leverandør. De laster ned flere GB og gjør oppsettet mye lengre. Du kan installere dem senere ved\n"
+    "å kjøre setup.bat på nytt.\n"
+    "Installere lokale modeller nå? [j/N]: "
+)
+
+
+def wants_local_models(args: argparse.Namespace, *, ask: Callable[[str], str] = input,
+                       interactive: bool | None = None) -> bool:
+    """One setup for everything: the optional local models are a question, not a separate file.
+
+    Asked only when someone can answer (a console, not CI or the app's own runs); the answer defaults to no.
+    ``--rag`` chooses them without asking; a choice made before (backend\\.venv\\emneklar-extras.txt) is kept.
+    """
+    if args.rag:
+        return True
+    if args.no_rag or args.no_pause or "rag" in update.chosen_extras(ROOT):
+        return False
+    if not (sys.stdin.isatty() if interactive is None else interactive):
+        return False
+    print()
+    try:
+        answer = ask(LOCAL_MODELS_QUESTION)
+    except EOFError:
+        return False
+    return answer.strip().lower() in ("j", "ja", "y", "yes")
 
 
 def _venv_python_version(python: Path) -> tuple[int, int] | None:
@@ -185,8 +216,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--strict", action="store_true",
                         help="bruk bare de testede versjonene av avhengighetene (ingen reserve)")
     parser.add_argument("--rag", action="store_true",
-                        help="installer også lokale modeller for emnets kunnskapsbase (PyTorch, sentence-transformers, "
-                             "faster-whisper – flere GB); update.bat beholder dem")
+                        help="installer også lokale modeller for emnets kunnskapsbase uten å spørre (PyTorch, "
+                             "sentence-transformers, faster-whisper – flere GB); update.bat beholder dem")
+    parser.add_argument("--no-rag", action="store_true",
+                        help="ikke spør om lokale modeller (de installeres ikke nå, men kan velges senere)")
     parser.add_argument("--no-pause", action="store_true", help=argparse.SUPPRESS)  # handled by setup.bat
     args = parser.parse_args(argv)
     if args.strict:
@@ -198,8 +231,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  Mappe: {ROOT}")
     try:
         base_python = check_python(reporter)
+        local_models = wants_local_models(args)
         python = ensure_venv(reporter, base_python)
-        if args.rag:
+        if local_models:
             update.remember_extra(ROOT, "rag")
         install_dependencies(reporter, python)
         ensure_frontend(reporter)
@@ -207,7 +241,8 @@ def main(argv: list[str] | None = None) -> int:
         reporter.info()
         reporter.info(f"Oppsettet er ferdig – EmneKlar {version} er klar til bruk.")
         if "rag" not in update.chosen_extras(ROOT):
-            reporter.info("Valgfritt: setup-emne-rag.bat installerer lokale modeller for emnets kunnskapsbase (flere GB).")
+            reporter.info("Lokale modeller for emnets kunnskapsbase er ikke installert (valgfritt). Vil du ha dem senere, "
+                          "kjører du setup.bat på nytt og svarer «j».")
         reporter.info("Neste steg: Kjør start.bat")
         return 0
     except (SetupError, update.UpdateError) as exc:

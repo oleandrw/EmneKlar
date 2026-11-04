@@ -45,7 +45,7 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   utdrag. Hybridsøk med BM25 og vektorsøk slått sammen med Reciprocal Rank Fusion, rerangering, filtrering på modul
   og kildetype, og en feilsøkingsvisning med poeng før og etter rerangering. Estimat før bygging, bakgrunnsjobb med
   fremdrift, pause, avbryt og gjenopptak, og liste over hoppede elementer. Valgfrie lokale modeller (BGE-M3 og
-  bge-reranker-v2-m3) installeres med `setup-emne-rag.bat`; uten dem brukes nøkkelordsøk.
+  bge-reranker-v2-m3) installeres med `setup.bat`, som spør om dem under oppsettet; uten dem brukes nøkkelordsøk.
 - Emnets kunnskapsbase → video og lyd: eksisterende teksting brukes først (Canvas-mediespor, undertekstfiler og YouTube-teksting),
   ellers transkriberes Canvas-video og opplastede lyd- og videofiler lokalt med NB-Whisper (modellstørrelse etter
   GPU/CPU, Whisper large-v3 for annet språk). Transkripsjoner bufres på filens SHA-256, deles i biter på 60–120
@@ -103,7 +103,10 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   pytest 9.2.0 i backend; react-router 8.5.1, @tanstack/react-query 5.105.3, vite 8.3.5, @playwright/test 1.64.1
   og @axe-core/playwright 4.14.0 i frontend.
 - Verktøyet heter nå **Emnets kunnskapsbase** i stedet for Emne-RAG – i menyen, på siden, i KI-oppgavene, jobbene
-  og meldingene. Adressen (`/canvas-verktoy/emne-rag`) og `setup-emne-rag.bat` er uendret.
+  og meldingene. Adressen (`/canvas-verktoy/emne-rag`) er uendret.
+- Ett oppsett for hele programmet: `setup.bat` spør én gang om de valgfrie lokale modellene for Emnets kunnskapsbase
+  (standard nei; ingen spørsmål uten konsoll, med `--no-pause` eller når valget er gjort før). `setup-emne-rag.bat` er
+  fjernet; `setup.bat --rag` velger modellene uten å spørre, og `--no-rag` hopper over spørsmålet.
 - Lenken «← Canvas-verktøy» øverst på verktøysidene (Emnets kunnskapsbase, Automatiske modulkrav, Blueprint-låsing,
   Canvas-innstillinger, Backup og endringslogg) er fjernet. Den gjentok menyen til venstre, der «Canvas-verktøy»
   allerede er markert.
@@ -161,6 +164,9 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   loggen viser hvor mye EmneKlar fikk fra hver Canvas-liste.
 - Lange stier og adresser (for eksempel datamappen under *Innstillinger → Sikkerhet og personvern*) brytes nå over
   flere linjer i stedet for å gi sideveis rulling på mobil.
+- Automatiske modulkrav: trykket man «Forhåndsvis» før kravene per elementtype var lastet, ble forhåndsvisningen
+  laget uten krav og aldri vist. Knappen venter nå til valgene er lastet, og viser en feilmelding hvis de ikke kan
+  hentes.
 
 ### Sikkerhet
 - Oppdaterte avhengigheter med kjente sårbarheter: certifi 2026.10.19, pypdf 6.21.4, opentelemetry-api 1.45.1 og

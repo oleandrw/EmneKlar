@@ -1,126 +1,100 @@
 # EmneKlar
 
-EmneKlar er et lokalt verktøy for lærere og emneansvarlige som vil analysere, kvalitetssikre og trygt forbedre
-emner i Canvas. Programmet kjører på din egen Windows-maskin og bruker Canvas REST API med ditt eget API-token.
+EmneKlar hjelper lærere og emneansvarlige med å analysere, kvalitetssikre og forbedre emner i Canvas. Programmet
+kjører på din egen Windows-maskin og bruker Canvas med ditt eget API-token. Ingenting endres i Canvas før du har sett
+og godkjent det.
 
-* **Universell utforming** – funn etter et versjonert regelsett og valgt regulatorisk profil, med forklaring,
-  kriterium, testmetode og forslag til retting. EmneKlar påstår aldri at et emne er «100 % universelt utformet».
+## Hva EmneKlar kan
+
+* **Universell utforming** – finner mulige avvik etter et versjonert regelsett og valgt regulatorisk profil, med
+  forklaring, kriterium, testmetode og forslag til retting. EmneKlar påstår aldri at et emne er «100 % universelt
+  utformet».
 * **Innholdskvalitet** – lenker, medier og HTML-kode.
 * **Emnestruktur** – veiledende forslag og studentreisen.
 * **Quizassistent** – kvalitetssjekk av klassiske quizer, KI-spørsmålsbank og quizbygger.
 * **Emneforside** – lag eller forbedre forsiden med forhåndsvisning på PC, nettbrett og mobil.
-* **Canvas-verktøy** – modulkrav, Blueprint-låsing, Canvas-innstillinger, backup og endringslogg, og **Emnets kunnskapsbase**:
-  en lokal kunnskapsbase av emnet som du kan stille spørsmål til, med klikkbare kilder.
+* **Canvas-verktøy** – modulkrav, Blueprint-låsing, Canvas-innstillinger, backup og endringslogg, og **Emnets
+  kunnskapsbase**: still spørsmål til emnets innhold og få svar med klikkbare kilder.
 * **Rapporter** – HTML (kan lagres som PDF) og CSV.
 
-Alt følger samme prinsipp: **analyser → forklar → foreslå → forhåndsvis → godkjenn → endre → logg**. Ingenting
-endres i Canvas før du har godkjent det i endringskøen, og med **Dry run** sendes ingenting.
+Alt følger samme prinsipp: **analyser → forklar → foreslå → forhåndsvis → godkjenn → endre → logg**. Med **Dry run**
+slått på sendes ingenting til Canvas.
 
-## Kom i gang (Windows)
+## Installere
 
-1. Installer [Python 3.11 eller nyere](https://www.python.org/downloads/windows/) (kryss av for «Add python.exe to
-   PATH»). Administratorrettigheter trengs ikke.
-2. Last ned EmneKlar (ferdig utgivelse fra GitHub Releases, eller en kopi av repositoriet) og pakk ut i en mappe.
-3. Dobbeltklikk **`setup.bat`**. Den lager et eget Python-miljø og installerer det EmneKlar trenger.
-   * En ferdig utgivelse inneholder et ferdigbygd grensesnitt. Kjører du fra en kopi av kildekoden, trengs også
-     [Node.js LTS](https://nodejs.org/) for å bygge grensesnittet.
-4. Dobbeltklikk **`start.bat`**. Nettleseren åpnes med EmneKlar. Lukk vinduet til EmneKlar for å avslutte.
-5. Følg oppsettveiviseren: Canvas-adresse, API-token (lages i Canvas under *Konto → Innstillinger → Godkjente
-   integrasjoner*), test av tilkobling og valg av emne.
+Du trenger 64-biters Windows 10 eller 11 og internett under installasjonen. Administratorrettigheter trengs ikke.
 
-**Oppdatering:** dobbeltklikk **`update.bat`**, eller trykk «Oppdater nå» under *Innstillinger → Generelt*.
-Oppdateringen tar sikkerhetskopi av databasen, sjekker at den nye versjonen virker og setter forrige versjon
-tilbake hvis noe går galt. Større versjoner installeres aldri uten at du bekrefter. Se
-[docs/UPDATING.md](docs/UPDATING.md).
+1. Installer [Python 3.11 eller nyere](https://www.python.org/downloads/windows/). Kryss av for **«Add python.exe to
+   PATH»** i installasjonsprogrammet.
+2. Last ned **`EmneKlar-<versjon>.zip`** fra [siste utgivelse](https://github.com/oleandrw/EmneKlar/releases/latest).
+3. Pakk ut ZIP-filen i en mappe du selv eier, for eksempel `Dokumenter\EmneKlar`. Unngå `Program Files`, ellers
+   kan ikke EmneKlar oppdatere seg selv.
+   * Advarer Windows om filene? Høyreklikk ZIP-filen før du pakker ut, velg **Egenskaper**, kryss av for
+     **Opphev blokkering** (på engelsk «Unblock») og trykk **OK**.
+4. Dobbeltklikk **`setup.bat`**. Den lager et eget Python-miljø for EmneKlar og installerer alt programmet trenger.
+   Det tar noen minutter første gang. Underveis spør den om du også vil ha lokale modeller for Emnets kunnskapsbase
+   (flere GB). Svarer du ikke «j», installeres de ikke, og du kan legge dem til senere.
+5. Dobbeltklikk **`start.bat`**. Nettleseren åpnes med EmneKlar. Lukk vinduet til EmneKlar for å avslutte.
+6. Følg oppsettveiviseren: Canvas-adresse, API-token, test av tilkoblingen og valg av emne. Tokenet lager du i Canvas
+   under **Konto → Innstillinger → Godkjente integrasjoner**.
 
-## Emnets kunnskapsbase – kort brukerveiledning
+**Tips når du prøver EmneKlar for første gang:** la **Dry run** (øverst til høyre) være på. Da kan du utforske alt uten
+at noe sendes til Canvas.
 
-1. Gå til **Canvas-verktøy → Emnets kunnskapsbase** (emnet velges i toppen av siden).
-2. Velg **Hele emnet** eller **Valgte moduler**. Alle kildetyper er med som standard: tekst fra Canvas, dokumenter
-   (PDF, Word, PowerPoint, Excel, OpenDocument, RTF, CSV, tekst), video og lyd, og bildebeskrivelser med KI (krever
-   KI). **Tilpass kilder** lar deg slå av kilder og filtyper og ta med upublisert innhold. Under **Avansert** (lukket
-   som standard) velger du KI-tillegg (kontekstuell berikelse, nøkkelbilder) og hva som skjer med lyd uten teksting:
-   *På denne maskinen*, *Ekstern KI-tjeneste* eller *Bare eksisterende undertekster*. Valg som kan gi kostnad, er
-   merket «Kan koste ekstra». **Lagre valg** lagrer kildene for emnet og transkriberingsvalget for alle emner;
-   **Tilbakestill kilder** slår kildene på igjen.
-3. Trykk **Opprett kunnskapsbase**. Lastes noe ned første gang eller sendes noe til KI, ser du først et estimat (hvor mye som
-   leses, omtrentlig tid og hva som sendes) og godtar det; ellers starter byggingen med en gang. Byggingen går i
-   bakgrunnen og kan settes på pause eller avbrytes; **Oppdater kunnskapsbasen** fortsetter der den slapp og behandler bare
-   det som er endret.
-4. Under **Spør emnet** kan du søke uten KI eller få et svar med KI der hver påstand har en klikkbar kilde
-   ([Sidetittel – Modul], [Video «…» – 12:34], [Fil.pdf s. 4], [Bilde på «…»]). Svaret er et KI-forslag som må vurderes.
-5. **Kvalitet** viser en helsescore for søket (recall@5 og MRR fra testspørsmål), og **Eksport** gir kunnskapsbasen som ZIP
-   (JSONL med metadata og vektorer) eller som Word, PDF, Markdown eller tekst for andre verktøy.
+## Oppdatere
 
-Bare lærerens innhold leses – aldri innleveringer, karakterer, meldinger eller studentinnlegg. Semantisk søk,
-rerangering og transkripsjon kjører lokalt med valgfrie modeller (flere GB): lukk EmneKlar og dobbeltklikk
-**`setup-emne-rag.bat`** (eller kjør `setup.bat --rag`). `update.bat` beholder dem senere. Uten lokale modeller bruker
-kunnskapsbasen nøkkelordsøk og eksisterende teksting. Video uten teksting kan i stedet transkriberes av OpenAI, Azure
-OpenAI eller en egen OpenAI-kompatibel server (Tilpass kilder → Avansert → Ekstern KI-tjeneste, eller Emnets
-kunnskapsbase → Innstillinger); da sendes bare lyden, og
-bare etter at du har sett estimatet og godtatt sendingen. Standardinstallasjonen kjører på CPU; har maskinen en NVIDIA-GPU med
-CUDA-utgaven av PyTorch og CUDA-bibliotekene for CTranslate2, brukes GPU automatisk (kan overstyres under
-Emnets kunnskapsbase → Innstillinger). Skannede PDF-er leses med Tesseract hvis det er installert med norsk språkpakke.
+EmneKlar oppdaterer seg selv fra GitHub:
+
+* Gå til **Innstillinger → Generelt**, trykk **Se etter oppdateringer** og deretter **Oppdater nå**.
+* Eller lukk EmneKlar og dobbeltklikk **`update.bat`**.
+
+Oppdateringen tar sikkerhetskopi av databasen, sjekker at den nye versjonen starter og setter forrige versjon tilbake
+hvis noe går galt. Dataene dine og innstillingene beholdes. Nye hovedversjoner installeres bare etter at du har
+bekreftet. Under **Innstillinger → Avanserte innstillinger → Oppdateringer** kan du la EmneKlar se etter
+oppdateringer selv, høyst én gang i døgnet. Se [docs/UPDATING.md](docs/UPDATING.md) for detaljer.
+
+## Emnets kunnskapsbase
+
+Under **Canvas-verktøy → Emnets kunnskapsbase** samler EmneKlar tekst, dokumenter, video og bilder fra emnet på din
+maskin. Under **Spør emnet** kan du søke i innholdet eller få svar fra KI med kilder du kan klikke deg til. Svarene er
+merket «KI-forslag – må vurderes». Bare lærerens innhold brukes, aldri innleveringer, karakterer, meldinger eller
+studentinnlegg.
+
+Kunnskapsbasen virker uten ekstra installasjon, med nøkkelordsøk og eksisterende teksting. For bedre søk og
+transkripsjon av video uten teksting på din egen maskin kan du installere lokale modeller. `setup.bat` spør om du
+vil ha dem (svar «j»). Har du sagt nei, lukker du EmneKlar og kjører `setup.bat` på nytt. Det laster ned flere GB, og
+oppdateringer beholder modellene senere. Video uten
+teksting kan også transkriberes av en ekstern KI-tjeneste som OpenAI. Da sendes bare lyden, og bare etter at du har
+godkjent det.
 
 ## Personvern og sikkerhet
 
 * EmneKlar lytter bare på `127.0.0.1` og kan ikke nås fra nettverket.
-* Canvas-token og API-nøkler lagres bare i Windows Legitimasjonsbehandling – aldri i filer, databasen, nettleseren
+* Canvas-token og API-nøkler lagres bare i Windows Legitimasjonsbehandling, aldri i filer, databasen, nettleseren
   eller logger.
-* Dine data ligger i `%LOCALAPPDATA%\EmneKlar-Claude` (database, sikkerhetskopier, rapporter, logger), adskilt fra
-  programmet. Oppdatering eller ny installasjon sletter dem ikke. Mappen heter ikke bare «EmneKlar» fordi et annet
-  program med samme navn bruker `%LOCALAPPDATA%\EmneKlar`. De to programmene deler ingen filer og kan kjøre samtidig.
-  EmneKlar åpner bare sin egen database og endrer aldri en database som tilhører et annet program.
+* Dataene dine ligger i `%LOCALAPPDATA%\EmneKlar-Claude` (database, sikkerhetskopier, rapporter og logger), atskilt fra
+  programmet. Oppdatering eller ny installasjon sletter dem ikke.
 * KI er valgfritt. Sending av emneinnhold til eksterne KI-tjenester er **av** til du slår det på, og du ser hva som
   sendes før det sendes. Studentenes innleveringer, karakterer og meldinger sendes aldri.
 
-Se [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for trusselmodellen.
+Trusselmodellen står i [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 
-## Dokumentasjon
+## Hjelp og problemer
 
-| Dokument | Innhold |
-|---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Arkitektur, moduler, analyse, endringsmotor, KI-lag |
-| [docs/DATA_MODEL.md](docs/DATA_MODEL.md) | Datamodell |
-| [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) | Trusselmodell og tiltak |
-| [docs/ACCESSIBILITY_RULES.md](docs/ACCESSIBILITY_RULES.md) | Regelregister og regulatoriske profiler |
-| [docs/CANVAS_API.md](docs/CANVAS_API.md) | Verifiserte fakta om Canvas REST API |
-| [docs/UPDATING.md](docs/UPDATING.md) | Oppdatering, utgivelser og versjonering |
-| [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) | Designsystem: tokens, komponenter og regler for brukergrensesnittet |
-| [CHANGELOG.md](CHANGELOG.md) | Endringslogg |
+* Brukerveiledninger, vanlige spørsmål og feilsøking finnes i programmet under **Hjelp**.
+* Under **Hjelp → Feilsøking** kan du kopiere feilsøkingsinformasjon. Den inneholder ingen token, nøkler eller
+  emneinnhold.
+* Loggen ligger i `%LOCALAPPDATA%\EmneKlar-Claude\logs\emneklar.log`.
+* Fant du en feil? Meld den under [Issues](https://github.com/oleandrw/EmneKlar/issues).
 
-Brukerveiledninger, vanlige spørsmål og feilsøking finnes i programmet under **Hjelp**.
+## Avinstallere
+
+1. Lukk EmneKlar og slett mappen du pakket ut programmet i.
+2. Vil du også fjerne dataene dine, sletter du `%LOCALAPPDATA%\EmneKlar-Claude`.
+3. Vil du fjerne token og nøkler, åpner du **Legitimasjonsbehandling** i Windows. Under **Windows-legitimasjon →
+   Generell legitimasjon** fjerner du oppføringene som inneholder `EmneKlar-Claude`.
 
 ## For utviklere
 
-EmneKlar er én modulær monolitt: FastAPI-backend (`backend/`, Python ≥ 3.11) som serverer et React/TypeScript-
-grensesnitt (`frontend/`, Vite). Les [CLAUDE.md](CLAUDE.md) for prosjektets faste regler.
-
-```bat
-:: Backend
-cd backend
-py -3 -m venv .venv
-.venv\Scripts\python -m pip install -e ".[dev]" -c constraints.txt
-.venv\Scripts\python -m pytest
-.venv\Scripts\python -m ruff check emneklar tests
-.venv\Scripts\python -m mypy emneklar
-
-:: Frontend
-cd frontend
-npm ci
-npm run typecheck && npm run lint && npm test
-npm run build
-npm run e2e        :: Playwright + axe mot en falsk Canvas (krever npm run build først)
-```
-
-Utviklingsserver med falsk Canvas og testdata (ingen ekte Canvas trengs):
-
-```bat
-backend\.venv\Scripts\python backend\tests\fakes\dev_server.py --port 8766 --canvas-port 8790 --configured
-```
-
-Åpne deretter `http://127.0.0.1:8766/auth/launch?token=dev-preview-token`.
-
-**Arbeidsflyt:** funksjonsgrener og pull requests mot `main`; GitHub Actions kjører tester, typesjekk, lint,
-bygg, tilgjengelighetstester, avhengighetssjekk og en Windows-installasjonstest. Versjoner følger SemVer
-(`VERSION`, `CHANGELOG.md`, `scripts/bump_version.py`), og databaseendringer krever alltid en Alembic-migrering.
+Oppsett, tester, utviklingsserver med falsk Canvas, utgivelser og teknisk dokumentasjon står i
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Endringene står i [CHANGELOG.md](CHANGELOG.md).
