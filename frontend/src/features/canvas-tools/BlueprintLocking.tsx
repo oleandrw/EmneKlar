@@ -24,7 +24,6 @@ import {
   useToast,
   type Column,
 } from "../../design-system";
-import { BackToTools } from "./shared";
 
 interface Item {
   content_type: string;
@@ -122,7 +121,6 @@ export function BlueprintLocking() {
       <>
         {header}
         <div className="ek-stack" data-gap="6">
-          <BackToTools />
           <EmptyState icon={<Lock aria-hidden="true" />} title="Ikke tilgjengelig for dette emnet">
             {data.data.reason}
           </EmptyState>
@@ -147,7 +145,6 @@ export function BlueprintLocking() {
     <>
       {header}
       <div className="ek-stack" data-gap="6">
-        <BackToTools />
         <Card title="Blueprint-emnet" headingLevel={2}>
           <div className="ek-stack">
             <KeyValue items={[

@@ -22,7 +22,6 @@ import {
   useToast,
   type Tone,
 } from "../../design-system";
-import { BackToTools } from "./shared";
 
 export interface LogEntry {
   id: number;
@@ -123,7 +122,6 @@ export function ChangeLog() {
       <PageHeader title="Backup og endringslogg"
         description="Alle endringer EmneKlar har gjort eller simulert i emnet. Innhold sikkerhetskopieres før hver endring." />
       <div className="ek-stack" data-gap="6">
-        <BackToTools />
         <Alert tone="info" title="Om angring">
           En endring kan angres når Canvas-API-et gjør det mulig og innholdet ikke er endret av andre etterpå. EmneKlar
           sjekker dette før angring og overskriver aldri nyere arbeid. Ikke alt kan angres automatisk.

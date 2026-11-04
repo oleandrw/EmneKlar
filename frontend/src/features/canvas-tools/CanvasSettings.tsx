@@ -25,7 +25,6 @@ import {
   useToast,
   type Tone,
 } from "../../design-system";
-import { BackToTools } from "./shared";
 
 type Category = "technical" | "security_accessibility" | "recommendation" | "preference";
 
@@ -129,7 +128,6 @@ export function CanvasSettings() {
     <>
       {header}
       <div className="ek-stack" data-gap="6">
-        <BackToTools />
         <p className="ek-small ek-muted">
           Kontrollerte {plural(data.checked.pages, "side", "sider")}, {plural(data.checked.assignments, "oppgave", "oppgaver")} og{" "}
           {plural(data.checked.quizzes, "quiz", "quizer")}.
