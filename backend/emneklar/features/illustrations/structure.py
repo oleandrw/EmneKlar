@@ -31,6 +31,8 @@ TASK_WORDS = re.compile(r"\b(oppgave|oppgaver|øving|refleksjon|refleksjonsspør
 # Canvas/template components that must be kept intact (insertion never goes inside them anyway; they are labelled
 # so the planner knows the layout).
 COMPONENT_HINTS = ("dp-", "kl_", "accordion", "tabs", "panel", "callout", "enhanceable_content", "ic-", "carousel")
+# Page-level template wrappers that hold the whole page (descended into even though they match a component hint).
+PAGE_WRAPPER_HINTS = ("dp-wrapper", "kl_wrapper", "content-wrapper", "page-wrapper")
 
 
 @dataclass
@@ -202,6 +204,11 @@ def _container(root: Span, html: str) -> tuple[Span, int]:
         if norm_text(re.sub(r"<!--.*?-->", "", loose, flags=re.DOTALL)) or not inner.strip():
             return node, depth
         if only.attr(MARKER_ATTR):
+            return node, depth
+        identity = f"{only.attr('class')} {only.attr('id')}".lower()
+        if any(h in identity for h in COMPONENT_HINTS) and not any(h in identity for h in PAGE_WRAPPER_HINTS):
+            return node, depth  # a template component (accordion, tabs …) is kept whole, never entered
+        if only.attr("role") in ("tablist", "tabpanel", "region", "dialog"):
             return node, depth
         node, depth = only, depth + 1
 

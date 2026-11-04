@@ -350,11 +350,12 @@ class CanvasAPI:
             str(preflight["upload_url"]), dict(preflight.get("upload_params") or {}),
             file_field=str(preflight.get("file_param") or "file"), filename=name, data=data,
             content_type=content_type, permit=permit)
-        if isinstance(body, dict) and body.get("id") and not location:
-            return body
+        on_canvas = bool(location) and self.client.is_canvas_origin(str(location))
+        if isinstance(body, dict) and body.get("id") and not on_canvas:
+            return body  # 201 with the File JSON (e.g. InstFS on another host name) – the token is never sent there
         if not location:
             raise CanvasError("canvas_error", detail=f"Opplastingen ble ikke bekreftet (HTTP {status})")
-        if not self.client.is_canvas_origin(location):
+        if not on_canvas:
             raise CanvasError("canvas_error", detail="Bekreftelsesadressen pekte til en annen vert enn Canvas")
         confirmed = await self.client.get_json(location)
         if not isinstance(confirmed, dict) or not confirmed.get("id"):

@@ -54,7 +54,7 @@ export function IllustrationDetail({ item, catalog, onClose, onJob }: {
   }, [item.id, item.alt_text, item.decorative, item.caption, item.caption_enabled, item.prompt, item.style_override]);
 
   const refresh = () => client.invalidateQueries({ queryKey: ["illustrations"] });
-  const locked = ["staged", "generating", "queued"].includes(item.status);
+  const locked = ["generating", "queued"].includes(item.status);
   const anchors = useQuery({
     queryKey: ["illustrations", "anchors", item.id],
     queryFn: () => api.get<{ anchors: Anchor[]; page_changed: boolean }>(`/api/illustrations/${item.id}/anchors`),
@@ -106,8 +106,8 @@ export function IllustrationDetail({ item, catalog, onClose, onJob }: {
             onClick={() => patch.mutate({ alt_text: alt, decorative, caption, caption_enabled: captionOn, status: "approved" })} loading={patch.isPending}>
             Godkjenn
           </Button>
-          <Button icon={<X aria-hidden="true" />} disabled={locked} onClick={() => patch.mutate({ status: "rejected" })}>Forkast</Button>
-          <Button icon={<SkipForward aria-hidden="true" />} disabled={locked} onClick={() => patch.mutate({ status: "skipped" })}>Hopp over</Button>
+          <Button icon={<X aria-hidden="true" />} disabled={locked || item.status === "published"} onClick={() => patch.mutate({ status: "rejected" })}>Forkast</Button>
+          <Button icon={<SkipForward aria-hidden="true" />} disabled={locked || item.status === "published"} onClick={() => patch.mutate({ status: "skipped" })}>Hopp over</Button>
           <Button variant="ghost" onClick={onClose}>Lukk</Button>
         </div>
       }>
@@ -121,6 +121,12 @@ export function IllustrationDetail({ item, catalog, onClose, onJob }: {
           <Alert tone="warning" title="Kontroller bildet faglig">
             {review.manual_check_reason || "Kvalitetskontrollen kunne ikke bekrefte at bildet er faglig riktig."} KI kan ikke garantere faglig korrekthet.
           </Alert>
+        ) : null}
+        {item.status === "staged" ? (
+          <Alert tone="info">Illustrasjonen ligger i endringskøen. Endrer, forkaster eller lager du den på nytt, tas sideendringen ut av køen, og siden må publiseres på nytt.</Alert>
+        ) : null}
+        {item.status === "published" ? (
+          <Alert tone="info">Publisert. Endrer du alt-tekst, bildetekst, plassering eller bilde, må illustrasjonen publiseres på nytt – den gamle figuren erstattes da.</Alert>
         ) : null}
         {item.error ? <Alert tone="danger">{item.error}</Alert> : null}
         {plan.skip_reason ? <Alert tone="info">{plan.skip_reason}</Alert> : null}

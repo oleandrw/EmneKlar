@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from typing import Any
 
@@ -37,8 +38,18 @@ def fingerprint(course_id: str, page_url: str, section_title: str, concept: str)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
 
 
-def marker_for(illustration_id: int, asset_id: str | None) -> str:
-    return f"ill-{illustration_id}-{(asset_id or 'x')[:8]}"
+def marker_for(ill: dict[str, Any]) -> str:
+    """``ill-<id>-<hash of what is rendered>``: a changed image, alt text, caption or placement gives a new marker, so
+    publishing again replaces EmneKlar's previous figure instead of skipping it as «already on the page»."""
+    anchor = ill.get("anchor") or {}
+    rendered = json.dumps([ill.get("asset_id"), "" if ill.get("decorative") else ill.get("alt_text"),
+                           ill.get("caption") if ill.get("caption_enabled") else None, bool(ill.get("decorative")),
+                           anchor.get("placement"), anchor.get("block_hash"), anchor.get("block_index")],
+                          ensure_ascii=False)
+    return f"ill-{ill['id']}-{hashlib.sha256(rendered.encode('utf-8')).hexdigest()[:10]}"
+
+
+OPEN_CHANGE = ("staged", "approved", "conflict", "failed")
 
 
 def illustration_dict(row: Illustration) -> dict[str, Any]:
@@ -140,6 +151,7 @@ class Store:
             return illustration_dict(row)
 
     def get(self, illustration_id: int) -> dict[str, Any]:
+        self.refresh_from_changes(illustration_id=illustration_id)
         with self.db.session() as session:
             row = session.get(Illustration, illustration_id)
             if row is None:
@@ -178,15 +190,21 @@ class Store:
                 .order_by(Illustration.id)).all()
             return [illustration_dict(r) for r in rows]
 
-    def refresh_from_changes(self, *, run_id: int | None = None, course_id: str | None = None) -> None:
-        """Illustrations in the change queue follow their change: applied → published, undone → approved again,
-        conflict/failed → shown as such, discarded → approved (can be published again)."""
+    def refresh_from_changes(self, *, run_id: int | None = None, course_id: str | None = None,
+                             illustration_id: int | None = None) -> None:
+        """Illustrations in the change queue follow their change. Only illustrations that are actually part of the
+        change are affected: one that was left out when the page's change was rebuilt is released again.
+
+        applied → published (with the inserted figure, for later replacement checks); undone → «Angret»;
+        conflict → «Konflikt»; failed → approved (the change can be retried or rebuilt); discarded → approved."""
         with self.db.session() as session:
             query = select(Illustration).where(Illustration.change_id.is_not(None))
             if run_id is not None:
                 query = query.where(Illustration.run_id == run_id)
             if course_id is not None:
                 query = query.where(Illustration.course_id == course_id)
+            if illustration_id is not None:
+                query = query.where(Illustration.id == illustration_id)
             rows = session.scalars(query).all()
             changes = {r.change_id for r in rows}
             if not changes:
@@ -195,24 +213,61 @@ class Store:
             for row in rows:
                 change = by_id.get(row.change_id or -1)
                 if change is None:
-                    continue
-                if change.status == "applied" and row.status != "published":
-                    after = (change.result or {}).get("after") or {}
-                    files = {f.get("illustration_id"): f for f in after.get("files") or []}
-                    info = files.get(row.id) or {}
-                    row.status = "published"
-                    row.published = {"file_id": info.get("file_id"), "marker": info.get("marker"),
-                                     "src": info.get("src"), "page_hash": after.get("page_hash"),
-                                     "log_id": (change.result or {}).get("log_id"),
-                                     "at": change.applied_at.isoformat() if change.applied_at else None}
-                elif change.status == "undone" and row.status == "published":
-                    row.status = "undone"
-                elif change.status in ("conflict", "failed") and row.status == "staged":
-                    row.status = "conflict" if change.status == "conflict" else "approved"
-                    row.error = change.error
-                elif change.status == "discarded" and row.status == "staged":
-                    row.status = "approved"
                     row.change_id = None
+                    continue
+                items = {i.get("illustration_id"): i for i in (change.proposed or {}).get("illustrations") or []}
+                if row.id not in items:
+                    row.change_id = None  # dropped when the page's change was rebuilt
+                    if row.status in ("staged", "conflict"):
+                        row.status = "approved"
+                    continue
+                if change.status == "applied":
+                    if row.status in ("staged", "conflict", "approved"):
+                        after = (change.result or {}).get("after") or {}
+                        files = {f.get("illustration_id"): f for f in after.get("files") or []}
+                        info = files.get(row.id) or {}
+                        marker = info.get("marker") or items[row.id].get("marker")
+                        row.status = "published"
+                        row.published = {"file_id": info.get("file_id"), "marker": marker, "src": info.get("src"),
+                                         "figure": (after.get("applied_figures") or {}).get(marker),
+                                         "page_hash": after.get("page_hash"),
+                                         "log_id": (change.result or {}).get("log_id"),
+                                         "at": change.applied_at.isoformat() if change.applied_at else None}
+                elif change.status == "undone":
+                    if row.status == "published":
+                        row.status = "undone"
+                        row.published = {**(row.published or {}), "figure": None, "undone": True}
+                elif change.status == "conflict":
+                    if row.status in ("staged", "approved"):
+                        row.status = "conflict"
+                        row.error = change.error
+                elif change.status == "failed":
+                    if row.status == "staged":
+                        row.status = "approved"
+                        row.error = change.error
+                elif change.status == "discarded":
+                    if row.status in ("staged", "conflict"):
+                        row.status = "approved"
+                    row.change_id = None
+
+    def open_change_ids(self, illustration_id: int) -> list[int]:
+        """The open change (if any) this illustration is part of."""
+        with self.db.session() as session:
+            row = session.get(Illustration, illustration_id)
+            if row is None or row.change_id is None:
+                return []
+            change = session.get(StagedChange, row.change_id)
+            if change is None or change.status not in OPEN_CHANGE:
+                return []
+            return [change.id]
+
+    def release(self, change_id: int) -> None:
+        """Illustrations of a withdrawn change are free again (approved, without a change)."""
+        with self.db.session() as session:
+            for row in session.scalars(select(Illustration).where(Illustration.change_id == change_id)).all():
+                if row.status in ("staged", "conflict"):
+                    row.status = "approved"
+                row.change_id = None
 
     # -- analysis cache ----------------------------------------------------------------------------
 

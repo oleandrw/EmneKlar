@@ -114,12 +114,12 @@ class InsertIllustrations(Applier):
         return uploaded, False
 
     async def apply(self, api: CanvasAPI, change: ChangeData, permit: WritePermit) -> dict[str, Any]:
-        live = await self.current(api, change)
-        body = str(live["body"])
         items = list(change.proposed["illustrations"])
         files: list[dict[str, Any]] = []
         insertions: list[Insertion] = []
         rights = change.proposed.get("usage_rights") or None
+        # 1. Upload first (slow). The page is read only afterwards, right before the write, so a save the teacher
+        #    makes while images are uploading is detected instead of overwritten.
         for item in items:
             file, reused = await self._file(api, change, item, permit)
             if file.get("locked"):
@@ -135,10 +135,25 @@ class InsertIllustrations(Applier):
                 width=item.get("width"), height=item.get("height"), decorative=bool(item.get("decorative")))))
             files.append({"illustration_id": item["illustration_id"], "file_id": str(file["id"]),
                           "marker": item["marker"], "src": src, "reused": reused, "file_name": file.get("display_name")})
+        # 2. Re-read and compare with the state the engine checked before the backup. Anything else → stop.
+        live = await self.current(api, change)
+        keys = ("body", "title", "published")
+        if state_fingerprint({k: change.before.get(k) for k in keys}) != state_fingerprint({k: live.get(k) for k in keys}):
+            raise AppError("change_conflict", status=409,
+                           message="Siden ble endret i Canvas mens bildene ble lastet opp. Ingenting på siden er endret "
+                                   "– se over forslaget og publiser på nytt.")
+        body = str(live["body"])
+        replace = dict(change.proposed.get("replace") or {})
         stale = _stale_markers(set(live["figures"]), items)
-        if stale:
-            body, _ = remove(body, stale)
+        for marker in stale:
+            if replace.get(marker) is None or live["figures"].get(marker) != replace[marker]:
+                raise AppError("change_conflict", status=409,
+                               message="En tidligere versjon av illustrasjonen er endret på siden. EmneKlar fjerner den "
+                                       "ikke automatisk – angre eller fjern den selv først.")
+        # 3. Splice and write straight away.
         try:
+            if stale:
+                body, _ = remove(body, stale)
             new_body = insert(body, insertions)
         except PlacementError as exc:
             raise AppError("illustration_page_changed", status=409, message=str(exc)) from exc
@@ -161,7 +176,10 @@ class InsertIllustrations(Applier):
                    ) -> dict[str, Any]:
         live = await self.current(api, change)
         markers = {item["marker"] for item in change.proposed.get("illustrations") or []}
-        new_body, removed = remove(str(live["body"]), markers)
+        try:
+            new_body, removed = remove(str(live["body"]), markers)
+        except PlacementError as exc:
+            raise AppError("undo_conflict", status=409, message=str(exc)) from exc
         if removed:
             await api.update_page(change.course_id, change.target["object_id"], {"body": new_body}, permit=permit)
         after = await self.current(api, change)
@@ -186,16 +204,30 @@ async def build_page_change(c: AppContainer, course_id: str, page_url: str, illu
             raise AppError("validation_error", message=f"Illustrasjon {ill['id']} har ikke noe bilde ennå.")
         asset = assets.get(ill["asset_id"])
         path = assets.path(ill["asset_id"])
-        marker = marker_for(ill["id"], ill["asset_id"])
+        marker = marker_for(ill)
         items.append({"illustration_id": ill["id"], "marker": marker, "asset_id": ill["asset_id"], "path": str(path),
                       "sha256": asset["sha256"], "media_type": asset["media_type"],
                       "file_name": f"emneklar-{asset['sha256'][:16]}.{EXT.get(asset['media_type'], 'png')}",
                       "width": asset["width"], "height": asset["height"], "anchor": ill["anchor"],
                       "alt": "" if ill["decorative"] else ill["alt_text"], "decorative": ill["decorative"],
                       "caption": ill["caption"], "caption_enabled": ill["caption_enabled"] and bool(ill["caption"])})
-    existing = set(find_figures(body))
+    figures = find_figures(body)
+    existing = set(figures)
     stale = _stale_markers(existing, items)
-    base, _ = remove(body, stale) if stale else (body, [])
+    replace: dict[str, str] = {}
+    published = {ill["id"]: ill.get("published") or {} for ill in illustrations}
+    for marker in stale:
+        illustration_id = int(marker.split("-")[1])
+        known = published.get(illustration_id) or {}
+        if known.get("marker") != marker or not known.get("figure") or figures.get(marker) != known["figure"]:
+            raise AppError("illustration_page_changed", status=409,
+                           message="En tidligere versjon av illustrasjonen på siden er endret etter publisering (eller "
+                                   "kopiert). EmneKlar erstatter den ikke automatisk – angre eller fjern den selv først.")
+        replace[marker] = known["figure"]
+    try:
+        base, _ = remove(body, stale) if stale else (body, [])
+    except PlacementError as exc:
+        raise AppError("illustration_page_changed", status=409, message=str(exc)) from exc
     structure = parse_page(base)
     if not structure.reliable:
         raise AppError("illustration_page_changed", status=409,
@@ -212,12 +244,21 @@ async def build_page_change(c: AppContainer, course_id: str, page_url: str, illu
         raise AppError("illustration_page_changed", status=409, message=str(exc)) from exc
     already = [i["marker"] for i in items if i["marker"] in existing]
     return {"page": page, "body": body, "items": items, "preview_body": preview_body, "replaces": sorted(stale),
-            "already_on_page": already, "folder": folder, "usage_rights": usage_rights}
+            "replace": replace, "already_on_page": already, "folder": folder, "usage_rights": usage_rights}
+
+
+def with_queued(store: Store, course_id: str, page_url: str, chosen: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The page's change replaces the open change for the page in the queue, so illustrations of the page that are
+    already queued (from any run) are carried over – nothing queued is silently dropped."""
+    ids = {i["id"] for i in chosen}
+    queued = [i for i in store.for_page(course_id, page_url, statuses=("staged",)) if i["id"] not in ids and i["asset_id"]]
+    return [*chosen, *queued]
 
 
 async def stage_page(c: AppContainer, course_id: str, page_url: str, illustrations: list[dict[str, Any]], *,
                      usage_rights: dict[str, Any] | None, folder: str) -> dict[str, Any]:
-    """Stage one change for a page with all its approved illustrations (replacing an open change for the page)."""
+    """Stage one change for a page with its approved illustrations and those already queued for the page."""
+    illustrations = with_queued(Store(c.db), course_id, page_url, illustrations)
     built = await build_page_change(c, course_id, page_url, illustrations, usage_rights=usage_rights, folder=folder)
     page, items = built["page"], built["items"]
     purposes = "; ".join(str((ill.get("plan") or {}).get("pedagogical_purpose") or "") for ill in illustrations)
@@ -228,7 +269,8 @@ async def stage_page(c: AppContainer, course_id: str, page_url: str, illustratio
         target={"object_type": "page", "object_id": page_url, "title": title},
         before={"body": built["body"], "title": page.get("title"), "published": page.get("published")},
         proposed={"body": built["preview_body"], "illustrations": items, "folder": folder,
-                  "usage_rights": usage_rights or None, "_published": page.get("published")},
+                  "usage_rights": usage_rights or None, "replace": built["replace"],
+                  "_published": page.get("published")},
         rationale=("KI-bildeassistenten: " + purposes)[:4000], risk="medium",
         source={"feature": "illustrations", "illustration_ids": [i["id"] for i in illustrations]},
         ai_generated=True, merge=True)

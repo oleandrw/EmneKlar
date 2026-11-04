@@ -648,3 +648,124 @@ def test_a_run_without_a_live_job_is_shown_as_interrupted(canvas_container, canv
     assert detail["run"]["status"] == "interrupted" and detail["can_continue"]
     listed = canvas_client.get(f"/api/courses/{COURSE_ID}/illustrations").json()["runs"][0]
     assert listed["status_label"] == "Avbrutt (EmneKlar ble lukket)"
+
+
+# ------------------------------------------------------------------------------------------- review regressions
+
+
+def statuses(client: TestClient, run_id: int) -> dict[int, tuple[str, int | None]]:
+    return {i["id"]: (i["status"], i["change_id"]) for i in
+            client.get(f"/api/illustrations/runs/{run_id}").json()["illustrations"]}
+
+
+def publish_all(client: TestClient, run_id: int, **body: object) -> dict:
+    client.post("/api/illustrations/bulk", json={"run_id": run_id, "level": "course"})
+    return client.post(f"/api/illustrations/runs/{run_id}/publish", json=body).json()
+
+
+def test_a_teacher_save_during_the_upload_is_never_overwritten(canvas_container, canvas_client: TestClient, ai: FakeAI,
+                                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    ai.plans = {"Fargelære": [proposal(section="s0", placement="after_intro")]}
+    run = start(canvas_client, {"type": "page", "page_url": "fargelaere"})
+    page = page_body(canvas_client, "fargelaere")
+    original = CanvasAPI.upload_course_file
+
+    async def upload_while_teacher_saves(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        page["body"] = page["body"] + "<p>Lagret av læreren under opplastingen.</p>"
+        return await original(self, *args, **kwargs)
+
+    monkeypatch.setattr(CanvasAPI, "upload_course_file", upload_while_teacher_saves)
+    result = publish_all(canvas_client, run["run"]["id"])
+    assert wait_for_job(canvas_client, result["job"]["id"])["result"]["summary"] == {"failed": 1}
+    assert "Lagret av læreren under opplastingen." in page["body"] and "<figure" not in page["body"]
+
+
+def test_undo_refuses_when_the_teacher_copied_and_edited_a_figure(canvas_container, canvas_client: TestClient,
+                                                                  ai: FakeAI) -> None:
+    ai.plans = {"Fargelære": [proposal(section="s0", placement="after_intro")]}
+    run = start(canvas_client, {"type": "page", "page_url": "fargelaere"})
+    result = publish_all(canvas_client, run["run"]["id"])
+    wait_for_job(canvas_client, result["job"]["id"])
+    page = page_body(canvas_client, "fargelaere")
+    figure_html = re.search(r"<figure.*?</figure>", page["body"], re.DOTALL).group(0)
+    page["body"] += figure_html.replace("Valg av format avhenger av bildets innhold.", "Lærerens egen bildetekst.")
+    undo = canvas_client.post(f"/api/illustrations/runs/{run['run']['id']}/undo", json={"page_url": "fargelaere"})
+    assert undo.status_code == 409 and "Lærerens egen bildetekst." in page["body"]
+    assert P.find_figures(page["body"]) and len(P.find_figures(page["body"])) == 1
+
+
+def test_removal_refuses_broken_html_instead_of_deleting_the_rest() -> None:
+    broken = '<p>a</p><figure data-emneklar-illustration="ill-1-x"><img src="/x" alt="y"><h2>Neste del</h2><p>Mye tekst</p>'
+    with pytest.raises(P.PlacementError):
+        P.remove(broken)
+
+
+def test_a_rejected_illustration_never_reaches_canvas(canvas_container, canvas_client: TestClient, ai: FakeAI) -> None:
+    ai.plans = {"Fargelære": [proposal(section="s0", placement="after_intro")]}
+    run = start(canvas_client, {"type": "page", "page_url": "fargelaere"})
+    run_id, ill = run["run"]["id"], run["illustrations"][0]
+    staged = publish_all(canvas_client, run_id, apply=False)
+    change_id = staged["changes"][0]["id"]
+    canvas_client.post("/api/illustrations/bulk", json={"run_id": run_id, "level": "ids", "ids": [ill["id"]],
+                                                        "action": "reject"})
+    assert statuses(canvas_client, run_id)[ill["id"]] == ("rejected", None)
+    assert canvas_client.get(f"/api/changes/{change_id}").json()["status"] == "discarded"
+    refused = canvas_client.post("/api/changes/apply", json={"ids": [change_id]})
+    assert refused.status_code == 409 and "<figure" not in page_body(canvas_client, "fargelaere")["body"]
+
+
+def test_editing_a_published_illustration_is_published_again(canvas_container, canvas_client: TestClient,
+                                                             ai: FakeAI) -> None:
+    ai.plans = {"Fargelære": [proposal(section="s0", placement="after_intro")]}
+    run = start(canvas_client, {"type": "page", "page_url": "fargelaere"})
+    run_id, ill = run["run"]["id"], run["illustrations"][0]
+    wait_for_job(canvas_client, publish_all(canvas_client, run_id)["job"]["id"])
+    edited = canvas_client.patch(f"/api/illustrations/{ill['id']}", json={"alt_text": "Ny alternativ tekst"}).json()
+    assert edited["status"] == "approved"
+    assert statuses(canvas_client, run_id)[ill["id"]][0] == "approved", "does not snap back to «published»"
+    again = canvas_client.post(f"/api/illustrations/runs/{run_id}/publish", json={}).json()
+    assert wait_for_job(canvas_client, again["job"]["id"])["result"]["summary"] == {"applied": 1}
+    body = page_body(canvas_client, "fargelaere")["body"]
+    assert 'alt="Ny alternativ tekst"' in body and body.count("<figure") == 1, "the old figure is replaced"
+    assert statuses(canvas_client, run_id)[ill["id"]][0] == "published"
+
+
+def test_a_replaced_figure_the_teacher_edited_is_not_deleted(canvas_container, canvas_client: TestClient,
+                                                             ai: FakeAI) -> None:
+    ai.plans = {"Fargelære": [proposal(section="s0", placement="after_intro")]}
+    run = start(canvas_client, {"type": "page", "page_url": "fargelaere"})
+    run_id, ill = run["run"]["id"], run["illustrations"][0]
+    wait_for_job(canvas_client, publish_all(canvas_client, run_id)["job"]["id"])
+    page = page_body(canvas_client, "fargelaere")
+    page["body"] = page["body"].replace("</figcaption>", " Lærerens tillegg.</figcaption>")
+    canvas_client.patch(f"/api/illustrations/{ill['id']}", json={"caption": "Ny bildetekst"})
+    refused = canvas_client.post(f"/api/illustrations/runs/{run_id}/publish", json={}).json()
+    assert refused["changes"] == [] and "endret" in refused["errors"][0]["message"]
+    assert "Lærerens tillegg." in page["body"]
+
+
+def test_queued_illustrations_from_another_run_are_kept_when_a_page_is_published(canvas_container,
+                                                                                 canvas_client: TestClient,
+                                                                                 ai: FakeAI) -> None:
+    ai.plans = {"Fargelære": [proposal(section="s0", placement="after_intro", concept="Fargesirkel")]}
+    first = start(canvas_client, {"type": "page", "page_url": "fargelaere"})
+    publish_all(canvas_client, first["run"]["id"], apply=False)
+    ai.plans = {"Fargelære": [proposal(section="s1", placement="end_of_section", concept="Kontrast")]}
+    second = start(canvas_client, {"type": "page", "page_url": "fargelaere"})
+    result = publish_all(canvas_client, second["run"]["id"])
+    assert len(result["changes"][0]["proposed"]["illustrations"]) == 2
+    assert wait_for_job(canvas_client, result["job"]["id"])["result"]["summary"] == {"applied": 1}
+    assert page_body(canvas_client, "fargelaere")["body"].count("<figure") == 2
+    assert {s for s, _ in statuses(canvas_client, first["run"]["id"]).values()} == {"published"}
+    assert {s for s, _ in statuses(canvas_client, second["run"]["id"]).values()} == {"published"}
+
+
+def test_template_components_are_never_entered() -> None:
+    accordion = ('<div class="enhanceable_content accordion"><h3>Del 1</h3><div><p>Panel</p></div>'
+                 '<h3>Del 2</h3><div><p>Panel 2</p></div></div>')
+    s = parse_page(accordion)
+    assert s.wrapper_depth == 0 and [b.kind for b in s.blocks] == ["component"]
+    out = P.insert(accordion, [P.Insertion("m", P.anchor_for(s, "s0", "end_of_section"), figure("m"))])
+    assert out.startswith(accordion), "the figure goes after the component, never inside it"
+    wrapped = f'<div id="dp-wrapper" class="dp-wrapper">{accordion}<p>Etter</p></div>'
+    assert parse_page(wrapped).wrapper_depth == 1, "known page wrappers are still entered"

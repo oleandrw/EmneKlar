@@ -658,9 +658,15 @@ async def _auto_insert(ctx: JobContext, state: RunState, phases: list[str]) -> N
             continue
         change_ids.append(change["id"])
     if change_ids:
+        # Applied by the change engine's own job (exclusive per course), never next to a manual apply job.
         state.c.changes.approve(change_ids)
-        await state.c.changes.apply_many(ctx, change_ids)
-    state.store.refresh_from_changes(run_id=state.run_id)
+        try:
+            job = state.c.changes.submit_apply(change_ids, confirm_high_risk=False, course_id=state.course_id)
+        except AppError:
+            ctx.progress.note("Endringene ligger i endringskøen: en annen endringsjobb kjører for emnet nå.")
+            return
+        state.store.merge_run_stats(state.run_id, auto_insert_job=job.id, auto_insert_changes=change_ids)
+        ctx.progress.note(f"Automatisk innsetting: {len(change_ids)} side(r) oppdateres via endringskøen.")
 
 
 def sample_prompt(course: dict[str, Any], design: dict[str, Any]) -> str:

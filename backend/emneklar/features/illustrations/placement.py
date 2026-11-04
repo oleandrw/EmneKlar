@@ -205,20 +205,28 @@ def insert(html: str, insertions: list[Insertion]) -> str:
     return out
 
 
+DUPLICATE_SEPARATOR = "\n<!-- emneklar: same marker again -->\n"
+
+
 def find_figures(html: str) -> dict[str, str]:
-    """marker → normalised HTML of each EmneKlar figure on the page."""
+    """marker → normalised HTML of the EmneKlar figure(s) on the page. When the teacher has copied a figure, every
+    occurrence is included, so the value differs from what EmneKlar inserted and undo treats it as a change."""
     result = scan(html or "")
-    found: dict[str, str] = {}
+    found: dict[str, list[str]] = {}
     for span in result.root.walk():
         marker = span.attr(MARKER_ATTR)
-        if marker and marker not in found:
-            found[marker] = normalise_html(html[span.start:span.end])
-    return found
+        if marker:
+            found.setdefault(marker, []).append(normalise_html(html[span.start:span.end]))
+    return {marker: DUPLICATE_SEPARATOR.join(parts) for marker, parts in found.items()}
 
 
 def remove(html: str, markers: set[str] | None = None) -> tuple[str, list[str]]:
-    """Remove EmneKlar figures (all, or those in ``markers``). Nothing else on the page is touched."""
+    """Remove EmneKlar figures (all, or those in ``markers``). Nothing else on the page is touched. Refuses when the
+    HTML is too broken to know where a figure ends (an unclosed element would otherwise take the rest with it)."""
     result = scan(html or "")
+    if not result.reliable:
+        raise PlacementError("Sidens HTML er for uryddig til at EmneKlar trygt kan fjerne figurer automatisk: "
+                             + "; ".join(result.problems[:3]))
     spans: list[tuple[Any, str]] = []
     for span in result.root.walk():
         marker = span.attr(MARKER_ATTR)

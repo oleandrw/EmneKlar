@@ -35,7 +35,7 @@ from emneklar.features.illustrations.inventory import OUTSIDE_MODULES, Scope, bu
 from emneklar.features.illustrations.pipeline import JOB_KIND, RunOptions, compose_prompt, run_job, sample_prompt
 from emneklar.features.illustrations.placement import PLACEMENTS, Anchor, candidate_anchors
 from emneklar.features.illustrations.privacy import wrap
-from emneklar.features.illustrations.publish import build_page_change, stage_page
+from emneklar.features.illustrations.publish import build_page_change, stage_page, with_queued
 from emneklar.features.illustrations.store import RUN_STATUS_LABELS, STATUS_LABELS, Store
 from emneklar.features.illustrations.structure import parse_page
 
@@ -73,6 +73,17 @@ def _truthful(c: AppContainer, run: dict[str, Any]) -> dict[str, Any]:
     if job is not None and job.status in ACTIVE:
         return run
     return {**run, "status": "interrupted", "status_label": RUN_STATUS_LABELS["interrupted"]}
+
+
+def _withdraw(c: AppContainer, store: Store, illustration_id: int) -> list[int]:
+    """Take the illustration's open change out of the queue (the other illustrations in it are released and must be
+    published again). A change that is rejected or edited after queueing must never reach Canvas unchanged."""
+    withdrawn = []
+    for change_id in store.open_change_ids(illustration_id):
+        c.changes.discard(change_id)
+        store.release(change_id)
+        withdrawn.append(change_id)
+    return withdrawn
 
 
 def _assets(c: AppContainer) -> AssetStore:
@@ -559,9 +570,11 @@ async def edit(illustration_id: int, body: IllustrationPatch, c: AppContainer = 
     _flag(c)
     store = _store(c)
     current = store.get(illustration_id)
-    if current["status"] in ("staged", "generating", "queued"):
+    if current["status"] in ("generating", "queued"):
+        raise AppError("change_state_invalid", status=409, message="Illustrasjonen lages akkurat nå og kan ikke endres.")
+    if current["status"] == "published" and body.status in ("rejected", "skipped"):
         raise AppError("change_state_invalid", status=409,
-                       message="Illustrasjonen ligger i endringskøen eller lages akkurat nå og kan ikke endres.")
+                       message="Illustrasjonen er publisert. Bruk «Angre på denne siden» for å fjerne den fra Canvas.")
     fields: dict[str, Any] = {k: v for k, v in body.model_dump(exclude_unset=True).items()
                               if k in ("prompt", "alt_text", "caption", "caption_enabled", "decorative")}
     if "style_override" in body.model_fields_set:
@@ -583,9 +596,19 @@ async def edit(illustration_id: int, body: IllustrationPatch, c: AppContainer = 
             if not decorative and not str(alt or "").strip():
                 raise AppError("validation_error", message="Skriv alternativ tekst, eller marker bildet som dekorativt.")
         fields["status"] = body.status
+    if not fields:
+        return current
+    withdrawn = _withdraw(c, store, illustration_id)  # a queued change no longer matches what was decided
+    if withdrawn and "status" not in fields:
+        fields["status"] = "approved"
     if current["status"] == "published" and set(fields) - {"status"}:
-        fields.setdefault("status", "approved")  # a changed published illustration must be published again
-    return store.update(illustration_id, **fields)
+        # A changed published illustration must be published again; it no longer follows the applied change.
+        fields.setdefault("status", "approved")
+        fields["change_id"] = None
+    if fields.get("status") in ("rejected", "skipped", "proposed"):
+        fields["change_id"] = None
+    result = store.update(illustration_id, **fields)
+    return {**result, "withdrawn_changes": withdrawn}
 
 
 @router.get("/illustrations/{illustration_id}/anchors")
@@ -617,12 +640,13 @@ async def regenerate(illustration_id: int, body: RegenerateBody, c: AppContainer
     _flag(c)
     store = _store(c)
     ill = store.get(illustration_id)
-    if ill["status"] in ("staged", "generating", "queued"):
+    if ill["status"] in ("generating", "queued"):
         raise AppError("change_state_invalid", status=409)
     run = store.run(ill["run_id"])
     options = RunOptions.model_validate(run["options"])
     _check_ready(c, options.settings, generate=True, confirmed=body.confirmed)
-    fields: dict[str, Any] = {"asset_id": None, "status": "queued"}
+    _withdraw(c, store, illustration_id)
+    fields: dict[str, Any] = {"asset_id": None, "status": "queued", "change_id": None}
     if body.prompt is not None:
         fields["prompt"] = body.prompt
     if body.style_override is not None:
@@ -694,9 +718,14 @@ async def bulk(body: BulkBody, c: AppContainer = Depends(get_container)) -> dict
             if not item["decorative"] and not item["alt_text"].strip():
                 missing_alt.append(item["id"])
                 continue
-        elif item["status"] in ("staged", "published", "generating", "queued"):
+            if item["status"] == "conflict":
+                _withdraw(c, store, item["id"])  # its change was built on an old version of the page
+        elif item["status"] in ("published", "generating", "queued"):
             continue
-        changed.append(store.update(item["id"], status=target)["id"])
+        else:
+            _withdraw(c, store, item["id"])  # rejected or skipped: its queued change must not be applied
+        changed.append(store.update(item["id"], status=target, **({} if body.action == "approve" else {
+            "change_id": None}))["id"])
     return {"changed": changed, "missing_alt_text": missing_alt}
 
 
@@ -711,16 +740,14 @@ class PublishBody(BaseModel):
 
 
 def _approved(store: Store, run_id: int, ids: list[int] | None) -> dict[str, list[dict[str, Any]]]:
-    """Approved illustrations per page. A page's change replaces its open change in the queue, so illustrations of
-    the page that are already queued go into the new change too (nothing queued is dropped)."""
-    items = [i for i in store.for_run(run_id) if i["asset_id"] and i["status"] in ("approved", "staged")]
+    """Approved illustrations per page (illustrations already queued for those pages are added when staging)."""
+    items = [i for i in store.for_run(run_id) if i["status"] == "approved" and i["asset_id"]]
     if ids is not None:
-        chosen = {i["page_url"] for i in items if i["id"] in set(ids) and i["status"] == "approved"}
-        items = [i for i in items if i["page_url"] in chosen and (i["id"] in set(ids) or i["status"] == "staged")]
+        items = [i for i in items if i["id"] in set(ids)]
     by_page: dict[str, list[dict[str, Any]]] = {}
     for item in items:
         by_page.setdefault(item["page_url"], []).append(item)
-    return {url: page for url, page in by_page.items() if any(i["status"] == "approved" for i in page)}
+    return by_page
 
 
 def _rights(body: PublishBody) -> dict[str, Any] | None:
@@ -743,7 +770,8 @@ async def publish_preview(run_id: int, body: PublishBody, c: AppContainer = Depe
     pages = []
     for url, items in _approved(store, run_id, body.ids).items():
         try:
-            built = await build_page_change(c, run["course_id"], url, items, usage_rights=_rights(body), folder=folder)
+            built = await build_page_change(c, run["course_id"], url, with_queued(store, run["course_id"], url, items),
+                                            usage_rights=_rights(body), folder=folder)
         except AppError as exc:
             pages.append({"page_url": url, "title": items[0]["page_title"], "ok": False, "error": exc.message,
                           "illustrations": [{"id": i["id"]} for i in items]})
