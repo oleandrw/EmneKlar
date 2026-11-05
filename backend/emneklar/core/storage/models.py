@@ -378,3 +378,118 @@ class Report(Base):
     size: Mapped[int] = mapped_column(Integer, default=0)
     run_ids: Mapped[list[Any]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
+class IllustrationProfile(Base):
+    """KI-bildeassistent: a course's design profile. Every saved change is a new version (``active`` marks the one in
+    use), so runs and illustrations can say which style they were made with."""
+
+    __tablename__ = "illustration_profiles"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    course_id: Mapped[str] = mapped_column(String(32), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    name: Mapped[str] = mapped_column(String(200), default="")
+    style_key: Mapped[str] = mapped_column(String(32), default="custom")
+    data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    reference_assets: Mapped[list[Any]] = mapped_column(JSON, default=list)  # approved images used as style refs
+    origin: Mapped[str] = mapped_column(String(16), default="preset")  # preset|ai|custom
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
+class IllustrationRun(Base):
+    """One run of the assistant over a scope (course, module(s) or page). Progress and intermediate results are
+    stored as they happen, so a cancelled or interrupted run can be continued."""
+
+    __tablename__ = "illustration_runs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    course_id: Mapped[str] = mapped_column(String(32), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="created")
+    scope: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    options: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    profile_id: Mapped[int | None] = mapped_column(Integer)
+    job_id: Mapped[str | None] = mapped_column(String(36))
+    stats: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    estimate: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    usage: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    contexts: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)  # course and module context (summaries)
+    limitations: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+
+
+class IllustrationAnalysis(Base):
+    """Cache of AI content analysis (course, module, page). Reused while the input is unchanged."""
+
+    __tablename__ = "illustration_analyses"
+    __table_args__ = (UniqueConstraint("course_id", "object_ref", "input_hash", "version",
+                                       name="uq_illustration_analyses_input"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    course_id: Mapped[str] = mapped_column(String(32), index=True)
+    object_ref: Mapped[str] = mapped_column(String(300))  # course | module:<id> | page:<url>
+    input_hash: Mapped[str] = mapped_column(String(64))
+    version: Mapped[str] = mapped_column(String(16))
+    data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    model: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
+class Illustration(Base):
+    """One proposed illustration: where it goes, why, the prompt, the generated image, review, alt text, caption."""
+
+    __tablename__ = "illustrations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("illustration_runs.id", ondelete="CASCADE"), index=True)
+    course_id: Mapped[str] = mapped_column(String(32), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="proposed")
+    module_id: Mapped[str | None] = mapped_column(String(64))
+    module_name: Mapped[str | None] = mapped_column(String(500))
+    page_url: Mapped[str] = mapped_column(String(500))
+    page_id: Mapped[str | None] = mapped_column(String(64))
+    page_title: Mapped[str] = mapped_column(String(1000), default="")
+    page_hash: Mapped[str | None] = mapped_column(String(64))
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    section: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    anchor: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    plan: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    prompt: Mapped[str] = mapped_column(Text, default="")
+    style_override: Mapped[str | None] = mapped_column(String(32))
+    asset_id: Mapped[str | None] = mapped_column(String(32))
+    versions: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    review: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    alt_text: Mapped[str] = mapped_column(Text, default="")
+    decorative: Mapped[bool] = mapped_column(Boolean, default=False)
+    caption: Mapped[str] = mapped_column(Text, default="")
+    caption_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Format, kind of image and the exact short labels in it (diagrams, models …); empty labels = text-free.
+    aspect_ratio: Mapped[str] = mapped_column(String(8), default="3:2", server_default="3:2")
+    image_type: Mapped[str] = mapped_column(String(24), default="illustration", server_default="illustration")
+    labels: Mapped[list[Any]] = mapped_column(JSON, default=list, server_default="[]")
+    credit: Mapped[str] = mapped_column(Text, default="", server_default="")  # credit line, separate from the caption
+    change_id: Mapped[int | None] = mapped_column(Integer)
+    published: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+
+
+class IllustrationAsset(Base):
+    """A generated image stored in the data folder (``illustrations/<course>/<id>.<ext>``), never in the database."""
+
+    __tablename__ = "illustration_assets"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    course_id: Mapped[str] = mapped_column(String(32), index=True)
+    illustration_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    kind: Mapped[str] = mapped_column(String(16), default="generated")  # generated|sample
+    filename: Mapped[str] = mapped_column(String(255))
+    sha256: Mapped[str] = mapped_column(String(64))
+    media_type: Mapped[str] = mapped_column(String(32))
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    width: Mapped[int | None] = mapped_column(Integer)
+    height: Mapped[int | None] = mapped_column(Integer)
+    model: Mapped[str] = mapped_column(String(200), default="")
+    prompt_hash: Mapped[str] = mapped_column(String(64), default="")
+    canvas_file_id: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

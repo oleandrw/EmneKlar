@@ -2450,3 +2450,97 @@ button.ek-metric-card[aria-pressed="true"] {
   place-items: center;
   padding: var(--space-16);
 }
+
+/* ============================================================== images (KI-bildeassistent) */
+.ek-image {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ek-image img,
+.ek-image__placeholder {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-sunken);
+}
+.ek-image[data-size="large"] img {
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+}
+.ek-image[data-size="thumb"] img,
+.ek-image[data-size="thumb"] .ek-image__placeholder {
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+}
+.ek-image__placeholder {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 3 / 2;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+  padding: var(--space-3);
+}
+.ek-image__caption {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.ek-thumb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--space-3);
+}
+.ek-thumb-button {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ek-thumb-button:hover {
+  background: var(--color-surface-hover);
+}
+.ek-thumb-button:focus-visible {
+  outline: 3px solid var(--color-focus, var(--color-link));
+  outline-offset: 2px;
+}
+
+/* Clickable wizard steps (Stepper). */
+.ek-steps__item--button {
+  padding: 0;
+}
+.ek-steps__button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ek-steps__button:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+.ek-steps__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.ek-steps__button:focus-visible {
+  outline: 3px solid var(--color-focus, var(--color-link));
+  outline-offset: 2px;
+}

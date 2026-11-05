@@ -1,0 +1,24 @@
+{
+  "version": "2026-11-04",
+  "currency": "USD",
+  "note": "Veiledende listepriser per 1 million tokens, brukt bare til kostnadsanslag før en jobb startes. Anthropic: kontrollert mot platform.claude.com/docs/en/about-claude/pricing (4.11.2026). OpenAI: hentet fra OpenAIs prisside via søkesammendrag (4.11.2026) – ikke ordrett kontrollert. Antall bildetokens per bilde for GPT-Image-2.5 er ikke publisert; anslaget bruker samme tabell som tidligere GPT image-modeller og kan avvike; for kvalitet xhigh og max finnes ikke noe anslag. Faktisk forbruk registreres fra leverandørens bruksdata når de oppgis. Prisene er ikke garantert – kontroller leverandørens prisliste og avtale.",
+  "text": [
+    {"provider_type": "anthropic", "model_id": "claude-fable-5-1", "input": 10.0, "output": 50.0, "verified": true},
+    {"provider_type": "anthropic", "model_id": "claude-opus-5-5", "input": 4.0, "output": 20.0, "verified": true},
+    {"provider_type": "anthropic", "model_id": "claude-sonnet-5-5", "input": 2.0, "output": 10.0, "verified": true},
+    {"provider_type": "openai", "model_id": "gpt-6-astra", "input": 10.0, "output": 50.0, "verified": false},
+    {"provider_type": "openai", "model_id": "gpt-6.1-sol", "input": 2.0, "output": 10.0, "verified": false},
+    {"provider_type": "openai", "model_id": "gpt-6.1-terra", "input": 1.0, "output": 5.0, "verified": false}
+  ],
+  "image": [
+    {"provider_type": "openai", "model_id": "gpt-image-2.5-sunburst", "text_input": 5.0, "image_input": 8.0, "image_output": 30.0, "verified": false},
+    {"provider_type": "openai", "model_id": "gpt-image-2.5-flare", "text_input": 5.0, "image_input": 8.0, "image_output": 30.0, "verified": false}
+  ],
+  "image_output_tokens": {
+    "verified": false,
+    "low": {"1024x1024": 272, "1536x1024": 408, "1024x1536": 408},
+    "medium": {"1024x1024": 1056, "1536x1024": 1584, "1024x1536": 1584},
+    "high": {"1024x1024": 4160, "1536x1024": 6240, "1024x1536": 6240}
+  },
+  "reference_image_input_tokens": 1500
+}

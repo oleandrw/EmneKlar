@@ -157,6 +157,32 @@ class RagSettings(_Section):
     max_video_mb: int = Field(2000, ge=10, le=20000)
 
 
+class IllustrationSettings(_Section):
+    """KI-bildeassistent (Canvas-verktøy). Model choices refer to core/ai/model_profiles.json and image_models.json;
+    the per-role overrides are "provider_id/model_id" ("" = the quality profile decides)."""
+
+    quality_profile: Literal["max", "balanced", "fast"] = "max"
+    amount: Literal["low", "balanced", "high"] = "balanced"
+    analysis_model: str = Field("", max_length=250)
+    planning_model: str = Field("", max_length=250)
+    review_model: str = Field("", max_length=250)
+    image_provider_id: str = Field("openai", max_length=40)
+    image_model: str = Field("", max_length=200)  # "" = the quality profile's image model
+    image_quality: Literal["", "low", "medium", "high", "xhigh", "max"] = ""
+    # "auto" = the planner picks the format per illustration (within the design profile); otherwise fixed.
+    image_format: Literal["auto", "16:9", "3:2", "4:3", "1:1", "2:3"] = "auto"
+    use_reference_images: bool = True
+    captions: bool = True  # visible caption when it adds value (the teacher can switch it per image)
+    # Short labels in diagrams, models, infographics and processes when they help understanding; "never" = text-free.
+    text_in_images: Literal["auto", "never"] = "auto"
+    credit: bool = True  # credit line under the image, separate from the caption
+    credit_text: str = Field("KI-generert illustrasjon", max_length=200)
+    max_width_px: int = Field(900, ge=240, le=2000)  # maximum display width in Canvas (responsive below it)
+    folder: str = Field("EmneKlar-illustrasjoner", min_length=1, max_length=120, pattern=r"^[^\\/:*?\"<>|]+$")
+    cost_limit_usd: float | None = Field(default=None, ge=0, le=10_000)
+    concurrency: int = Field(2, ge=1, le=4)
+
+
 class AppSettings(_Section):
     setup_completed: bool = False
     dry_run: bool = False
@@ -170,6 +196,7 @@ class AppSettings(_Section):
     notifications: NotificationSettings = Field(default_factory=NotificationSettings)
     advanced: AdvancedSettings = Field(default_factory=AdvancedSettings)
     rag: RagSettings = Field(default_factory=RagSettings)
+    illustrations: IllustrationSettings = Field(default_factory=IllustrationSettings)
 
     def provider(self, provider_id: str) -> ProviderConfig | None:
         return next((p for p in self.ai.providers if p.id == provider_id), None)

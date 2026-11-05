@@ -33,14 +33,17 @@ def _retry_delay(response: httpx.Response, attempt: int) -> float:
 
 
 async def post_json(client: httpx.AsyncClient, url: str, payload: dict[str, Any], headers: dict[str, str], *,
-                    retries: int = 1) -> dict[str, Any]:
-    return await _post(client, url, headers, retries=retries, json=payload)
+                    retries: int = 1, timeout: float | None = None) -> dict[str, Any]:
+    extra: dict[str, Any] = {"timeout": httpx.Timeout(timeout, connect=15.0)} if timeout else {}
+    return await _post(client, url, headers, retries=retries, json=payload, **extra)
 
 
-async def post_multipart(client: httpx.AsyncClient, url: str, data: dict[str, Any], files: dict[str, Any],
-                         headers: dict[str, str], *, retries: int = 1) -> dict[str, Any]:
-    """multipart/form-data (file uploads such as audio for transcription)."""
-    return await _post(client, url, headers, retries=retries, data=data, files=files)
+async def post_multipart(client: httpx.AsyncClient, url: str, data: dict[str, Any],
+                         files: dict[str, Any] | list[tuple[str, Any]], headers: dict[str, str], *, retries: int = 1,
+                         timeout: float | None = None) -> dict[str, Any]:
+    """multipart/form-data (file uploads such as audio for transcription or reference images)."""
+    extra: dict[str, Any] = {"timeout": httpx.Timeout(timeout, connect=15.0)} if timeout else {}
+    return await _post(client, url, headers, retries=retries, data=data, files=files, **extra)
 
 
 async def _post(client: httpx.AsyncClient, url: str, headers: dict[str, str], *, retries: int,

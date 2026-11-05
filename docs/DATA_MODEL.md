@@ -51,6 +51,16 @@ Leverandøroppsett (endepunkt, API-versjon, aktivert) ligger i innstillingene; n
 | `rag_indexes` | Register med én rad per emne: status (tom/bygges/klar/ufullstendig/feilet), valg (omfang, kildetyper, filtyper), embedding-modell, statistikk, hoppede elementer med begrunnelse, begrensninger, siste evaluering (recall@5, MRR, helsescore, testspørsmål), siste jobb og når indeksen sist ble bygget. |
 | `rag\course-<id>.sqlite` | Selve indeksen (egen SQLite-fil, `application_id` «EkRG», skjemaversjon): `items` (element, modul, `updated_at`, `content_hash`, signatur, status), `chunks` (tekst, kontekst, type `text/table/image/transcript/slide`, overskriftssti, modul, kilde-URL, sidetall, tidsstempel, metadata, vektor som float32) og `chunks_fts` (FTS5 over norske ordstammer). Kan bygges på nytt fra Canvas. |
 
+## KI-bildeassistent
+
+| Tabell | Innhold |
+|---|---|
+| `illustration_profiles` | Designprofil per emne, versjonert (stil, palett, kontrast, lys, komposisjon, bakgrunn, detaljnivå, format, kjennetegn, hva som ikke skal med), aktiv versjon, opphav (forhåndsvalg/KI/egen) og referansebilder (asset-id-er) |
+| `illustration_runs` | Én kjøring over et omfang: status, omfang, valg (kvalitetsprofil, mengde, modeller, kostnadsgrense, automatisk innsetting), designprofil, jobb, kartlegging og sidestatus, kostnadsanslag, faktisk forbruk, emne- og modulkontekst (sammendrag), begrensninger |
+| `illustration_analyses` | Hurtigbuffer for KI-analyse av emne, modul og side (nøkkel: objekt + hash av inndata + analyseversjon) |
+| `illustrations` | Ett forslag: modul, side, seksjon (tekst før/etter), anker, pedagogisk plan (formål, begrep, læringsmål, motiv, må vise / må ikke vise, risiko, merverdi), bildetype, format, korte etiketter, bildeprompt, stil, bildeversjoner med kontrollresultat, alt-tekst, dekorativ, bildetekst, kreditering, status, endring i køen, publiseringsinfo (med kontroll av hva Canvas beholdt), fingeravtrykk (mot dubletter) |
+| `illustration_assets` | Genererte bilder: fil i datamappen, SHA-256, format, størrelse, modell, Canvas-fil-id etter opplasting |
+
 ## Filer i datamappen
 
 ```
@@ -64,6 +74,7 @@ Leverandøroppsett (endepunkt, API-versjon, aktivert) ligger i innstillingene; n
                         fra KI-leverandør), bildebeskrivelser og kontekstsetninger for Emne-RAG (nøkkel = SHA-256),
                         og YouTube-/Vimeo-teksting (nøkkel = tjeneste og video-id, brukes i 30 dager)
   rag\                  Emne-RAG-indekser, én SQLite-fil per emne
+  illustrations\        KI-bildeassistent: genererte bilder per emne (<emne-id>\<asset>.png) og miniatyrer
   models\               lokale modeller for Emne-RAG (Hugging Face-buffer og konverterte NB-Whisper-modeller)
   run\instance.json     kjørende instans (port, kontrollhemmelighet) – slettes ved avslutning
 ```

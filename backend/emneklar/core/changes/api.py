@@ -18,7 +18,8 @@ router = APIRouter(prefix="/api")
 DOMAIN_LABELS = {"accessibility": ("UU-retting", "UU-rettinger"),
                  "content_quality": ("innholdsretting", "innholdsrettinger"),
                  "structure": ("strukturendring", "strukturendringer"), "quiz": ("quizendring", "quizendringer"),
-                 "homepage": ("forsideendring", "forsideendringer"), "canvas": ("Canvas-endring", "Canvas-endringer")}
+                 "homepage": ("forsideendring", "forsideendringer"), "canvas": ("Canvas-endring", "Canvas-endringer"),
+                 "illustrations": ("illustrasjonsendring", "illustrasjonsendringer")}
 
 
 def group_label(domain: str, count: int) -> str:

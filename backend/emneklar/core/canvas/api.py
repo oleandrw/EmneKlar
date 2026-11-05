@@ -35,6 +35,10 @@ PERMISSION_KEYS = [
 ]
 
 
+#: ``usage_rights[use_justification]`` values (canvas-lms UsageRightsController, checked 4.11.2026).
+USE_JUSTIFICATIONS = ("own_copyright", "used_by_permission", "fair_use", "public_domain", "creative_commons")
+
+
 def _page_ref(url_or_id: str) -> str:
     return quote(str(url_or_id), safe="")
 
@@ -325,6 +329,57 @@ class CanvasAPI:
         return await self.client.write_json(
             "PUT", f"/api/v1/courses/{course_id}/quizzes/{quiz_id}/questions/{question_id}",
             json={"question": question}, permit=permit)
+
+    async def upload_course_file(self, course_id: str, *, name: str, data: bytes, content_type: str,
+                                folder_path: str, permit: WritePermit) -> dict[str, Any]:
+        """Upload a file to the course's files in three steps (Canvas «File Uploads», docs/CANVAS_API.md):
+
+        1. ``POST /courses/:id/files`` with name, size, content type, folder path → ``upload_url`` + ``upload_params``;
+        2. multipart POST of the bytes to ``upload_url`` without the token (:meth:`CanvasClient.upload_to`);
+        3. confirm: a 3xx ``Location`` is fetched with the token (GET), and 201 ``Location`` returns the File JSON.
+
+        ``on_duplicate=rename`` – EmneKlar never overwrites a file in the course.
+        """
+        preflight = await self.client.write_json(
+            "POST", f"/api/v1/courses/{course_id}/files", permit=permit,
+            json={"name": name, "size": len(data), "content_type": content_type, "parent_folder_path": folder_path,
+                  "on_duplicate": "rename"})
+        if not isinstance(preflight, dict) or not preflight.get("upload_url"):
+            raise CanvasError("canvas_error", detail="Canvas ga ingen opplastingsadresse")
+        status, location, body = await self.client.upload_to(
+            str(preflight["upload_url"]), dict(preflight.get("upload_params") or {}),
+            file_field=str(preflight.get("file_param") or "file"), filename=name, data=data,
+            content_type=content_type, permit=permit)
+        on_canvas = bool(location) and self.client.is_canvas_origin(str(location))
+        if isinstance(body, dict) and body.get("id") and not on_canvas:
+            return body  # 201 with the File JSON (e.g. InstFS on another host name) – the token is never sent there
+        if not location:
+            raise CanvasError("canvas_error", detail=f"Opplastingen ble ikke bekreftet (HTTP {status})")
+        if not on_canvas:
+            raise CanvasError("canvas_error", detail="Bekreftelsesadressen pekte til en annen vert enn Canvas")
+        confirmed = await self.client.get_json(location)
+        if not isinstance(confirmed, dict) or not confirmed.get("id"):
+            raise CanvasError("canvas_error", detail="Canvas bekreftet ikke filen")
+        return confirmed
+
+    async def find_course_file(self, course_id: str, name: str) -> list[dict[str, Any]]:
+        """Files in the course whose name matches exactly (``search_term`` needs at least 2 characters)."""
+        rows = await self.client.get_paginated(f"/api/v1/courses/{course_id}/files", [("search_term", name)],
+                                               max_items=200)
+        return [r for r in rows if isinstance(r, dict) and name in (r.get("display_name"), r.get("filename"))]
+
+    async def set_usage_rights(self, course_id: str, file_ids: list[str], *, use_justification: str,
+                               legal_copyright: str | None, publish: bool, permit: WritePermit) -> dict[str, Any]:
+        """``PUT /courses/:id/usage_rights`` – needed when the course requires copyright information: new files are
+        locked (invisible to students) until it is set."""
+        if use_justification not in USE_JUSTIFICATIONS:
+            raise CanvasError("validation_error", status=400, detail="Ugyldig opphavsrettsgrunnlag")
+        body: dict[str, Any] = {"file_ids": file_ids, "publish": publish,
+                                "usage_rights": {"use_justification": use_justification}}
+        if legal_copyright:
+            body["usage_rights"]["legal_copyright"] = legal_copyright
+        return await self.client.write_json("PUT", f"/api/v1/courses/{course_id}/usage_rights", json=body,
+                                            permit=permit)
 
     async def restrict_blueprint_item(self, course_id: str, content_type: str, content_id: str, restricted: bool,
                                       restrictions: dict[str, bool] | None, *, permit: WritePermit) -> Any:

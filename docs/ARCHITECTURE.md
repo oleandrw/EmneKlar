@@ -46,6 +46,8 @@ backend/emneklar/
     changes/           engine.py (endringskø, konflikt, backup, logg, angre), appliers.py
     backup/            store.py (sikkerhetskopier av Canvas-objekter)
     ai/                providers/, catalog.py (modellregister), router.py, service.py (personvern, logg),
+                       images.py (bildemodeller, image_models.json), profiles.py (kvalitetsprofiler,
+                       model_profiles.json), pricing.py (veiledende priser for anslag, pricing.json),
                        local/ (lokale modeller for Emne-RAG: embedding, rerangering, NB-Whisper; local_models.json)
     updates/           versjonssjekk mot GitHub Releases
     flags.py           funksjonsflagg
@@ -60,6 +62,8 @@ backend/emneklar/
     module_requirements/, blueprint/, canvas_settings/
     reporting/         HTML/CSV-rapporter
     course_rag/        Emne-RAG (Canvas-verktøy): innhenting, konvertering, chunking, indeks, hybridsøk, svar, eksport
+    illustrations/     KI-bildeassistent (Canvas-verktøy): kartlegging, kontekstmodell, bildeplan, designprofil,
+                       generering og kvalitetskontroll, deterministisk plassering, publisering via endringsmotoren
     overview/          domenekort og anbefalte neste steg
 frontend/src/
   core/                API-klient, økt, global emnekontekst, layout (navigasjon, topplinje)
@@ -116,6 +120,16 @@ angre (der snapshot + API gjør det mulig, med ny konfliktsjekk)
   funksjonene.
 * **Personvern:** ekstern KI er av til brukeren slår den på; før sending vises en oppsummering av hva som
   sendes; studentdata sendes aldri.
+* **Bildegenerering** er en egen leverandøroppgave (`AIProvider.generate_image`): OpenAI Image API
+  (`/images/generations`, og `/images/edits` med referansebilder i `image[]`), Azure OpenAI og OpenAI-kompatible
+  servere. Anthropic-modeller analyserer bilder, men lager dem ikke. Bildemodellene står i `image_models.json`;
+  en ny bildegenerator er en ny katalograd (og en implementasjon for en ny API-familie). Samme personvernport og
+  bruksloggen gjelder.
+* **Kvalitetsprofiler** (`model_profiles.json`: Maksimal kvalitet / Balansert / Rask) gir foretrukne modeller per
+  rolle; bare aktiverte modeller hos klare leverandører brukes, ellers velger ruteren med profilens strategi.
+  `AIService.run(preferred=…)` prøver profilens modeller først, deretter ruterens valg og reserver. Reservelisten
+  har alltid minst én modell fra en annen leverandør når det finnes (et leverandøravbrudd bruker ikke opp alle
+  forsøk).
 
 ## Sikkerhet
 
@@ -137,6 +151,45 @@ spørsmål ─► BM25 + vektorsøk ─► RRF ─► rerangering ─► svar me
 
 Bakgrunnsjobben lagrer hvert element når det er ferdig, så avbrutte bygg kan fortsettes, og oppdateringer
 behandler bare elementer med endret signatur. Etter hver bygging måles søket med testspørsmål (recall@5, MRR).
+
+## KI-bildeassistent
+
+Canvas-verktøy → KI-bildeassistent lager faglig presise illustrasjoner for hele emnet, én modul, flere moduler
+eller én side, og setter dem inn etter godkjenning:
+
+```
+kartlegging (Canvas, ingen KI): moduler med alle elementtyper, sider (paginert), sider i flere moduler én gang
+   ─► nivå 1 emnekontekst ─► nivå 2 modulkontekst (med tidligere moduler) ─► nivå 3 hele siden, seksjon for seksjon
+   ─► nivå 4 seksjonen (med før/etter) ─► bildeplan (0..n forslag, formål, bildetype, format, korte etiketter,
+       må vise / må ikke vise, risiko, prompt)
+   ─► bildemodell (+ designprofil, referansebilder, størrelse etter format) ─► multimodal kontroll (karakterer,
+       tekstkontroll, alt-tekst, bildetekst)
+       ─► ny runde ved behov ─► gjennomgang ─► endringsmotoren (opplasting, innsetting, konfliktsjekk, backup, logg)
+```
+
+* **Kontekstpakke** (`context.py`): `course_context`, `module_context`, `page_context`, `section_context`,
+  `learning_objectives`, `key_concepts`, `pedagogical_purpose`, `visual_style_guide`, `existing_images`,
+  `proposed_placement`, `image_requirements`, `content_language`. Emne- og modulanalysen hurtigbufres
+  (`illustration_analyses`) og sendes videre som strukturerte sammendrag; lange sider kortes ned per seksjon.
+* **Personvern** (`privacy.py`): bare sider, modulstruktur, emnebeskrivelse og emneplan leses; e-post, telefon,
+  fødselsnummer og signerte URL-er fjernes før sending; kursinnhold sendes som avgrenset data.
+* **Tekst i bilder:** bildene forklarer mest mulig visuelt. Diagrammer, modeller, infografikk og prosesser kan ha
+  korte etiketter (høyst åtte, ett til tre ord, innholdets språk); planen angir dem ordrett, bildeprompten krever
+  nøyaktig de etikettene og ingen annen tekst, og kontrollen avviser feilstavet eller uønsket tekst.
+* **Figur i Canvas:** `figure` > `img` + `figcaption`, høyst 900 px (innstilling), responsiv, bildetekst
+  venstrejustert, kreditering som egen `small`-linje, `loading="lazy"` lenger ned på siden. Etter publisering
+  sjekkes figur, bilde, alt-tekst og bildetekst (må finnes) og valgfrie attributter (rapporteres hvis Canvas fjernet
+  dem).
+* **Plassering** (`htmlspans.py`, `structure.py`, `placement.py`): HTML leses med kildeposisjoner, og figurer
+  skjøtes inn *mellom* blokker i innholdsbeholderen – aldri inne i avsnitt, lister, tabeller, iframes eller
+  malkomponenter. Ankre er blokkens tag + hash av teksten. Lærerens HTML endres ikke et tegn; angring fjerner bare
+  figurer med `data-emneklar-illustration`.
+* **Publisering** (`publish.py`): egen endringstype `page.insert_illustrations` (konfliktsjekk mot siden ved
+  forhåndsvisning, sikkerhetskopi, 3-stegs filopplasting med gjenbruk av samme fil ved nye forsøk, bare `body`
+  sendes, kontroll etterpå, kirurgisk angring).
+* **Jobb** (`pipeline.py`): kø med begrenset samtidighet, pause/avbryt, kostnadsmåler med grense per jobb,
+  lagring underveis og «Fortsett» etter avbrudd. Re-kjøring gjenkjenner eksisterende illustrasjoner (fingeravtrykk
+  per side, seksjon og begrep) og lager ikke dubletter.
 
 ## Oppdatering og drift
 

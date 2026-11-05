@@ -1,0 +1,69 @@
+{
+  "version": "2026-11-04",
+  "note": "Kvalitetsprofiler for KI-bildeassistenten. For hver rolle prøves modellene i rekkefølge blant modeller som er aktivert under Innstillinger → KI-assistenter, hos leverandører som er klare (nøkkel, personvern). Finnes ingen av dem, velger ruteren en modell med strategien i fallback_strategy. Avanserte brukere kan velge egne modeller per rolle. Modellnavn oppgis som leverandør-id/modell-id og kan endres her uten kodeendring.",
+  "roles": {
+    "illustration_analysis": "Innholdsanalyse (emne, modul og side)",
+    "illustration_planning": "Bildeplan og bildeprompt",
+    "illustration_review": "Kvalitetskontroll, alt-tekst og bildetekst (bildeanalyse)",
+    "illustration_design": "Forslag til designprofil"
+  },
+  "profiles": [
+    {
+      "id": "max",
+      "label": "Maksimal kvalitet",
+      "description": "Mest avanserte analysemodell, beste bildemodell og grundig kontekst- og kvalitetskontroll med inntil to forbedringsrunder.",
+      "default": true,
+      "fallback_strategy": "quality",
+      "roles": {
+        "illustration_analysis": ["anthropic/claude-fable-5-1", "openai/gpt-6-astra", "anthropic/claude-opus-5-5"],
+        "illustration_planning": ["anthropic/claude-opus-5-5", "anthropic/claude-fable-5-1", "openai/gpt-6-astra"],
+        "illustration_review": ["openai/gpt-6-astra", "anthropic/claude-opus-5-5", "anthropic/claude-fable-5-1"],
+        "illustration_design": ["anthropic/claude-opus-5-5", "openai/gpt-6-astra", "anthropic/claude-fable-5-1"]
+      },
+      "image": {"models": ["openai/gpt-image-2.5-sunburst"], "quality": "high"},
+      "review_rounds": 2,
+      "page_chars": 60000,
+      "module_page_chars": 1800,
+      "course_chars": 24000,
+      "reference_images": 3
+    },
+    {
+      "id": "balanced",
+      "label": "Balansert",
+      "description": "Sterk analysemodell og bildegenerering av høy kvalitet, med fornuftig balanse mellom kvalitet, responstid og kostnad.",
+      "default": false,
+      "fallback_strategy": "auto",
+      "roles": {
+        "illustration_analysis": ["anthropic/claude-opus-5-5", "openai/gpt-6.1-sol", "anthropic/claude-sonnet-5-5"],
+        "illustration_planning": ["anthropic/claude-sonnet-5-5", "openai/gpt-6.1-sol", "anthropic/claude-opus-5-5"],
+        "illustration_review": ["openai/gpt-6.1-sol", "anthropic/claude-sonnet-5-5", "openai/gpt-6.1-terra"],
+        "illustration_design": ["anthropic/claude-sonnet-5-5", "openai/gpt-6.1-sol"]
+      },
+      "image": {"models": ["openai/gpt-image-2.5-sunburst"], "quality": "medium"},
+      "review_rounds": 1,
+      "page_chars": 40000,
+      "module_page_chars": 1200,
+      "course_chars": 16000,
+      "reference_images": 2
+    },
+    {
+      "id": "fast",
+      "label": "Rask",
+      "description": "Rimeligere analysemodell, rask bildegenerering og færre kontrollrunder (kvalitetskontrollen kjøres én gang, uten automatisk ny generering).",
+      "default": false,
+      "fallback_strategy": "speed",
+      "roles": {
+        "illustration_analysis": ["anthropic/claude-sonnet-5-5", "openai/gpt-6.1-terra"],
+        "illustration_planning": ["anthropic/claude-sonnet-5-5", "openai/gpt-6.1-terra"],
+        "illustration_review": ["openai/gpt-6.1-terra", "anthropic/claude-sonnet-5-5"],
+        "illustration_design": ["openai/gpt-6.1-terra", "anthropic/claude-sonnet-5-5"]
+      },
+      "image": {"models": ["openai/gpt-image-2.5-flare"], "quality": "medium"},
+      "review_rounds": 0,
+      "page_chars": 25000,
+      "module_page_chars": 700,
+      "course_chars": 10000,
+      "reference_images": 1
+    }
+  ]
+}

@@ -18,7 +18,16 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
-from emneklar.core.ai.base import AIError, AIProvider, AIRequest, AIResult, EmbeddingResult, TranscriptionResult
+from emneklar.core.ai.base import (
+    AIError,
+    AIProvider,
+    AIRequest,
+    AIResult,
+    EmbeddingResult,
+    ImageGenerationRequest,
+    ImageGenerationResult,
+    TranscriptionResult,
+)
 from emneklar.core.ai.catalog import ModelRegistry
 from emneklar.core.ai.providers.anthropic import AnthropicProvider
 from emneklar.core.ai.providers.openai_compat import AzureOpenAIProvider, OpenAICompatibleProvider
@@ -156,7 +165,11 @@ class AIService:
         summary: str,
         confirmed: bool,
         course_id: str | None = None,
+        preferred: list[dict[str, Any]] | None = None,
+        preferred_reason: str | None = None,
     ) -> tuple[AIResult, RouteDecision]:
+        """Run a task. ``preferred`` (registry models, already checked as usable – e.g. from a quality profile) are
+        tried first, then the router's choice and fallbacks. The privacy gate and usage log apply to all of them."""
         if task not in TASKS:
             raise AIError("validation_error", detail=f"Ukjent oppgavetype {task}")
         settings = self.c.settings.get()
@@ -165,6 +178,13 @@ class AIService:
             raise AIError("ai_not_configured", status=409, message=reason)
         decision = self.decide(task, input_chars=input_chars, images=images)
         candidates = [m for m in [decision.primary, *decision.fallbacks] if m is not None]
+        if preferred:
+            keys = {(m["provider_id"], m["model_id"]) for m in preferred}
+            candidates = list(preferred) + [m for m in candidates if (m["provider_id"], m["model_id"]) not in keys]
+            decision = RouteDecision(task=task, strategy=decision.strategy, primary=candidates[0],
+                                     fallbacks=candidates[1:4], reason=preferred_reason or decision.reason,
+                                     required_quality=decision.required_quality, min_context=decision.min_context,
+                                     excluded=decision.excluded)
         if not candidates:
             raise AIError("ai_no_model", status=409, detail=decision.reason)
         last: AIError | None = None
@@ -289,12 +309,61 @@ class AIService:
                         summary=summary, course_id=course_id)
 
     def _log_usage(self, task: str, provider_id: str, model: str, settings: AppSettings, *, success: bool,
-                   error: str | None, tokens: int, summary: str, course_id: str | None) -> None:
+                   error: str | None, tokens: int, summary: str, course_id: str | None, output_tokens: int = 0,
+                   reason: str = "Valgt under Emnets kunnskapsbase → Innstillinger.") -> None:
         with self.c.db.session() as session:
             session.add(AIUsage(course_id=course_id, task_type=task, provider_id=provider_id, model_id=model,
-                                strategy=settings.ai.strategy, reason="Valgt under Emnets kunnskapsbase → Innstillinger.",
+                                strategy=settings.ai.strategy, reason=reason,
                                 fallback_used=False, success=success, error_code=error, input_tokens=tokens,
-                                output_tokens=0, payload_summary={"summary": summary}))
+                                output_tokens=output_tokens, payload_summary={"summary": summary}))
+
+    # -- image generation (KI-bildeassistent; the model is chosen by a quality profile or the user) ------------
+
+    def image_plan(self, provider_id: str, model_id: str, *, summary: str) -> dict[str, Any]:
+        from emneklar.core.ai.images import resolve
+
+        settings = self.c.settings.get()
+        config = settings.provider(provider_id)
+        model = resolve(config.type, model_id) if config is not None else None
+        reason: str | None = None
+        if config is None or not self.configured(config):
+            reason = "Leverandøren som er valgt for bildegenerering, er ikke satt opp. Se Innstillinger → KI-assistenter."
+        elif config.type == "anthropic":
+            reason = ("Anthropic-modeller kan analysere bilder, men ikke lage dem. Velg OpenAI, Azure OpenAI eller en "
+                      "egen OpenAI-kompatibel server for bildegenerering.")
+        elif model is None:
+            reason = "Ingen bildemodell er valgt for leverandøren."
+        elif not is_local(config) and not settings.privacy.allow_external_ai:
+            reason = MESSAGES_SHARING_OFF
+        external = config is not None and not is_local(config)
+        return {"available": reason is None, "reason": reason, "payload_summary": summary, "external": external,
+                "needs_confirmation": external and settings.privacy.confirm_before_send,
+                "model": model.as_dict() if model else None,
+                "route": None if config is None or model is None else {
+                    "provider": config.id, "model": model.label, "reason": "Valgt i KI-bildeassistenten."}}
+
+    async def generate_image(self, provider_id: str, model_id: str, request: ImageGenerationRequest, *, summary: str,
+                             confirmed: bool, course_id: str | None = None, task: str = "illustration_image",
+                             reason: str = "Valgt i KI-bildeassistenten.") -> ImageGenerationResult:
+        plan = self.image_plan(provider_id, model_id, summary=summary)
+        if not plan["available"]:
+            raise AIError("ai_not_configured", status=409, message=plan["reason"])
+        if plan["needs_confirmation"] and not confirmed:
+            raise AIError("ai_consent_required", status=409)
+        settings = self.c.settings.get()
+        config = settings.provider(provider_id)
+        assert config is not None and plan["model"] is not None
+        model = str(plan["model"]["id"])
+        try:
+            result = await self.provider(config).generate_image(request.model_copy(update={"model": model}))
+        except AIError as exc:
+            self._log_usage(task, provider_id, model, settings, success=False, error=exc.code, tokens=0,
+                            summary=summary, course_id=course_id, reason=reason)
+            raise
+        self._log_usage(task, provider_id, model, settings, success=True, error=None,
+                        tokens=result.usage.input_tokens, output_tokens=result.usage.output_tokens, summary=summary,
+                        course_id=course_id, reason=reason)
+        return result
 
     def _log(self, task: str, model: dict[str, Any], settings: AppSettings, decision: RouteDecision, *,
              fallback: bool, success: bool, summary: str, course_id: str | None, error: str | None = None,

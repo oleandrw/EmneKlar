@@ -300,6 +300,46 @@ class CanvasClient:
             url = next_url
         return items
 
+    async def upload_to(self, upload_url: str, upload_params: Mapping[str, Any], *, file_field: str, filename: str,
+                        data: bytes, content_type: str, permit: WritePermit) -> tuple[int, str | None, Any]:
+        """Step 2 of a Canvas file upload: multipart POST to the ``upload_url`` Canvas handed out.
+
+        Follows the File Uploads documentation: the access token is NOT sent (the signed ``upload_params`` authorise
+        the request), the parameters are sent unchanged, the file is the *last* part, and redirects are not followed
+        here – the caller confirms the upload against the Canvas origin. Returns (status, Location, JSON or None).
+        """
+        if permit is None:  # pragma: no cover - typed, but keep the guard explicit
+            raise CanvasError("canvas_write_blocked", status=500, detail="upload")
+        if self._dry_run():
+            raise DryRunBlocked()
+        parts = urlsplit(upload_url)
+        on_canvas = self.is_canvas_origin(upload_url)
+        if parts.scheme not in ("https", "http") or not parts.hostname or parts.username or parts.password:
+            raise CanvasError("canvas_error", detail="Ugyldig opplastingsadresse fra Canvas")
+        if parts.scheme == "http" and not on_canvas:
+            raise CanvasError("canvas_error", detail="Opplasting over ukryptert http avvist")
+        form = {str(k): str(v) for k, v in upload_params.items()}  # a dict: httpx treats other data as raw content
+        try:
+            async with self._semaphore:
+                self.request_count += 1
+                response = await self._http.post(upload_url, data=form, files=[(file_field, (filename, data,
+                                                                                               content_type))],
+                                                 headers={"User-Agent": USER_AGENT})
+        except httpx.TimeoutException as exc:
+            raise CanvasError("canvas_unavailable", status=504, detail="Tidsavbrudd ved opplasting") from exc
+        except httpx.TransportError as exc:
+            raise CanvasError("canvas_unavailable", status=502, detail=type(exc).__name__) from exc
+        if response.status_code >= 400:
+            self.raise_for_status(response)
+        body: Any = None
+        if response.content and "json" in response.headers.get("Content-Type", ""):
+            try:
+                body = response.json()
+            except ValueError:
+                body = None
+        location = response.headers.get("Location")
+        return response.status_code, urljoin(upload_url, location) if location else None, body
+
     async def fetch_bytes(self, url: str, *, max_bytes: int) -> tuple[bytes, str | None]:
         """Small authenticated download into memory (e.g. images for previews)."""
         import tempfile

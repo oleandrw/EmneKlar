@@ -88,6 +88,36 @@ er brukt direkte i koden – ikke gjett nye verdier; kontroller mot dokumentasjo
   er utelatt. Varighet finnes ikke i API-et; den anslås som `size × 8 / bitrate` sekunder.
 * `GET /api/v1/media_objects/:id/media_tracks` gir bare brukerens egne spor og brukes ikke.
 
+## KI-bildeassistent (filopplasting og bilder i sider)
+
+*Kontrollert mot canvas-lms-kildekoden 4. november 2026 (`doc/api/file_uploads.md`, `lib/api/v1/attachment.rb`,
+`app/controllers/files_controller.rb`, `app/controllers/usage_rights_controller.rb`,
+`gems/canvas_sanitize/lib/canvas_sanitize/canvas_sanitize.rb`, `app/controllers/wiki_pages_api_controller.rb`,
+`packages/canvas-rce/src/common/fileUrl.ts`, `packages/canvas-rce/src/rce/transformContent.ts`).*
+
+* **Opplasting i tre steg:** (1) `POST /api/v1/courses/:id/files` med `name`, `size`, `content_type`,
+  `parent_folder_path` (mappen opprettes om den mangler) og `on_duplicate` (`overwrite` er standard, `rename`,
+  udokumentert `error`) → `upload_url`, `upload_params` (signatur gyldig i 30 minutter) og eventuelt `file_param`.
+  (2) Multipart-POST til `upload_url` **uten** tilgangstoken, med `upload_params` uendret og filen som **siste**
+  felt; ingen automatisk omdirigering. (3) 3xx `Location` hentes med token (GET); ved 201 gir `Location` filens
+  JSON. EmneKlar bruker `on_duplicate=rename` (overskriver aldri) og filnavn ut fra bildets SHA-256, og gjenbruker en
+  fil med samme navn og størrelse (`GET …/files?search_term=`) ved nye forsøk.
+* **Bilder i HTML:** `<img src="/courses/:id/files/:file_id/preview" alt=… width=… height=…>` – som Rich Content
+  Editor gjør (relativ `/preview`, uten spørring). Ikke bruk filens `url` (inneholder `verifier`). `data-api-endpoint`
+  og `data-api-returntype` legges til av Canvas ved lesing og fjernes av editoren – EmneKlar skriver dem ikke.
+* **Sanering:** `figure`, `figcaption` og `small` er tillatt; `img` tillater `align alt height src usemap width
+  longdesc` (ikke `loading` – det er bare tillatt på `iframe`, så `loading="lazy"` på bilder forventes fjernet ved
+  lagring); `src` bare http/https/relativ (ikke `data:`); `data-*` er tillatt; `style` med tillatte CSS-egenskaper
+  (`display`, `width`, `max-width`, `height`, `margin`, `font-size`, `text-align` m.fl.). EmneKlar leser siden
+  tilbake etter publisering og viser hvilke attributter Canvas fjernet.
+* **Synlighet:** en fil som er låst (`locked`, låst mappe eller låsedatoer) vises ikke for studenter. Skjulte filer
+  virker via direkte lenke. Krever emnet opphavsrettsinformasjon (`course.usage_rights_required`), blir nye filer
+  låst til den er satt: `PUT /api/v1/courses/:id/usage_rights` med `file_ids[]`, `publish=true` og
+  `usage_rights[use_justification]` (`own_copyright | used_by_permission | fair_use | public_domain |
+  creative_commons`), eventuelt `usage_rights[legal_copyright]`. Læreren velger grunnlaget; EmneKlar velger ikke.
+* **Sideoppdatering:** `PUT …/pages/:url` med bare `wiki_page[body]` beholder publiseringsstatus. PUT mot en side som
+  ikke finnes, oppretter en ny side – EmneKlar leser alltid siden først (konfliktsjekk).
+
 ## Klassiske quizer
 
 * Status: Instructure har **ingen** annonsert sluttdato (vedlikeholdsmodus, april 2026). API-ene fungerer.

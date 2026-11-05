@@ -85,6 +85,44 @@ class AIResult(BaseModel):
     provider: str
 
 
+class ImageGenerationRequest(BaseModel):
+    """One image from a text prompt, optionally guided by reference images (style references).
+
+    Only parameters that are common to image APIs are modelled; providers map them to their own names and drop what
+    they do not support. Image models never get tools either."""
+
+    model: str
+    prompt: str
+    size: str = "1536x1024"
+    quality: str = "high"
+    output_format: Literal["png", "webp", "jpeg"] = "png"
+    background: Literal["opaque", "transparent", "auto"] = "opaque"
+    reference_images: list[ImagePart] = Field(default_factory=list)
+    input_fidelity: Literal["low", "high"] | None = None
+
+
+class GeneratedImage(BaseModel):
+    data: bytes
+    media_type: str
+    revised_prompt: str | None = None
+
+
+class ImageUsage(BaseModel):
+    """Usage as reported by the provider. ``reported`` is False when the provider returned no usage data."""
+
+    input_tokens: int = 0
+    input_image_tokens: int = 0
+    output_tokens: int = 0
+    reported: bool = False
+
+
+class ImageGenerationResult(BaseModel):
+    images: list[GeneratedImage]
+    usage: ImageUsage = Field(default_factory=ImageUsage)
+    model: str
+    provider: str
+
+
 class DiscoveredModel(BaseModel):
     id: str
     name: str
@@ -122,6 +160,11 @@ class AIProvider(ABC):
                          prompt: str | None = None) -> TranscriptionResult:
         """Speech to text. Only OpenAI-compatible APIs (OpenAI, Azure OpenAI, own servers) have it."""
         raise AIError("unsupported", status=409, message="Denne KI-leverandøren tilbyr ikke transkripsjon.")
+
+    async def generate_image(self, request: ImageGenerationRequest) -> ImageGenerationResult:
+        """Image generation. Only OpenAI-compatible image APIs have it – Anthropic models analyse images but do not
+        generate them."""
+        raise AIError("unsupported", status=409, message="Denne KI-leverandøren kan ikke lage bilder.")
 
     async def health_check(self) -> HealthStatus:
         try:
