@@ -98,6 +98,13 @@ Du trenger Python 3.14 (samme versjon som kjøretiden) og [Inno Setup 6](https:/
 * **Ny Python-versjon i kjøretiden:** endre `python`, `python_url` og `python_sha256` i `packaging/runtime.json`
   (SHA-256 står på utgivelsessiden på python.org), og `RUNTIME_PYTHON` i `.github/workflows/ci.yml` og
   `python-version` i `release.yml` hvis hovedserien endres.
+* **Prøve installasjonsprogrammet på en annen PC:** start CI manuelt (Actions → CI → «Run workflow», eller
+  `gh workflow run ci.yml --ref <gren>`). Når jobben `windows-package` har bestått, ligger
+  `EmneKlar-<versjon>-setup.exe` under «Artifacts» på kjøringens side i 14 dager, og sjekksummen står i
+  sammendraget. Du må være logget inn på GitHub for å laste det ned. Det er den vanlige utgaven, ikke testutgaven,
+  og den er ikke signert: på den andre PC-en bruker den `%LOCALAPPDATA%\EmneKlar`, port 8770 og nøkkelringen
+  «EmneKlar», som en lærers installasjon. Den er ikke en utgivelse, så «Se etter oppdateringer» finner ingenting
+  før det finnes en utgivelse på GitHub.
 * **Ikonet** (`packaging/windows/EmneKlar.ico`) tegnes av `packaging/windows/make_icon.py` etter
   `frontend/public/favicon.svg`.
 * **Plattformforskjeller** hører hjemme i `backend/emneklar/core/system.py` (datamappe, meldinger uten konsollvindu,

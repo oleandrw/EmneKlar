@@ -105,6 +105,16 @@ def test_the_windows_package_is_built_with_the_python_version_of_the_runtime() -
     assert "pip_audit --requirement packaging/runtime-win-amd64.txt" in CI.replace("\n          ", " ")
 
 
+def test_only_a_checked_installer_is_kept_and_only_for_a_while() -> None:
+    package = job(CI, "windows-package")
+    keep = package.index("actions/upload-artifact")  # the first upload; the logs come after it, on failure only
+    step = package[package.rindex("- name:", 0, keep):package.index("- name:", keep)]
+    assert keep > package.index("--break-new-version"), "kept only after the install, update and rollback checks"
+    assert "-setup.exe" in step and "retention-days: 14" in step and "if:" not in step
+    assert ".zip" not in step, "the installer only: the package and the runtime are never kept outside a release"
+    assert "upload-artifact" not in job(RELEASE, "windows").split("if: failure()")[0], "a release is a release"
+
+
 def test_the_installer_check_knows_the_same_installations_as_the_installer_script() -> None:
     verify = load_script("verify_windows_installer")
     iss = (REPO_DIR / "packaging" / "windows" / "EmneKlar.iss").read_text(encoding="utf-8-sig")

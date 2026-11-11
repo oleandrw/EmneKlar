@@ -216,6 +216,26 @@ jobs:
         run: >
           python scripts/local_update_test.py --package "dist-release/EmneKlar-$VERSION.zip" --runtime "$RUNTIME"
           --work "$RUNNER_TEMP/emneklar-rollback" --break-new-version
+      # Only an installer that passed every check above is kept: for trying it on another PC. It is the normal build
+      # (not the test build), not code-signed and not a release – nothing can update to it.
+      - name: Keep the installer for 14 days (not signed, not a release)
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist-release/EmneKlar-${{ env.VERSION }}-setup.exe
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+      - name: Show the installer's checksum
+        run: |
+          {
+            echo "### EmneKlar-$VERSION-setup.exe"
+            echo
+            echo "Download it under *Artifacts* below; it is deleted after 14 days. Not code-signed (SmartScreen will"
+            echo "warn) and not a release. It is the normal build: on another PC it uses %LOCALAPPDATA%\\EmneKlar,"
+            echo "port 8770 and the credential service \"EmneKlar\", like a teacher's installation."
+            echo
+            echo "SHA-256: \`$(cut -d' ' -f1 "dist-release/EmneKlar-$VERSION-setup.exe.sha256")\`"
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload the logs
         if: failure()
         uses: actions/upload-artifact@v7

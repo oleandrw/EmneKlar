@@ -208,7 +208,8 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   avinstallerer dem – og oppretter utgivelsen først når alt har bestått. Alle filnavn får versjonen fra `VERSION`.
   CI har fått samme kontroll på `main` (`windows-package`), Python 3.14 i testmatrisen (versjonen som følger med
   Windows-pakken), sårbarhetssjekk av de låste pakkene i kjøretiden, og en startprøve på Linux og macOS som aldri kan
-  stoppe en utgivelse.
+  stoppe en utgivelse. Et installasjonsprogram som har bestått kontrollene i `windows-package`, lagres i 14 dager som
+  artefakt til prøving – ikke signert og ikke en utgivelse.
 - **Feilmeldinger og Hjelp forutsetter ikke lenger `start.bat`:** tekstene viser til Start-menyen og
   installasjonsprogrammet, og Hjelp → Feilsøking forklarer hvordan EmneKlar startes, avsluttes og repareres.
   `setup.bat` i en installasjon med innebygd kjøretid installerer ingenting – den kontrollerer installasjonen.

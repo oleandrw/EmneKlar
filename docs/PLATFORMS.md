@@ -125,7 +125,7 @@ Gjenstår før en Linux-pakke kan gis ut:
 | Jobb | Kjører | Hva den gjør | Kan stoppe en utgivelse |
 |---|---|---|---|
 | `backend`, `frontend`, `dependency-audit` | hver pull request (Linux) og på `main` | tester, typesjekk, lint, bygg, sårbarhetssjekk | – |
-| `windows-package` | `main` og manuelt | bygger kjøretid, pakke og installasjonsprogram; installerer, starter, oppdaterer, ruller tilbake og avinstallerer | – |
+| `windows-package` | `main` og manuelt | bygger kjøretid, pakke og installasjonsprogram; installerer, starter, oppdaterer, ruller tilbake og avinstallerer. Har alt bestått, lagres installasjonsprogrammet i 14 dager som artefakt (ikke signert, ikke en utgivelse) | – |
 | `windows-install` | `main` og manuelt | `setup.bat` med egen Python, start og stopp | – |
 | `platform-smoke` (Ubuntu, macOS arm64, macOS Intel) | `main` og manuelt, `continue-on-error` | starter programmet fra kildekoden og sjekker `/api/health`. Ikke en støtteerklæring | Nei |
 | `release` → `windows` | når en tag `v*` pushes | bygger og **verifiserer** Windows-pakken, og publiserer først da | Ja – bare Windows |
