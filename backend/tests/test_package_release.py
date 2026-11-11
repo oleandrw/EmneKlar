@@ -161,11 +161,15 @@ def test_the_working_tree_can_be_packaged_for_testing_before_a_commit(source: Pa
 
 def fake_runtime(folder: Path, *, platform: str = "win-amd64", identifier: str = "cp314-0123456789ab",
                  name: str | None = None) -> Path:
-    """A zip shaped like the output of scripts/build_runtime.py: files at the top level and a runtime.json."""
+    """A zip shaped like the output of scripts/build_runtime.py: files at the top level and a runtime.json.
+
+    The interpreter lies where the updater on the machine running the tests looks for it (python.exe on Windows,
+    bin/python3 elsewhere), as in test_update_runtime.py: these tests run on Linux too.
+    """
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / (name or update.runtime_asset_name(platform, identifier))
     with zipfile.ZipFile(path, "w") as archive:
-        archive.writestr("python.exe", "python")
+        archive.writestr(update.runtime_interpreter(Path()).as_posix(), "python")
         archive.writestr("runtime.json", json.dumps({"id": identifier, "platform": platform, "python": "3.14.10"}))
     return path
 
@@ -182,7 +186,8 @@ def test_the_runtime_of_a_release_is_recorded_with_its_checksum(source: Path, tm
     wanted = update.release_runtimes(info)["win-amd64"]  # exactly what the updater reads
     update.verify_runtime_archive(runtime, wanted)
     update.extract_runtime(runtime, tmp_path / "runtime", wanted)
-    assert "runtime/python.exe" not in _packaged(zip_path), "the runtime is a file of its own, not part of the package"
+    in_package = sorted(name for name in _packaged(zip_path) if name.startswith("runtime/"))
+    assert not in_package, "the runtime is a file of its own, not part of the package"
 
     # Without a runtime the package is as before: usable with a Python environment made by setup.
     plain, _, _, _ = package_release.build(source, tmp_path / "plain", repository="acme/EmneKlar", allow_dirty=True)
