@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { useState } from "react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -33,26 +33,53 @@ async function axeViolations(container: Element) {
 const inRouter = (ui: React.ReactNode) => render(<MemoryRouter>{ui}</MemoryRouter>);
 
 describe("StatusCard", () => {
-  it("is one link with a heading and the key figures", async () => {
-    const { container } = inRouter(
-      <StatusCard title="Universell utforming" icon={<svg />} tone="violet" to="/universell-utforming"
-        metrics={[{ value: 16, label: "avvik / sannsynlige avvik", tone: "critical" }, { value: 11, label: "bør vurderes" }]}
-        footnote="7 krever manuell kontroll" />,
+  it("is one link to the area – name, coverage, arrow inside – one tab stop, opened with Enter", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <MemoryRouter initialEntries={["/oversikt"]}>
+        <Routes>
+          <Route path="/oversikt" element={
+            <StatusCard title="Universell utforming" icon={<svg />} tone="violet" to="/universell-utforming"
+              metric={{ value: 16, label: "bekreftede avvik", tone: "critical" }}
+              secondary={{ text: "11 sannsynlige avvik", tone: "warning" }}
+              description="Hele emnet · 6. nov. kl. 15.42" />
+          } />
+          <Route path="/universell-utforming" element={<p>Siden for universell utforming</p>} />
+        </Routes>
+      </MemoryRouter>,
     );
-    const link = screen.getByRole("link");
+    const link = screen.getByRole("link", { name: "Universell utforming: 16 bekreftede avvik, 11 sannsynlige avvik" });
     expect(link).toHaveAttribute("href", "/universell-utforming");
-    expect(within(link).getByRole("heading", { level: 3, name: "Universell utforming" })).toBeInTheDocument();
-    expect(link).toHaveTextContent("16 avvik / sannsynlige avvik");
-    expect(link).toHaveTextContent("11 bør vurderes");
-    expect(container.querySelector('[data-value-tone="critical"]')).toHaveTextContent("16");
+    expect(link, "coverage and age are read with the card").toHaveAccessibleDescription("Hele emnet · 6. nov. kl. 15.42");
+    expect(within(link).getByRole("heading", { level: 3, name: "Universell utforming:" })).toBeInTheDocument();
+    expect(within(link).queryByRole("button"), "no control inside the link").toBeNull();
+    expect(link.querySelector("a")).toBeNull();
+    expect(link.querySelector(".ek-status-card__arrow svg"), "the arrow is part of the link").not.toBeNull();
+    expect(link.querySelector(".ek-status-card__accent")).toHaveAttribute("aria-hidden", "true");
+    expect(link.querySelector(".ek-status-card__figure")).toHaveAttribute("data-value-tone", "critical");
+    expect(link.querySelector(".ek-status-card__secondary")).toHaveTextContent("11 sannsynlige avvik");
     expect(await axeViolations(container)).toEqual([]);
+
+    await user.tab();
+    expect(link).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByText("Siden for universell utforming")).toBeInTheDocument();
+  });
+
+  it("mutes a zero, whatever its class", () => {
+    const { container } = inRouter(
+      <StatusCard title="Innholdskvalitet" icon={<svg />} tone="info" to="/innholdskvalitet"
+        metric={{ value: 0, label: "døde lenker", tone: "critical" }} secondary={{ text: "3 utilgjengelige videoer", tone: "warning" }} />,
+    );
+    expect(container.querySelector(".ek-status-card__figure")).toHaveAttribute("data-value-tone", "zero");
   });
 
   it("says when an area is not analysed instead of showing zeros", () => {
-    inRouter(<StatusCard title="Quiz" icon={<svg />} tone="orange" to="/quizassistent" metrics={[{ value: 0, label: "x" }]}
-      empty="Ikke analysert ennå" />);
-    expect(screen.getByRole("link")).toHaveTextContent("Ikke analysert ennå");
-    expect(screen.getByRole("link")).not.toHaveTextContent("0");
+    inRouter(<StatusCard title="Quiz" icon={<svg />} tone="orange" to="/quizassistent" metric={{ value: 0, label: "mulige feil" }}
+      secondary={{ text: "0 quizer og 0 spørsmål med funn" }} empty="Ikke analysert ennå" />);
+    expect(screen.getByRole("link", { name: "Quiz: Ikke analysert ennå" })).toBeInTheDocument();
+    expect(screen.queryByText("0")).toBeNull();
+    expect(screen.queryByText(/med funn/)).toBeNull();
   });
 });
 
@@ -98,10 +125,22 @@ describe("ActionRow", () => {
 describe("FeatureCard", () => {
   it("is a labelled section with one clear action", async () => {
     const { container } = inRouter(
-      <FeatureCard icon={<svg />} tone="info" title="Blueprint-låsing" description="Lås innhold." to="blueprint" actionLabel="Åpne" />,
+      <FeatureCard icon={<svg />} tone="info" title="Blueprint-låsing" description="Lås innhold." to="blueprint"
+        actionLabel="Administrer låsing" />,
     );
     expect(screen.getByRole("region", { name: "Blueprint-låsing" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Åpne" })).toHaveAccessibleDescription("Blueprint-låsing");
+    expect(screen.getByRole("link", { name: "Administrer låsing" })).toHaveAccessibleDescription("Blueprint-låsing");
+    expect(container.querySelector(".ek-badge")).toBeNull();
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("shows what limits the tool as plain text, not a badge", async () => {
+    const { container } = inRouter(
+      <FeatureCard icon={<svg />} tone="success" title="Automatiske modulkrav" description="Foreslå krav." to="modulkrav"
+        actionLabel="Sett modulkrav" notice="Du mangler tilgang i Canvas til å endre moduler i dette emnet." />,
+    );
+    expect(screen.getByText("Du mangler tilgang i Canvas til å endre moduler i dette emnet.")).toBeInTheDocument();
+    expect(container.querySelector(".ek-badge")).toBeNull();
     expect(await axeViolations(container)).toEqual([]);
   });
 });
@@ -147,13 +186,16 @@ describe("Stats and activity", () => {
           <KeyFigure icon={<svg />} value={5} label="Død" description="Siden finnes ikke." />
         </KeyFigureList>
         <ActivityList label="Siste handlinger"
-          items={[{ key: "1", icon: <svg />, tone: "success", title: "Velkommen", meta: "Gjennomført", date: "7. okt. 2026", time: "12:59" }]} />
+          items={[{ key: "1", icon: <svg />, tone: "success", title: "Velkommen", meta: "Hele emnet", date: "7. okt. 2026", time: "12:59",
+            status: { label: "Avbrutt", tone: "warning", icon: <svg /> } }]} />
       </>,
     );
     expect(within(screen.getByRole("list", { name: "Innhold i emnet" })).getByRole("listitem")).toHaveTextContent(/1\s284\s*Sider/);
     expect(screen.getByRole("list", { name: "Lenkestatus" })).toHaveTextContent("5 Død");
     expect(screen.getByRole("list", { name: "Siste handlinger" })).toHaveTextContent("Velkommen");
     expect(screen.getByRole("list", { name: "Siste handlinger" })).toHaveTextContent("12:59");
+    expect(screen.getByRole("list", { name: "Siste handlinger" }), "the status is text, not only colour")
+      .toHaveTextContent("Status: Avbrutt");
     expect(await axeViolations(container)).toEqual([]);
   });
 });
@@ -194,6 +236,27 @@ describe("BarChart", () => {
     expect(niceTicks(16)).toEqual([0, 5, 10, 15, 20]);
     expect(niceTicks(3)).toEqual([0, 1, 2, 3]);
     expect(niceTicks(0)).toEqual([0, 1]);
+  });
+});
+
+describe("MetricCard", () => {
+  it("shows a smaller secondary figure under the main one, muted at zero", () => {
+    const { container, rerender } = render(
+      <MetricCard icon={<span />} value={16} valueTone="critical" label="Bekreftede avvik"
+        secondary={{ value: 11, label: "sannsynlige avvik", tone: "warning" }} />,
+    );
+    const card = container.querySelector(".ek-metric-card")!;
+    expect(card.querySelector(".ek-metric-card__value")).toHaveTextContent("16");
+    const secondary = card.querySelector(".ek-metric-card__secondary")!;
+    expect(secondary).toHaveTextContent("11 sannsynlige avvik");
+    expect(secondary).toHaveAttribute("data-value-tone", "warning");
+    // The main figure comes first, the secondary one after the label.
+    expect(card.textContent).toMatch(/^16 Bekreftede avvik11 sannsynlige avvik/);
+    rerender(<MetricCard icon={<span />} value={16} label="Bekreftede avvik"
+      secondary={{ value: 0, label: "sannsynlige avvik", tone: "warning" }} />);
+    expect(container.querySelector(".ek-metric-card__secondary")).toHaveAttribute("data-value-tone", "zero");
+    rerender(<MetricCard icon={<span />} value={4} label="Bør vurderes" />);
+    expect(container.querySelector(".ek-metric-card__secondary")).toBeNull();
   });
 });
 

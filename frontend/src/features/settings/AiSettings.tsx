@@ -153,6 +153,9 @@ function ProviderCard({ provider, discoveryEnabled }: { provider: Provider; disc
     >
       <div className="ek-stack">
         <Switch label={`Bruk ${provider.name}`} checked={provider.enabled} onChange={(enabled) => update.mutate({ enabled })} />
+        {provider.key_configured && !provider.enabled ? (
+          <p className="ek-small ek-muted">Nøkkelen er lagret, men {provider.name} brukes ikke før «Bruk {provider.name}» er slått på.</p>
+        ) : null}
         <form className="ek-stack" onSubmit={(e) => {
           e.preventDefault();
           update.mutate({ endpoint: needsEndpoint ? endpoint : undefined, api_version: provider.type === "azure_openai" ? apiVersion : undefined, api_key: key || undefined });

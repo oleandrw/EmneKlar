@@ -40,12 +40,12 @@ def test_invalid_launch_token_is_rejected(raw_client: TestClient) -> None:
 
 
 def test_unsafe_request_needs_origin_and_csrf(client: TestClient) -> None:
-    ok = client.put("/api/system/dry-run", json={"enabled": True})
+    ok = client.patch("/api/settings/general", json={"page_size": 50})
     assert ok.status_code == 200
-    no_csrf = client.put("/api/system/dry-run", json={"enabled": False}, headers={"X-CSRF-Token": "nope"})
+    no_csrf = client.patch("/api/settings/general", json={"page_size": 25}, headers={"X-CSRF-Token": "nope"})
     assert no_csrf.status_code == 403
     assert no_csrf.json()["error"]["code"] == "csrf_failed"
-    evil_origin = client.put("/api/system/dry-run", json={"enabled": False}, headers={"Origin": "https://evil.example"})
+    evil_origin = client.patch("/api/settings/general", json={"page_size": 25}, headers={"Origin": "https://evil.example"})
     assert evil_origin.status_code == 403
     assert evil_origin.json()["error"]["code"] == "origin_rejected"
 
@@ -63,6 +63,29 @@ def test_security_headers_present(client: TestClient) -> None:
     assert "script-src 'self'" in csp and "unsafe-eval" not in csp
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["cache-control"] == "no-store"
+
+
+def test_the_csp_keeps_its_strict_directives_and_the_comment_matches() -> None:
+    from emneklar.core.security import web
+
+    directives = dict(part.strip().split(" ", 1) for part in web.CSP.split(";"))
+    assert directives["script-src"] == "'self'", "no inline scripts, no eval"
+    assert directives["object-src"] == "'none'" and directives["base-uri"] == "'none'"
+    assert directives["default-src"] == "'self'" and directives["connect-src"] == "'self'"
+    # Only EmneKlar may frame its pages (the illustration preview is shown in a frame); the docs say the same.
+    assert directives["frame-ancestors"] == "'self'"
+    assert "frame-ancestors 'self'" in (web.__doc__ or "") and "frame-ancestors 'none'" not in (web.__doc__ or "")
+    assert (b"x-frame-options", b"SAMEORIGIN") in web.SECURITY_HEADERS
+
+
+def test_a_wrong_method_is_reported_as_such_not_as_an_internal_error(client: TestClient) -> None:
+    response = client.delete("/api/session")
+    assert response.status_code == 405
+    error = response.json()["error"]
+    assert error["code"] == "method_not_allowed" and error["message"] == "Denne handlingen støttes ikke på denne adressen."
+    assert "GET" in response.headers["allow"]
+    missing = client.get("/api/finnes-ikke")
+    assert missing.status_code == 404 and missing.json()["error"]["code"] == "not_found"
 
 
 def test_control_channel_requires_instance_secret(raw_client: TestClient) -> None:

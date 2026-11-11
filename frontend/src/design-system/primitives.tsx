@@ -113,6 +113,24 @@ export function ButtonLink({
   );
 }
 
+/** A link that looks like a button and opens in a new tab (e.g. «Åpne i Canvas»). */
+export function ExternalButtonLink({
+  variant = "secondary",
+  size = "sm",
+  icon,
+  children,
+  className,
+  ...rest
+}: AnchorHTMLAttributes<HTMLAnchorElement> & { variant?: Variant; size?: Size; icon?: ReactNode }) {
+  return (
+    <a target="_blank" rel="noreferrer noopener" className={buttonClass(variant, size, false, className)} {...rest}>
+      {icon}
+      {children}
+      <span className="ek-visually-hidden"> (åpnes i ny fane)</span>
+    </a>
+  );
+}
+
 export function ExternalLink({ children, ...rest }: AnchorHTMLAttributes<HTMLAnchorElement>) {
   return (
     <a target="_blank" rel="noreferrer noopener" {...rest}>

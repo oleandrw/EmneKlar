@@ -197,6 +197,28 @@ def test_api_keys_are_never_returned(canvas_client: TestClient) -> None:
     assert "sk-proj" not in json.dumps(container.settings.get().model_dump(mode="json"))
 
 
+def test_reason_says_what_is_missing(canvas_client: TestClient) -> None:
+    """«Ingen KI-leverandør er satt opp» was shown although keys were stored – the providers were only switched off."""
+    container = canvas_client.app.state.container  # type: ignore[attr-defined]
+    assert "Ingen KI-leverandør er slått på i EmneKlar" in canvas_client.get("/api/ai/providers").json()["unavailable_reason"]
+    container.secrets.set("ai_key:openai", "sk-proj-testkey1234567890")
+    container.secrets.set("ai_key:anthropic", "sk-ant-testkey1234567890")
+    reason = canvas_client.get("/api/ai/providers").json()["unavailable_reason"]
+    assert reason.startswith("OpenAI og Anthropic har lagret nøkkel, men er ikke slått på"), reason
+    assert "Sikkerhet og personvern" in reason, "the privacy setting is named in the same message"
+    container.settings.update(lambda s: setattr(next(p for p in s.ai.providers if p.id == "azure"), "enabled", True))
+    assert "Azure OpenAI er slått på, men mangler nøkkel eller endepunkt" in \
+        canvas_client.get("/api/ai/providers").json()["unavailable_reason"]
+
+
+def test_saving_a_key_switches_the_provider_on(canvas_client: TestClient) -> None:
+    assert canvas_client.put("/api/ai/providers/anthropic", json={"api_key": "sk-ant-testkey1234567890"}).json()["enabled"]
+    reason = canvas_client.get("/api/ai/providers").json()["unavailable_reason"]
+    assert "ekstern KI er slått av" in reason, "sending to external AI still needs its own setting"
+    off = canvas_client.put("/api/ai/providers/anthropic", json={"enabled": False}).json()
+    assert off["enabled"] is False, "the switch still turns it off"
+
+
 def test_external_ai_is_off_until_enabled(canvas_client: TestClient) -> None:
     configure(canvas_client)
     reason = canvas_client.get("/api/ai/providers").json()["unavailable_reason"]

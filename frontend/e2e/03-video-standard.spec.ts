@@ -2,15 +2,13 @@
 // change – with axe on the tab and on the detail dialog. YouTube metadata may be unavailable here; that is allowed.
 import { expect, test } from "@playwright/test";
 
-import { expectNoAxeViolations, login } from "./helpers";
+import { expectNoAxeViolations, login, runAnalysis } from "./helpers";
 
 test("Media: finn videoer, forhåndsvis og legg endringen i køen", async ({ page }) => {
   await login(page);
-  await page.getByRole("banner").getByRole("button", { name: "Kjør ny analyse" }).click();
-  const analysis = page.getByRole("dialog", { name: /analyse/i });
-  await analysis.getByRole("button", { name: "Start analyse" }).click();
-  await expect(analysis.getByText("Fullført", { exact: true })).toBeVisible({ timeout: 45_000 });
-  await analysis.getByRole("button", { name: "Lukk" }).first().click();
+  await page.goto("/oversikt");
+  await page.getByRole("banner").getByRole("button", { name: "Analyser hele emnet" }).click();
+  await runAnalysis(page, page.getByRole("dialog", { name: /analyse/i }));
 
   await page.goto("/innholdskvalitet");
   await page.getByRole("tab", { name: "Media" }).click();

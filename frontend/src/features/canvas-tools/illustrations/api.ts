@@ -148,7 +148,6 @@ export interface Status {
   design_versions: DesignProfile[];
   runs: RunSummary[];
   busy_job: { id: string; title: string; status: string } | null;
-  dry_run: boolean;
   text_models: { ref: string; display_name: string; provider_id: string; vision: boolean }[];
 }
 
@@ -314,7 +313,6 @@ export interface PublishPreview {
     illustrations: { id: number; placement_label?: string; section?: string; alt_text?: string; decorative?: boolean; caption?: string | null; thumb_url?: string | null }[];
   }[];
   folder: string;
-  dry_run: boolean;
   usage_rights_required: boolean;
   note: string;
 }

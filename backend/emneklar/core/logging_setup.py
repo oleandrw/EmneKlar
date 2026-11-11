@@ -5,7 +5,7 @@
 * httpx/httpcore request logging is silenced: it logs full URLs, which for
   Canvas file downloads contain signed verifiers.
 * The uvicorn access log is disabled: URLs can carry the one-time launch token.
-* Logs are local only (``%LOCALAPPDATA%\\EmneKlar-Claude\\logs``). No telemetry.
+* Logs are local only (``%LOCALAPPDATA%\\EmneKlar\\logs``). No telemetry.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import logging.handlers
 from pathlib import Path
 
 from emneklar.core.security.redaction import RedactingFilter, redact
+from emneklar.core.system import has_console
 
 _configured = False
 
@@ -49,10 +50,11 @@ def configure_logging(logs_dir: Path | None, *, level: int = logging.INFO) -> No
     root.setLevel(level)
     redactor = RedactingFilter()
 
-    console = logging.StreamHandler()
-    console.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s", "%H:%M:%S"))
-    console.addFilter(redactor)
-    root.addHandler(console)
+    if has_console():  # started from the shortcut there is no console window: the log file is the log
+        console = logging.StreamHandler()
+        console.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s", "%H:%M:%S"))
+        console.addFilter(redactor)
+        root.addHandler(console)
 
     if logs_dir is not None:
         logs_dir.mkdir(parents=True, exist_ok=True)

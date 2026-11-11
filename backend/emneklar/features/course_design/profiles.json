@@ -1,0 +1,105 @@
+{
+  "comment": "Emnedesign: design profiles as data. «tokens» are the design values; «components» are the inline-style templates per element role ({token} placeholders). Only CSS properties Canvas keeps are used (core/security/sanitize.py ALLOWED_CSS); every text colour pair meets WCAG 2.2 AA (tested). Change a profile by raising its version – courses store the profile id and version they chose.",
+  "profiles": [
+    {
+      "id": "akademisk",
+      "version": "2",
+      "label": "Akademisk",
+      "description": "Dempede blåtoner, ryddig typografi og diskrete skillelinjer – et nøkternt akademisk uttrykk.",
+      "default": true,
+      "tokens": {
+        "text": "#1f2933", "heading": "#1f3a5f", "link": "#1d4f91", "primary": "#2c5282", "primary_dark": "#1f3a5f",
+        "border": "#c9d3e0", "info_bg": "#f3f6fa", "surface": "#ffffff", "banner_bg": "#1f3a5f", "banner_text": "#ffffff",
+        "label_bg": "#1f3a5f", "label_text": "#ffffff", "font_family": "", "heading_font": "Georgia, 'Times New Roman', serif",
+        "font_size": "16px", "line_height": "1.6", "max_width": "860px", "radius_card": "4px", "radius_action": "4px"
+      },
+      "components": {
+        "h2": {"color": "{heading}", "font-family": "{heading_font}", "margin-top": "1.6em", "margin-bottom": "0.6em", "padding-bottom": "0.3em", "border-bottom": "1px solid {border}"},
+        "h3": {"color": "{heading}", "font-family": "{heading_font}", "margin-top": "1.3em"}
+      }
+    },
+    {
+      "id": "lyst-moderne",
+      "version": "2",
+      "label": "Lyst og moderne",
+      "description": "Lyse flater, god luft og tydelige seksjoner.",
+      "default": false,
+      "tokens": {
+        "text": "#1c2430", "heading": "#0b4f5c", "link": "#0a5a78", "primary": "#0e7c86", "primary_dark": "#0b4f5c",
+        "border": "#d7e3ea", "info_bg": "#f5f9fb", "surface": "#ffffff", "banner_bg": "#eaf4f7", "banner_text": "#0b3b44",
+        "label_bg": "#0b4f5c", "label_text": "#ffffff", "font_family": "'Segoe UI', Helvetica, Arial, sans-serif",
+        "heading_font": "", "font_size": "16px", "line_height": "1.7", "max_width": "880px", "radius_card": "12px",
+        "radius_action": "999px"
+      },
+      "components": {
+        "h2": {"color": "{heading}", "margin-top": "2em", "margin-bottom": "0.7em"},
+        "h3": {"color": "{heading}", "margin-top": "1.5em"}
+      }
+    },
+    {
+      "id": "visuelt-pedagogisk",
+      "version": "2",
+      "label": "Visuelt og pedagogisk",
+      "description": "Tydelige felt for læringsmål, eksempler og aktiviteter, med valgfrie illustrasjoner – uten dekor som ikke støtter innholdet.",
+      "default": false,
+      "tokens": {
+        "text": "#1f2430", "heading": "#36307a", "link": "#3f3592", "primary": "#5a50b5", "primary_dark": "#36307a",
+        "border": "#d6d3ee", "info_bg": "#f4f3fc", "surface": "#ffffff", "banner_bg": "#36307a", "banner_text": "#ffffff",
+        "label_bg": "#36307a", "label_text": "#ffffff", "font_family": "Verdana, Arial, sans-serif", "heading_font": "",
+        "font_size": "16px", "line_height": "1.65", "max_width": "860px", "radius_card": "10px", "radius_action": "8px"
+      },
+      "components": {
+        "h2": {"color": "{heading}", "margin-top": "1.8em", "margin-bottom": "0.6em", "padding-left": "12px", "border-left": "5px solid {primary}"},
+        "h3": {"color": "{heading}", "margin-top": "1.4em"}
+      }
+    },
+    {
+      "id": "gronn-akademi",
+      "version": "2",
+      "label": "Grønn akademi",
+      "description": "Grønt tittelbanner, grønne seksjonsoverskrifter, hvite kort med diskret grønn kant og lysegrønne informasjonsfelt (bygger på NETTPED-spesifikasjonen).",
+      "default": false,
+      "tokens": {
+        "text": "#1a1a1a", "heading": "#0b6e0b", "link": "#0b5e0b", "primary": "#1e7e1e", "primary_dark": "#0f6b1e",
+        "border": "#b2d8b2", "info_bg": "#f0f7f0", "surface": "#ffffff", "banner_bg": "#1e7e1e", "banner_text": "#ffffff",
+        "label_bg": "#0f6b1e", "label_text": "#ffffff", "font_family": "Arial, sans-serif", "heading_font": "",
+        "font_size": "16px", "line_height": "1.65", "max_width": "820px", "radius_card": "6px", "radius_action": "8px"
+      },
+      "components": {
+        "h2": {"color": "{heading}", "margin-top": "1.7em", "margin-bottom": "0.6em", "padding-bottom": "0.25em", "border-bottom": "2px solid {border}"},
+        "h3": {"color": "{heading}", "margin-top": "1.3em"}
+      }
+    }
+  ],
+  "shared_components": {
+    "root": {"max-width": "{max_width}", "margin": "0 auto", "color": "{text}", "font-family": "{font_family}", "font-size": "{font_size}", "line-height": "{line_height}"},
+    "h4": {"color": "{heading}"},
+    "a": {"color": "{link}", "text-decoration": "underline"},
+    "table": {"border-collapse": "collapse", "margin-bottom": "1em", "max-width": "100%"},
+    "caption": {"padding": "4px 0", "text-align": "left"},
+    "th": {"background-color": "{info_bg}", "color": "{text}", "border": "1px solid {border}", "padding": "6px 10px"},
+    "td": {"border": "1px solid {border}", "padding": "6px 10px"},
+    "blockquote": {"margin": "1em 0", "padding": "12px 16px", "background-color": "{info_bg}", "border-left": "4px solid {primary}"},
+    "pre": {"background-color": "{info_bg}", "border": "1px solid {border}", "border-radius": "{radius_card}", "padding": "12px", "overflow-x": "auto"},
+    "hr": {"border": "0", "border-top": "1px solid {border}", "margin": "1.5em 0"},
+    "img": {"max-width": "100%", "height": "auto"},
+    "iframe": {"max-width": "100%"},
+    "video": {"max-width": "100%"},
+    "banner": {"background-color": "{banner_bg}", "color": "{banner_text}", "padding": "24px 28px", "border-radius": "{radius_card} {radius_card} 0 0"},
+    "banner_title": {"margin": "0", "color": "{banner_text}", "font-size": "1.6em", "line-height": "1.25", "font-family": "{heading_font}"},
+    "banner_sub": {"margin": "6px 0 0", "color": "{banner_text}"},
+    "body": {"background-color": "{surface}", "border": "1px solid {border}", "border-top": "0", "border-radius": "0 0 {radius_card} {radius_card}", "padding": "8px 28px 24px"},
+    "lead": {"font-size": "1.125em"},
+    "box_info": {"background-color": "{info_bg}", "border": "1px solid {border}", "border-radius": "{radius_card}", "padding": "0 16px 12px", "margin": "1.2em 0"},
+    "box_card": {"background-color": "{surface}", "border": "1px solid {border}", "border-radius": "{radius_card}", "padding": "4px 16px 12px", "margin": "1.2em 0"},
+    "box_note": {"background-color": "{info_bg}", "border": "1px solid {label_bg}", "border-radius": "{radius_card}", "padding": "0 16px 12px", "margin": "1.2em 0"},
+    "box_label": {"background-color": "{label_bg}", "color": "{label_text}", "margin": "0 -16px 12px", "padding": "6px 16px", "font-size": "1em", "border-radius": "{radius_card} {radius_card} 0 0", "border-bottom": "0"},
+    "action": {"display": "inline-block", "background-color": "{primary_dark}", "color": "#ffffff", "padding": "10px 18px", "border-radius": "{radius_action}", "text-decoration": "none"}
+  },
+  "retired_comment": "Templates from earlier profile versions, per role. They are never applied, only recognised, so content designed with an earlier version loses that styling when a design is applied again (also when Canvas dropped data-ek-d).",
+  "retired_components": {
+    "box_note": [
+      {"since": "2", "template": {"background-color": "{info_bg}", "border-left": "4px solid {primary}", "padding": "8px 16px", "margin": "1.2em 0"}}
+    ]
+  }
+}

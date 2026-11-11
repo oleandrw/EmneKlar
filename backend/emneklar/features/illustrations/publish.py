@@ -58,6 +58,7 @@ def _stale_markers(existing: set[str], items: list[dict[str, Any]]) -> set[str]:
 class InsertIllustrations(Applier):
     kind = KIND
     label = "Sett inn illustrasjoner"
+    done_label = "Illustrasjoner satt inn"
     object_type = "page"
     undo_capability = "partial"
     undo_note = ("Angring fjerner bare figurene EmneKlar satte inn. Alt annet på siden beholdes – også endringer "

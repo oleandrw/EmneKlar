@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from emneklar.core.container import AppContainer
 from emneklar.core.storage.models import Report
 from emneklar.features.reporting.render import _cell
-from tests.conftest import wait_for_job
+from tests.conftest import approve_and_apply, wait_for_job
 from tests.fakes.fake_canvas import COURSE_ID
 
 
@@ -41,7 +41,7 @@ def test_accessibility_report_html(canvas_client: TestClient) -> None:
     missing = next(f for f in items if f["rule_id"] == "UU-IMG-MISSING-ALT")
     change = canvas_client.post(f"/api/findings/{missing['id']}/fix/stage", json={"text": "Skjermbilde av verktøyet"})
     assert change.status_code == 200, change.text
-    job = canvas_client.post("/api/changes/apply", json={"ids": [change.json()["id"]]}).json()
+    job = approve_and_apply(canvas_client, [change.json()["id"]]).json()
     assert wait_for_job(canvas_client, job["id"])["result"]["summary"] == {"applied": 1}
 
     report = create(canvas_client, "accessibility")
@@ -69,6 +69,10 @@ def test_full_report_marks_unanalysed_areas_and_csv_is_excel_friendly(canvas_cli
     text = body.decode("utf-8-sig")
     assert text.splitlines()[0].startswith("Område;Status;Klasse")
     assert len(text.splitlines()) > 1
+    # A dead link is a «Feil» – «Avvik» is kept for universal design.
+    rows = [line.split(";") for line in text.splitlines()[1:]]
+    assert any(r[2] == "Feil" for r in rows) and not any(r[2] in ("Avvik", "Sannsynlig avvik") for r in rows)
+    assert "<th scope=\"col\">Avvik / feil</th>" in html
 
 
 def test_csv_cells_cannot_inject_formulas() -> None:

@@ -56,6 +56,37 @@ export const CLASSIFICATION: Record<Classification, { label: string; tone: Tone;
   },
 };
 
+/** Outside universal design a confirmed problem is a «feil» (a dead link, a wrong answer key), not an «avvik» –
+ *  «avvik» means a breach of a success criterion. Lists, cards, filters and the finding detail all use
+ *  ``classificationFor`` with the finding's area. */
+const ERROR_WORDING: Partial<Record<Classification, { label: string; description: string }>> = {
+  violation: { label: "Feil", description: "Påvist av en sikker, regelbasert kontroll." },
+  likely_violation: { label: "Sannsynlig feil", description: "Tyder sterkt på en feil, men bør bekreftes av et menneske." },
+};
+
+/** A class's label and description in the words of the area (`domain`); without one, universal design's words. */
+export function classificationFor(cls: Classification, domain?: string): { label: string; tone: Tone; description: string } {
+  const words = domain && domain !== "accessibility" ? ERROR_WORDING[cls] : undefined;
+  return words ? { ...CLASSIFICATION[cls], ...words } : CLASSIFICATION[cls];
+}
+
+/** The headline pair on an area's findings page: the confirmed ones as the main figure, the likely ones under it. */
+export function confirmedLikelyLabels(domain?: string): {
+  confirmed: string;
+  likely: (n: number) => string;
+  description: (withLikely: boolean) => string;
+} {
+  const uu = !domain || domain === "accessibility";
+  const noun = uu ? "avvik" : "feil";
+  return {
+    confirmed: `Bekreftede ${noun}`,
+    likely: (n) => `${n === 1 ? "sannsynlig" : "sannsynlige"} ${noun}`,
+    description: (withLikely) =>
+      (uu ? "Bryter et suksesskriterium etter en deterministisk kontroll." : "Påvist av en sikker, regelbasert kontroll.") +
+      (withLikely ? ` Sannsynlige ${noun} må bekreftes av et menneske.` : ""),
+  };
+}
+
 export const TEST_METHOD: Record<TestMethod, { label: string; description: string }> = {
   deterministic: { label: "Deterministisk", description: "Sikker, regelbasert kontroll av koden." },
   heuristic: { label: "Heuristisk", description: "Mønstergjenkjenning. Kan gi falske treff." },

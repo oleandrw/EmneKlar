@@ -25,7 +25,7 @@ from emneklar.features.illustrations.htmlspans import scan
 from emneklar.features.illustrations.inventory import Scope, build_inventory
 from emneklar.features.illustrations.privacy import scrub
 from emneklar.features.illustrations.structure import parse_page
-from tests.conftest import wait_for_job
+from tests.conftest import approve_and_apply, wait_for_job
 from tests.fakes.fake_canvas import COURSE_ID, TOKEN, create_fake_canvas, seed_state
 
 PAGE = """<div id="dp-wrapper" class="dp-wrapper">
@@ -233,7 +233,8 @@ def test_quality_profiles_pick_role_models_in_order() -> None:
                       "openai/gpt-6.1-terra", "anthropic/claude-sonnet-5-5", "openai/gpt-6.1-sol")
     ready = {"openai": True, "anthropic": True}
     best = profiles.get("max")
-    assert best.default and best.image_models == ("openai/gpt-image-2.5-sunburst",)
+    assert best.image_models == ("openai/gpt-image-2.5-sunburst",)
+    assert profiles.get("balanced").default and not best.default, "«Balansert» is the default quality"
     assert profiles.preferred_models(best, "illustration_analysis", models, ready, vision=False)[0]["model_id"] == \
         "claude-fable-5-1"
     assert profiles.preferred_models(best, "illustration_review", models, ready, vision=True)[0]["model_id"] == \
@@ -246,7 +247,7 @@ def test_quality_profiles_pick_role_models_in_order() -> None:
     chosen = profiles.preferred_models(fast, "illustration_review", models, ready, vision=True,
                                        override="anthropic/claude-opus-5-5")
     assert chosen[0]["model_id"] == "claude-opus-5-5", "the teacher's own choice comes first"
-    assert profiles.get("nonexistent").id == "max"
+    assert profiles.get("nonexistent").id == "balanced", "an unknown profile falls back to the default"
 
 
 # ------------------------------------------------------------------------------------------- Canvas upload
@@ -264,18 +265,18 @@ def test_canvas_upload_never_sends_the_token_to_the_upload_url(redirect: bool) -
                                                                          "file"]}
 
 
-def test_upload_requires_a_permit_and_respects_dry_run() -> None:
-    from emneklar.core.canvas.client import CanvasError, DryRunBlocked
+def test_upload_requires_a_permit() -> None:
+    from emneklar.core.canvas.client import CanvasError
 
     state = seed_state()
     http = httpx.AsyncClient(transport=httpx.ASGITransport(app=create_fake_canvas(state)))
-    client = CanvasClient("http://canvas.test", lambda: TOKEN, http=http, allow_http=True, dry_run=lambda: True)
+    client = CanvasClient("http://canvas.test", lambda: TOKEN, http=http, allow_http=True)
     with pytest.raises(CanvasError):
         asyncio.run(CanvasAPI(client).upload_course_file(COURSE_ID, name="a.png", data=b"x", content_type="image/png",
                                                          folder_path="f", permit=None))  # type: ignore[arg-type]
-    with pytest.raises(DryRunBlocked):
+    with pytest.raises(CanvasError):
         asyncio.run(client.upload_to("http://canvas.test/upload/x", {}, file_field="file", filename="a.png", data=b"x",
-                                     content_type="image/png", permit=WritePermit(1, "t")))
+                                     content_type="image/png", permit=None))  # type: ignore[arg-type]
     assert not state.upload_requests
 
 
@@ -393,6 +394,8 @@ def ai(canvas_container, canvas_client: TestClient):  # type: ignore[no-untyped-
     for provider, key in (("openai", "sk-proj-testkey1234567890"), ("anthropic", "sk-ant-api-test-1234567890")):
         assert canvas_client.put(f"/api/ai/providers/{provider}", json={"enabled": True, "api_key": key}).status_code == 200
     canvas_container.settings.update(lambda s: setattr(s.privacy, "allow_external_ai", True))
+    # The flow tests check «Maksimal kvalitet» (its models and review rounds); «Balansert» is the default.
+    canvas_container.settings.update(lambda s: setattr(s.illustrations, "quality_profile", "max"))
     return fake
 
 
@@ -415,7 +418,7 @@ def start(client: TestClient, scope: dict, **extra: object) -> dict:
 
 def test_status_and_catalog(canvas_client: TestClient) -> None:
     status = canvas_client.get(f"/api/courses/{COURSE_ID}/illustrations").json()
-    assert status["settings"]["quality_profile"] == "max" and status["settings"]["amount"] == "balanced"
+    assert status["settings"]["quality_profile"] == "balanced" and status["settings"]["amount"] == "balanced"
     assert status["ai"]["available"] is False, "core features work without AI; the assistant says why it cannot run"
     catalog = canvas_client.get("/api/illustrations/catalog").json()
     assert [p["id"] for p in catalog["quality_profiles"]] == ["max", "balanced", "fast"]
@@ -625,15 +628,13 @@ def test_page_preview_shows_the_image_in_the_page(canvas_client: TestClient, ai:
     assert "Lys grå tekst på hvit bakgrunn." in preview["html"] and "<figure" in preview["html"]
 
 
-def test_dry_run_publishes_nothing(canvas_container, canvas_client: TestClient, ai: FakeAI) -> None:
+def test_queueing_publishes_nothing(canvas_container, canvas_client: TestClient, ai: FakeAI) -> None:
     ai.plans = {"Fargelære": [proposal(section="s0", placement="after_intro")]}
     run = start(canvas_client, {"type": "page", "page_url": "fargelaere"})
     canvas_client.post("/api/illustrations/bulk", json={"run_id": run["run"]["id"], "level": "course"})
-    canvas_container.settings.update(lambda s: setattr(s, "dry_run", True))
     before = page_body(canvas_client, "fargelaere")["body"]
-    result = canvas_client.post(f"/api/illustrations/runs/{run['run']['id']}/publish", json={}).json()
-    job = wait_for_job(canvas_client, result["job"]["id"])
-    assert job["result"]["summary"] == {"dry_run": 1}
+    result = canvas_client.post(f"/api/illustrations/runs/{run['run']['id']}/publish", json={"apply": False}).json()
+    assert result["job"] is None and len(result["changes"]) == 1 and result["changes"][0]["status"] == "staged"
     state = fake_state(canvas_container)
     assert page_body(canvas_client, "fargelaere")["body"] == before and not state.upload_requests
 
@@ -646,7 +647,7 @@ def test_conflict_when_page_changed_after_preview(canvas_container, canvas_clien
     change_id = staged["changes"][0]["id"]
     page = page_body(canvas_client, "fargelaere")
     page["body"] = page["body"] + "<p>Endret av læreren etter forhåndsvisningen.</p>"
-    job = canvas_client.post("/api/changes/apply", json={"ids": [change_id]}).json()
+    job = approve_and_apply(canvas_client, [change_id]).json()
     assert wait_for_job(canvas_client, job["id"])["result"]["summary"] == {"conflict": 1}
     assert "<figure" not in page["body"], "manual edits are never overwritten"
     state = canvas_client.get(f"/api/illustrations/runs/{run['run']['id']}").json()
@@ -726,7 +727,7 @@ def test_conflicted_illustration_can_be_published_again_on_the_current_page(canv
     staged = canvas_client.post(f"/api/illustrations/runs/{run_id}/publish", json={"apply": False}).json()
     page = page_body(canvas_client, "fargelaere")
     page["body"] = page["body"] + "<p>Nytt avsnitt fra læreren.</p>"
-    job = canvas_client.post("/api/changes/apply", json={"ids": [staged["changes"][0]["id"]]}).json()
+    job = approve_and_apply(canvas_client, [staged["changes"][0]["id"]]).json()
     assert wait_for_job(canvas_client, job["id"])["result"]["summary"] == {"conflict": 1}
     approved = canvas_client.post("/api/illustrations/bulk", json={"run_id": run_id, "level": "course"}).json()
     assert len(approved["changed"]) == 1, "a conflicted illustration can be approved again"
@@ -806,7 +807,7 @@ def test_a_rejected_illustration_never_reaches_canvas(canvas_container, canvas_c
                                                         "action": "reject"})
     assert statuses(canvas_client, run_id)[ill["id"]] == ("rejected", None)
     assert canvas_client.get(f"/api/changes/{change_id}").json()["status"] == "discarded"
-    refused = canvas_client.post("/api/changes/apply", json={"ids": [change_id]})
+    refused = approve_and_apply(canvas_client, [change_id])
     assert refused.status_code == 409 and "<figure" not in page_body(canvas_client, "fargelaere")["body"]
 
 
@@ -876,3 +877,21 @@ def test_page_preview_embeds_canvas_images_and_never_loads_external_ones(canvas_
     assert "cdn.example.org" not in html and "/api/canvas/image" not in html
     assert "Eksisterende bilde – vises ikke i forhåndsvisningen" in html, "the external image is a placeholder"
     assert html.count('src="data:image/webp;base64,') == 2, "our illustration and the page's own Canvas image"
+
+
+def test_automatic_insertion_still_publishes_after_approving(canvas_container, canvas_client: TestClient,
+                                                             ai: FakeAI) -> None:
+    """«Automatisk innsetting» (opt-in): the run approves the reviewed images itself, then publishes through the
+    change engine – publishing takes approved changes only, and this path still works."""
+    state = fake_state(canvas_container)
+    page = state.courses[COURSE_ID].pages["bildeformater"]
+    page["body"] = ("<h2>Raster og vektor</h2><p>Rasterbilder består av piksler. Vektorgrafikk består av former.</p>"
+                    "<p>JPEG passer for foto, SVG for logoer.</p>")
+    ai.plans = {"Bildeformater": [proposal()]}
+    run = start(canvas_client, {"type": "module", "module_ids": ["202"]}, auto_insert=True)
+    job_id = (run["run"].get("stats") or {}).get("auto_insert_job")
+    assert job_id, run["run"]
+    job = wait_for_job(canvas_client, job_id)
+    assert job["status"] == "completed" and {r["status"] for r in job["result"]["results"]} == {"applied"}
+    assert "<figure" in page["body"]
+    assert {r["change_id"] for r in job["result"]["results"]} == set(run["run"]["stats"]["auto_insert_changes"])

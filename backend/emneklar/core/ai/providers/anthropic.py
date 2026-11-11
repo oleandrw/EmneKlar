@@ -22,10 +22,13 @@ from emneklar.core.ai.base import (
     AIUsage,
     DiscoveredModel,
     ImagePart,
+    SearchHit,
 )
 from emneklar.core.ai.providers.http_common import get_json, make_client, parse_json_text, post_json, rejects
 
 API_VERSION = "2023-06-01"
+#: The basic server-side web search tool (Messages API, docs: «Web search tool»), without dynamic filtering.
+WEB_SEARCH_TOOL = "web_search_20250305"
 THINKING_HEADROOM = 8000
 MAX_TOKENS_CAP = 32000
 _LEGACY_TOOL_MODELS: set[str] = set()
@@ -112,6 +115,34 @@ class AnthropicProvider(AIProvider):
                             model=str(data.get("model") or request.model), provider=self.provider_id)
         return AIResult(text=text, usage=result_usage, model=str(data.get("model") or request.model),
                         provider=self.provider_id)
+
+    async def web_search(self, model: str, query: str, *, max_uses: int = 2) -> list[SearchHit]:
+        """Results from ``web_search_tool_result`` blocks only – the model's own text is ignored, so no address can
+        be made up. An error inside a result (rate limit, …) is raised when nothing was found."""
+        payload = {
+            "model": model,
+            "max_tokens": 2048,
+            "system": "Du hjelper en lærer å finne nettsider. Bruk søkeverktøyet med søkene du får, og svar bare «ferdig».",
+            "messages": [{"role": "user", "content": [{"type": "text", "text": query}]}],
+            "tools": [{"type": WEB_SEARCH_TOOL, "name": "web_search", "max_uses": max(1, min(max_uses, 3))}],
+        }
+        data = await post_json(self.client, f"{self.base}/v1/messages", payload, self.headers())
+        hits: list[SearchHit] = []
+        errors: list[str] = []
+        for block in data.get("content") or []:
+            if not isinstance(block, dict) or block.get("type") != "web_search_tool_result":
+                continue
+            content = block.get("content")
+            if isinstance(content, dict):
+                errors.append(str(content.get("error_code") or "unavailable"))
+                continue
+            for result in content or []:
+                if isinstance(result, dict) and result.get("type") == "web_search_result" and result.get("url"):
+                    hits.append(SearchHit(url=str(result["url"]), title=str(result.get("title") or ""),
+                                          page_age=result.get("page_age")))
+        if not hits and errors:
+            raise AIError("ai_search_failed", status=502, detail=", ".join(errors))
+        return hits
 
     async def list_models(self) -> list[DiscoveredModel]:
         data = await get_json(self.client, f"{self.base}/v1/models?limit=1000", self.headers())

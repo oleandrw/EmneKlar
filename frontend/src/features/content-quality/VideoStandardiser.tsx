@@ -10,7 +10,6 @@ import { ApiError, api } from "../../core/api/client";
 import type { Job } from "../../core/api/types";
 import { useCurrentCourse } from "../../core/course";
 import { formatDateTime } from "../../core/format";
-import { useSession } from "../../core/session";
 import { useUi } from "../../core/ui";
 import {
   Alert,
@@ -242,7 +241,6 @@ function itemRef(item: VideoItem) {
 }
 
 function useStagedToast() {
-  const session = useSession();
   const toast = useToast();
   const client = useQueryClient();
   return (title: string, body?: string) => {
@@ -252,9 +250,7 @@ function useStagedToast() {
       title,
       body: [
         body,
-        session.dry_run
-          ? "Dry run er på – ingenting sendes til Canvas før du slår det av."
-          : "Godkjenn og gjennomfør endringene fra endringskøen.",
+        "Godkjenn og publiser endringene fra endringskøen.",
       ]
         .filter(Boolean)
         .join(" "),
@@ -266,7 +262,6 @@ function useStagedToast() {
 
 export function VideoStandardiser() {
   const { courseId } = useCurrentCourse();
-  const ui = useUi();
   const client = useQueryClient();
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -429,15 +424,9 @@ export function VideoStandardiser() {
               tone="danger"
               role="alert"
               title="Kunne ikke starte skanningen"
-              actions={
-                startError.code === "snapshot_missing" ? (
-                  <Button size="sm" onClick={() => ui.openAnalysis({ domains: ["content_quality"] })}>
-                    Kjør analyse
-                  </Button>
-                ) : null
-              }
             >
               {startError.message}
+              {startError.code === "snapshot_missing" ? " Start med «Analyser innholdskvalitet» øverst til høyre." : null}
             </Alert>
           ) : null}
           {jobId ? (

@@ -5,7 +5,6 @@ import { useMemo, useState } from "react";
 
 import { api } from "../../core/api/client";
 import { useCurrentCourse } from "../../core/course";
-import { useSession } from "../../core/session";
 import { useUi } from "../../core/ui";
 import {
   Alert,
@@ -118,7 +117,6 @@ function SettingsForm({ settings, onChange }: { settings: QuizSettings; onChange
 
 export function QuizBuilder() {
   const { courseId } = useCurrentCourse();
-  const session = useSession();
   const ui = useUi();
   const toast = useToast();
   const client = useQueryClient();
@@ -178,7 +176,7 @@ export function QuizBuilder() {
       toast.show({
         tone: "success",
         title: "Quizen er lagt i endringskøen",
-        body: session.dry_run ? "Dry run er på – quizen opprettes ikke før du slår det av." : "Gjennomfør den fra endringskøen.",
+        body: "Godkjenn og publiser den fra endringskøen – quizen opprettes først da.",
       });
       ui.openChanges();
     },

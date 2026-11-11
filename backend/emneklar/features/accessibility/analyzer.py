@@ -6,14 +6,19 @@ import logging
 import secrets
 from typing import Any
 
+from emneklar.core.canvas.blueprint import is_locked
 from emneklar.core.canvas.client import CanvasError
-from emneklar.core.canvas.html import canvas_ref, find_media
+from emneklar.core.canvas.html import MediaRef, canvas_ref, find_media
 from emneklar.core.canvas.snapshot import SnapObj
 from emneklar.core.errors import AppError
 from emneklar.core.flags import is_enabled
 from emneklar.features.accessibility.checks import ContentDoc, Issue, run_html_checks
 from emneklar.features.accessibility.documents import document_format, document_issues
+from emneklar.features.accessibility.media_assessments import load_assessments
+from emneklar.features.accessibility.media_kinds import MediaKind, canvas_file_kind, canvas_media_kind
 from emneklar.features.accessibility.rules import get_rule, load_ruleset
+from emneklar.features.accessibility.youtube_captions import CACHE_HOURS as CAPTION_CACHE_HOURS
+from emneklar.features.accessibility.youtube_captions import YoutubeCaptionChecker
 from emneklar.features.analysis.core import AnalysisContext, AnalysisTask, ObjectCheck
 from emneklar.features.findings.store import FindingDraft, make_fingerprint
 
@@ -22,23 +27,26 @@ EDITABLE_TYPES = {"page", "assignment", "discussion", "quiz", "syllabus"}
 DOCUMENT_TIMEOUT = 90.0
 
 
-def blueprint_locked(obj: SnapObj) -> bool:
-    restrictions = obj.meta.get("master_course_restrictions") or {}
-    return bool(obj.meta.get("restricted_by_master_course")) and bool(
-        restrictions.get("content") or restrictions.get("all"))
+def blueprint_evidence(obj: SnapObj) -> dict[str, Any] | None:
+    """Blueprint lock status as Canvas reported it. Recorded for the user – it never removes a fix: Canvas decides
+    whether the connected user may change the content (see core/canvas/blueprint.py)."""
+    meta = obj.meta
+    if meta.get("restricted_by_master_course") is None and not meta.get("is_master_course_child_content"):
+        return None
+    return {"locked": is_locked(meta), "restrictions": meta.get("master_course_restrictions") or None,
+            "child_content": bool(meta.get("is_master_course_child_content")),
+            "master_content": bool(meta.get("is_master_course_master_content"))}
 
 
 def to_draft(ctx: AnalysisContext, issue: Issue, obj: SnapObj, *, domain: str = "accessibility") -> FindingDraft:
     rule = get_rule(issue.rule_id)
-    modules = ctx.view.module_of.get(obj.ref)
     location = issue.location()
-    if modules:
-        location["module"] = modules[0]
+    location.update(ctx.view.module_location(obj))
     evidence = dict(issue.evidence)
+    blueprint = blueprint_evidence(obj)
+    if blueprint:
+        evidence["blueprint"] = blueprint
     fix = issue.fix if obj.object_type in EDITABLE_TYPES and obj.body is not None else None
-    if fix and blueprint_locked(obj):
-        evidence["blueprint_locked"] = True
-        fix = None
     return FindingDraft(
         domain=domain, rule_id=rule.id, category=rule.category,
         classification=issue.classification or rule.classification, test_method=rule.testability,
@@ -50,34 +58,76 @@ def to_draft(ctx: AnalysisContext, issue: Issue, obj: SnapObj, *, domain: str = 
 
 
 class CaptionCache:
-    """Caption status per Canvas media id / attachment id (None = could not be determined)."""
+    """Caption status per Canvas media id / attachment id (None = could not be determined).
+
+    Canvas keeps caption tracks of uploaded media on the *file* (attachment): ``GET /media_attachments/:id/
+    media_tracks`` lists them, while the course's media list often shows ``media_tracks: []`` for the same video
+    (observed on a real course: 170 media objects, none with tracks in the list, although they were captioned). So
+    only a *positive* answer from the media list is trusted. Otherwise the tracks are read from the attachment – the
+    one in the embed, or the course file whose ``media_entry_id`` is the media id. When neither is possible the status
+    stays unknown (reported as «kunne ikke kontrolleres», never as missing captions).
+    """
 
     def __init__(self, ctx: AnalysisContext) -> None:
         self.ctx = ctx
         self.status: dict[str, bool | None] = {}
+        #: What each recording is according to Canvas (media object ``media_type``, file ``content-type``) – the
+        #: requirement depends on it (media_kinds.py). The teacher's own statement (``assessed``) wins.
+        self.kinds: dict[str, MediaKind] = {}
         for media in ctx.view.get("media"):
-            self.status[media.canvas_id] = bool(media.meta.get("has_captions"))
+            if media.meta.get("has_captions"):
+                self.status[media.canvas_id] = True
+            kind = canvas_media_kind(media.meta.get("media_type"))
+            if kind:
+                self.kinds[f"media:{media.canvas_id}"] = kind
+        for f in ctx.view.get("file"):
+            kind = canvas_file_kind(f.meta.get("content_type"))
+            if kind:
+                self.kinds.setdefault(f"attachment:{f.canvas_id}", kind)
+                if f.meta.get("media_entry_id"):
+                    self.kinds.setdefault(f"media:{f.meta['media_entry_id']}", kind)
+        self.attachment_of: dict[str, str] = {
+            str(f.meta["media_entry_id"]): f.canvas_id for f in ctx.view.get("file") if f.meta.get("media_entry_id")}
+        self.assessed = load_assessments(ctx.container.db, ctx.course_id)
+
+    def attachment_for(self, ref: MediaRef) -> str | None:
+        if ref.kind == "canvas_attachment" and ref.ident:
+            return ref.ident
+        return self.attachment_of.get(str(ref.media_id or ref.ident or "")) or None
 
     async def attachment(self, attachment_id: str) -> bool | None:
-        if attachment_id in self.status:
-            return self.status[attachment_id]
-        async with self.ctx.lock(f"attachment:{attachment_id}"):
-            if attachment_id in self.status:
-                return self.status[attachment_id]
+        key = f"attachment:{attachment_id}"
+        if key in self.status:
+            return self.status[key]
+        async with self.ctx.lock(key):
+            if key in self.status:
+                return self.status[key]
             try:
                 tracks = await self.ctx.api.media_attachment_tracks(attachment_id)
                 value: bool | None = any(str(t.get("kind")) in ("captions", "subtitles")
                                          and t.get("workflow_state", "ready") == "ready" for t in tracks)
             except CanvasError:
                 value = None
-            self.status[attachment_id] = value
+            self.status[key] = value
             return value
 
+    async def resolve(self, ref: MediaRef) -> bool | None:
+        if ref.media_id and self.status.get(ref.media_id) is True:
+            return True
+        attachment = self.attachment_for(ref)
+        return await self.attachment(attachment) if attachment else None
+
     async def for_doc(self, doc: ContentDoc) -> dict[str, bool | None]:
+        """Status per media id and attachment id of the media in this content (the keys check_media looks up)."""
+        result: dict[str, bool | None] = {}
         for _el, ref in find_media(doc.soup):
-            if ref.kind == "canvas_attachment" and ref.ident and not (ref.media_id and ref.media_id in self.status):
-                await self.attachment(ref.ident)
-        return dict(self.status)
+            if ref.kind not in ("canvas_media", "canvas_attachment"):
+                continue
+            value = await self.resolve(ref)
+            for key in (ref.media_id, ref.ident):
+                if key and result.get(key) is not True:
+                    result[key] = value
+        return result
 
 
 class AccessibilityAnalyzer:
@@ -88,14 +138,42 @@ class AccessibilityAnalyzer:
             ctx.shared["captions"] = CaptionCache(ctx)
         return ctx.shared["captions"]
 
+    def _youtube(self, ctx: AnalysisContext) -> YoutubeCaptionChecker | None:
+        """Caption check of embedded YouTube videos – only when external checks are on (Innstillinger → Analyse)."""
+        if not ctx.settings.analysis.check_external_links:
+            return None
+        if "youtube_captions" not in ctx.shared:
+            ctx.shared["youtube_captions"] = YoutubeCaptionChecker(
+                ctx.container, cache_hours=max(ctx.settings.analysis.link_cache_hours, CAPTION_CACHE_HOURS))
+        return ctx.shared["youtube_captions"]
+
     def object_check(self, ctx: AnalysisContext) -> ObjectCheck:
         captions = self._captions(ctx)
+        youtube = self._youtube(ctx)
 
         async def check(doc: ContentDoc, obj: SnapObj) -> list[FindingDraft]:
             media = await captions.for_doc(doc)
-            return [to_draft(ctx, issue, obj) for issue in run_html_checks(doc, media)]
+            videos: dict[str, str | None] = {}
+            if youtube is not None:
+                for _el, ref in find_media(doc.soup):
+                    if ref.kind == "youtube" and ref.ident and ref.ident not in videos:
+                        info = await youtube.status(ref.ident)
+                        videos[ref.ident] = info.state if info else None
+            issues = run_html_checks(doc, media, videos, media_kinds=captions.kinds, assessed=captions.assessed)
+            return [to_draft(ctx, issue, obj) for issue in issues]
 
         return check
+
+    def finish(self, ctx: AnalysisContext) -> None:
+        youtube = ctx.shared.get("youtube_captions")
+        note = youtube.limitation() if youtube is not None else None
+        if note:
+            ctx.limitations.append(note)
+        if not ctx.settings.analysis.check_external_links and any(
+                ref.kind == "youtube" for obj in ctx.html_objects() if obj.body
+                for _el, ref in find_media(ctx.content_doc(obj).soup)):
+            ctx.limitations.append("Teksting av YouTube-videoer ble ikke kontrollert (eksterne kontroller er slått av "
+                                   "under Innstillinger → Analyse).")
 
     def tasks(self, ctx: AnalysisContext) -> list[AnalysisTask]:
         tasks: list[AnalysisTask] = []
@@ -103,6 +181,7 @@ class AccessibilityAnalyzer:
             if page.body is None and ctx.in_scope(page):
                 tasks.append(self._block_editor_task(ctx, page))
         tasks.extend(self._media_tasks(ctx))
+        tasks.extend(self._youtube_tasks(ctx))
         if ctx.settings.analysis.check_documents and is_enabled(ctx.settings, "document_checks"):
             tasks.extend(self._document_tasks(ctx))
         else:
@@ -125,12 +204,15 @@ class AccessibilityAnalyzer:
             if not obj.body:
                 continue
             for _el, ref in find_media(ctx.content_doc(obj).soup):
-                if ref.kind != "canvas_attachment" or not ref.ident or ref.ident in seen:
+                if ref.kind not in ("canvas_media", "canvas_attachment"):
                     continue
-                if ref.media_id and ref.media_id in captions.status:
+                if ref.media_id and captions.status.get(ref.media_id) is True:
                     continue
-                seen.add(ref.ident)
-                attachment_id = ref.ident
+                found = captions.attachment_for(ref)
+                if not found or found in seen:
+                    continue
+                seen.add(found)
+                attachment_id = found
 
                 async def run(attachment_id: str = attachment_id) -> list[FindingDraft]:
                     await captions.attachment(attachment_id)
@@ -138,6 +220,29 @@ class AccessibilityAnalyzer:
 
                 tasks.append(AnalysisTask(type="media", item=ctx.view.location_label(obj),
                                           operation="Kontrollerer teksting i Canvas", domain=self.domain, run=run))
+        return tasks
+
+    def _youtube_tasks(self, ctx: AnalysisContext) -> list[AnalysisTask]:
+        """One task per embedded YouTube video (progress, and the lookups run ahead of the pages that need them)."""
+        youtube = self._youtube(ctx)
+        if youtube is None:
+            return []
+        seen: set[str] = set()
+        tasks = []
+        for obj in ctx.html_objects():
+            if not obj.body:
+                continue
+            for _el, ref in find_media(ctx.content_doc(obj).soup):
+                if ref.kind != "youtube" or not ref.ident or ref.ident in seen:
+                    continue
+                seen.add(ref.ident)
+
+                async def run(video_id: str = ref.ident) -> list[FindingDraft]:
+                    await youtube.status(video_id)
+                    return []
+
+                tasks.append(AnalysisTask(type="media", item=f"YouTube-video {ref.ident}",
+                                          operation="Kontrollerer teksting på YouTube", domain=self.domain, run=run))
         return tasks
 
     def _document_files(self, ctx: AnalysisContext) -> list[SnapObj]:

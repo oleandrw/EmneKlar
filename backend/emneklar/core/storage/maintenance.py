@@ -24,7 +24,6 @@ from emneklar.core.storage.models import (
     ChangeLogEntry,
     Finding,
     FindingDecision,
-    HomepageDraft,
     Job,
     LinkCheck,
     QuestionBankItem,
@@ -95,7 +94,7 @@ def storage_overview(config: RuntimeConfig, db: Database) -> dict[str, Any]:
         counts = {name: session.scalar(select(func.count()).select_from(model)) or 0 for name, model in (
             ("snapshots", Snapshot), ("analysis_runs", AnalysisRun), ("findings", Finding), ("reports", Report),
             ("backups", Backup), ("change_log", ChangeLogEntry), ("link_checks", LinkCheck),
-            ("question_bank", QuestionBankItem), ("homepage_drafts", HomepageDraft))}
+            ("question_bank", QuestionBankItem))}
     return {"data_dir": str(config.data_dir), "database": str(config.db_path), "folders": folders, "counts": counts}
 
 

@@ -29,14 +29,22 @@ export interface JobWording {
   cancelNote: string;
   /** Show only the total count (e.g. generated questions) instead of counts per domain. */
   countOnly?: string;
+  /** Leave out «what is being processed now» (the item and the active check). */
+  hideCurrent?: boolean;
+  /** Leave out the running count of findings. */
+  hideFindings?: boolean;
 }
 
+/** The course analysis: progress per content type and what is done is enough – the item being processed and the
+ * running count of findings only add noise (the findings are shown when the analysis is finished). */
 export const ANALYSIS_WORDING: JobWording = {
   noun: "analysen",
   current: "Nå analyseres",
   findingsTitle: "Funn så langt",
   findingsEmpty: "Ingen funn registrert ennå.",
   cancelNote: "Funn som allerede er registrert, beholdes og merkes som en avbrutt analyse.",
+  hideCurrent: true,
+  hideFindings: true,
 };
 
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -150,11 +158,13 @@ export function ProgressPanel({
             <span className="ek-small ek-muted">Estimert tid igjen</span>
             <span className="ek-strong">{eta ?? "Beregner estimert tid …"}</span>
           </div>
-          <div className="ek-stack" data-gap="1">
-            <span className="ek-small ek-muted">{wording.current}</span>
-            <span className="ek-strong ek-break">{p.current_item ?? "–"}</span>
-            {p.current_operation ? <span className="ek-small ek-muted">Aktiv kontroll: {p.current_operation}</span> : null}
-          </div>
+          {!wording.hideCurrent ? (
+            <div className="ek-stack" data-gap="1">
+              <span className="ek-small ek-muted">{wording.current}</span>
+              <span className="ek-strong ek-break">{p.current_item ?? "–"}</span>
+              {p.current_operation ? <span className="ek-small ek-muted">Aktiv kontroll: {p.current_operation}</span> : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -185,24 +195,26 @@ export function ProgressPanel({
         </table>
       ) : null}
 
-      <div className="ek-stack" data-gap="2">
-        <h3>{wording.findingsTitle}</h3>
-        {wording.countOnly ? (
-          <p className="ek-small">
-            {formatNumber(findings.reduce((sum, f) => sum + f.count, 0))} {wording.countOnly}
-          </p>
-        ) : findings.length === 0 ? (
-          <p className="ek-small ek-muted">{wording.findingsEmpty}</p>
-        ) : (
-          <ul className="ek-list-reset ek-cluster" data-gap="2">
-            {findings.map((f) => (
-              <li key={f.domain} className="ek-badge" data-tone="info">
-                {DOMAIN_LABEL[f.domain] ?? f.domain}: {formatNumber(f.count)}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {!wording.hideFindings ? (
+        <div className="ek-stack" data-gap="2">
+          <h3>{wording.findingsTitle}</h3>
+          {wording.countOnly ? (
+            <p className="ek-small">
+              {formatNumber(findings.reduce((sum, f) => sum + f.count, 0))} {wording.countOnly}
+            </p>
+          ) : findings.length === 0 ? (
+            <p className="ek-small ek-muted">{wording.findingsEmpty}</p>
+          ) : (
+            <ul className="ek-list-reset ek-cluster" data-gap="2">
+              {findings.map((f) => (
+                <li key={f.domain} className="ek-badge" data-tone="info">
+                  {DOMAIN_LABEL[f.domain] ?? f.domain}: {formatNumber(f.count)}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
 
       {job.status === "failed" ? (
         <Alert tone="danger" role="alert" title={`${capitalize(wording.noun)} feilet`}>

@@ -24,10 +24,13 @@ ROUTERS = [
     "emneklar.features.module_requirements.api",
     "emneklar.features.blueprint.api",
     "emneklar.features.canvas_settings.api",
-    "emneklar.features.homepage_builder.api",
     "emneklar.features.reporting.api",
     "emneklar.features.course_rag.api",
     "emneklar.features.illustrations.api",
+    "emneklar.features.course_design.api",
+    "emneklar.features.accessibility.ai_fix",
+    "emneklar.features.content_quality.link_replace",
+    "emneklar.features.content_quality.link_alternatives",
 ]
 
 

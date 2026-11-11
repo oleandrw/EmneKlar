@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from emneklar.config import BACKEND_DIR
-from tests.conftest import wait_for_job
+from tests.conftest import approve_and_apply, wait_for_job
 from tests.fakes.fake_canvas import COURSE_ID, FakeCanvasState
 
 pytestmark = pytest.mark.invariant
@@ -26,7 +26,7 @@ def finding(items: list[dict], rule: str, page: str | None = None) -> dict:
 
 
 def apply(client: TestClient, ids: list[int], confirm: bool = False) -> dict:
-    response = client.post("/api/changes/apply", json={"ids": ids, "confirm_high_risk": confirm})
+    response = approve_and_apply(client, ids, confirm=confirm)
     assert response.status_code == 200, response.text
     return wait_for_job(client, response.json()["id"])
 
@@ -61,17 +61,24 @@ def test_fix_preview_stage_merge_and_apply(canvas_client: TestClient, fake_state
     assert refreshed["status"] == "fixed"
 
 
-def test_dry_run_sends_nothing(canvas_client: TestClient, fake_state: FakeCanvasState) -> None:
-    items = analyse(canvas_client)
+def test_without_dry_run_analysis_preview_and_queue_never_write(canvas_client: TestClient,
+                                                                fake_state: FakeCanvasState) -> None:
+    """Dry run is gone: analyses, previews, staging and approval are read-only by design; only «Publiser» writes."""
+    assert "dry_run" not in canvas_client.get("/api/session").json()
+    assert canvas_client.put("/api/system/dry-run", json={"enabled": True}).status_code in (404, 405)
+    job = canvas_client.post("/api/analysis", json={"course_id": COURSE_ID, "domains": [
+        "accessibility", "content_quality", "structure", "quiz"]}).json()
+    assert wait_for_job(canvas_client, job["id"])["status"] == "completed"
+    items = canvas_client.get(f"/api/courses/{COURSE_ID}/findings?domain=accessibility&page_size=200").json()["items"]
     target = finding(items, "UU-IFRAME-NO-TITLE")
-    change = canvas_client.post(f"/api/findings/{target['id']}/fix/stage", json={"text": "Video: Introduksjon"}).json()
-    canvas_client.put("/api/system/dry-run", json={"enabled": True})
+    canvas_client.post(f"/api/findings/{target['id']}/fix/preview", json={"text": "Video: Introduksjon"})
+    change = canvas_client.post(f"/api/findings/{target['id']}/fix/approve", json={"text": "Video: Introduksjon"}).json()
+    assert change["status"] == "approved"
+    assert not [r for r in fake_state.requests if r[0] in ("PUT", "POST", "PATCH", "DELETE")], \
+        "nothing but GET reaches Canvas before publishing"
     job = apply(canvas_client, [change["id"]])
-    assert job["result"]["results"][0]["status"] == "dry_run"
-    assert not [w for w in fake_state.writes if w[0] in ("PUT", "POST", "DELETE")]
-    log = canvas_client.get("/api/changelog").json()["items"]
-    assert log[0]["action"] == "dry_run" and log[0]["dry_run"] is True
-    assert canvas_client.get(f"/api/changes/{change['id']}").json()["status"] == "staged"
+    assert job["result"]["results"][0]["status"] == "applied"
+    assert [r[0] for r in fake_state.requests if r[0] != "GET"] == ["PUT"]
 
 
 def test_conflict_detection_blocks_write(canvas_client: TestClient, fake_state: FakeCanvasState) -> None:
@@ -137,7 +144,7 @@ def test_high_risk_requires_confirmation(canvas_container, canvas_client: TestCl
         target={"object_type": "front_page", "object_id": "forside", "title": "Forside"},
         before={"body": "<h2>Velkommen</h2><p>Dette er forsiden.</p>", "title": "Forside", "url": "forside"},
         proposed={"body": "<h2>Ny forside</h2>"}, rationale="Test", risk="high")
-    response = canvas_client.post("/api/changes/apply", json={"ids": [change["id"]]})
+    response = approve_and_apply(canvas_client, [change["id"]])
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "change_requires_confirmation"
     job = apply(canvas_client, [change["id"]], confirm=True)
@@ -174,3 +181,55 @@ def test_no_feature_builds_its_own_http_client_for_canvas() -> None:
         if "CanvasClient(" in path.read_text(encoding="utf-8"):
             offenders.append(path.name)
     assert offenders == []
+
+
+def _stage_alt_fix(client: TestClient) -> dict:
+    items = analyse(client)
+    missing = finding(items, "UU-IMG-MISSING-ALT", "bildeformater")
+    return client.post(f"/api/findings/{missing['id']}/fix/stage", json={"text": "Raster og vektor side om side"}).json()
+
+
+def test_publishing_takes_approved_changes_only(canvas_client: TestClient, fake_state: FakeCanvasState) -> None:
+    change = _stage_alt_fix(canvas_client)
+    assert change["status"] == "staged"
+    refused = canvas_client.post("/api/changes/apply", json={"ids": [change["id"]]})
+    assert refused.status_code == 409
+    error = refused.json()["error"]
+    assert error["code"] == "change_state_invalid" and "ikke godkjent" in error["message"]
+    assert fake_state.writes == [], "a change that is not approved never reaches Canvas"
+
+    assert canvas_client.post("/api/changes/approve", json={"ids": [change["id"]]}).json()["items"][0]["status"] == "approved"
+    job = apply(canvas_client, [change["id"]])
+    assert job["result"]["results"][0]["status"] == "applied"
+
+
+def test_a_failed_change_must_be_approved_again(canvas_client: TestClient, fake_state: FakeCanvasState) -> None:
+    change = _stage_alt_fix(canvas_client)
+    fake_state.fail["/pages/bildeformater"] = 500
+    job = wait_for_job(canvas_client, approve_and_apply(canvas_client, [change["id"]]).json()["id"])
+    assert job["result"]["results"][0]["status"] == "failed"
+    fake_state.fail.clear()
+    writes = list(fake_state.writes)
+
+    retry = canvas_client.post("/api/changes/apply", json={"ids": [change["id"]]})
+    assert retry.status_code == 409 and retry.json()["error"]["code"] == "change_state_invalid"
+    assert "Godkjenn den på nytt" in retry.json()["error"]["message"]
+    assert fake_state.writes == writes, "nothing is written without a new approval"
+
+    job = wait_for_job(canvas_client, approve_and_apply(canvas_client, [change["id"]]).json()["id"])
+    assert job["result"]["results"][0]["status"] == "applied"
+
+
+def test_the_write_step_checks_the_approval_again(canvas_container, canvas_client: TestClient,  # type: ignore[no-untyped-def]
+                                                  fake_state: FakeCanvasState) -> None:
+    """A change that lost its approval between «Publiser» and the write (e.g. «Angre godkjenning») is not sent."""
+    import asyncio
+
+    from emneklar.core.canvas.api import CanvasAPI
+
+    change = _stage_alt_fix(canvas_client)
+    data, row = canvas_container.changes._load(change["id"])
+    outcome = asyncio.run(canvas_container.changes.apply_one(CanvasAPI(canvas_container.canvas()), data, row))
+    assert outcome["status"] == "staged" and outcome["error_code"] == "change_state_invalid"
+    assert fake_state.writes == []
+    assert canvas_client.get(f"/api/changes?course_id={COURSE_ID}").json()["items"][0]["status"] == "staged"

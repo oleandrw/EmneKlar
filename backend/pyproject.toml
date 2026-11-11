@@ -35,8 +35,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Emne-RAG with local models (several GB with PyTorch). Installed by setup-emne-rag.bat / setup.bat --rag;
-# update.bat keeps it installed. EmneKlar works without it (keyword search, captions, provider embeddings).
+# Emne-RAG with local models (several GB with PyTorch). For developers only: setup, update and the release
+# packages never install it. EmneKlar works without it (keyword search, captions, provider embeddings and
+# transcription).
 rag = [
     "sentence-transformers>=5.0",
     "faster-whisper>=1.1",

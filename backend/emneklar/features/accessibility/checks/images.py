@@ -56,6 +56,18 @@ def _figcaption(img: Tag) -> str:
     return text_of(caption) if caption else ""
 
 
+CANVAS_FILE = re.compile(r"/files/(\d+)/(?:preview|download)\b")
+
+
+def _shown_name(src: str, filename: str) -> str:
+    """How an image is named in messages: its file name, or «fra Canvas-filer (fil 123)» for Canvas file URLs that end
+    in /preview or /download (the name is not in the address)."""
+    match = CANVAS_FILE.search(src)
+    if match and filename in ("preview", "download"):
+        return f"fra Canvas-filer (fil {match.group(1)})"
+    return f"«{filename}»" if filename else "uten filnavn"
+
+
 def _size(img: Tag) -> int:
     best = 0
     for attr in ("width", "height"):
@@ -66,6 +78,54 @@ def _size(img: Tag) -> int:
     for match in re.finditer(r"(?:width|height)\s*:\s*(\d+)px", style):
         best = max(best, int(match.group(1)))
     return best
+
+
+CONTEXT_BLOCKS = ("p", "li", "td", "th", "dd", "dt", "blockquote", "figcaption", "caption", "h1", "h2", "h3", "h4",
+                  "h5", "h6", "pre", "div")
+HEADINGS = ("h1", "h2", "h3", "h4", "h5", "h6")
+
+
+def _block_of(img: Tag) -> Tag | None:
+    node = img.parent
+    while isinstance(node, Tag) and node.name not in ("[document]", "body"):
+        if node.name in ("p", "li", "td", "th", "figure", "dd", "blockquote", "div"):
+            return node
+        node = node.parent
+    return None
+
+
+def _neighbour_text(block: Tag | None, forward: bool, limit: int) -> str:
+    """Text of the blocks just before/after the image's block (stops at the next heading)."""
+    if block is None:
+        return ""
+    parts: list[str] = []
+    node = block.find_next_sibling() if forward else block.find_previous_sibling()
+    while isinstance(node, Tag) and sum(len(p) for p in parts) < limit:
+        if node.name in HEADINGS and forward:
+            break
+        text = text_of(node)
+        if text:
+            parts.append(text)
+        if node.name in HEADINGS:
+            break
+        node = node.find_next_sibling() if forward else node.find_previous_sibling()
+    joined = " ".join(parts if forward else reversed(parts))
+    return joined[:limit] if forward else joined[-limit:]
+
+
+def image_context(img: Tag, *, limit: int = 600) -> dict[str, str | None]:
+    """What surrounds an image – the pedagogical context an alt text (and the reviewer) needs: the nearest heading,
+    the text just before and after it, its caption and, for linked images, where the link goes."""
+    heading = img.find_previous(HEADINGS)
+    block = _block_of(img)
+    own = text_of(block) if block is not None and block.name != "figure" else ""
+    link = _link_parent(img)
+    return {"heading": text_of(heading)[:200] if heading else None,
+            "before": _neighbour_text(block, False, limit) or None,
+            "same_block": own[:limit] or None,
+            "after": _neighbour_text(block, True, limit) or None,
+            "caption": _figcaption(img) or None,
+            "link_href": str(link.get("href"))[:500] if link is not None else None}
 
 
 def check_images(doc: ContentDoc) -> list[Issue]:
@@ -86,7 +146,7 @@ def check_images(doc: ContentDoc) -> list[Issue]:
         if not img.has_attr("alt"):
             if _decorative(img) or _has_aria_name(img):
                 continue
-            message = f"Bildet «{filename or 'uten filnavn'}» har ikke alt-attributt."
+            message = f"Bildet {_shown_name(src, filename)} har ikke alt-attributt."
             if caption:
                 message += " Bildeteksten under bildet erstatter ikke alt-teksten."
             issues.append(Issue(
@@ -100,7 +160,8 @@ def check_images(doc: ContentDoc) -> list[Issue]:
             if link is not None and not text_of(link) and not link.get("aria-label"):
                 issues.append(Issue(
                     "UU-IMG-EMPTY-ALT-LINK",
-                    f"Bildet «{filename}» er eneste innhold i en lenke til {str(link.get('href'))[:120]}, men har tom "
+                    f"Bildet {_shown_name(src, filename)} er eneste innhold i en lenke til {str(link.get('href'))[:120]}, "
+                    "men har tom "
                     "alt-tekst.",
                     element=img, evidence={"src": src, "href": link.get("href")},
                     fix=fix("set_alt", "Beskriv lenkemålet i alt-teksten", path=path, src=src, link=True)))
@@ -146,6 +207,10 @@ def check_images(doc: ContentDoc) -> list[Issue]:
                 "UU-IMG-TEXT", f"Filnavnet «{filename}» tyder på at bildet inneholder tekst.", element=img,
                 confidence="low", key=f"text:{path}", evidence={"src": src}))
 
+    for issue in issues:
+        if issue.element is not None and issue.element.name == "img" and issue.fix:
+            issue.evidence.setdefault("image_context", image_context(issue.element))
+            issue.evidence.setdefault("alt", issue.element.get("alt") if issue.element.has_attr("alt") else None)
     for alt, sources in alts.items():
         if len(sources) > 1 and alt not in GENERIC_ALT:
             first = alt_elements[alt][0]

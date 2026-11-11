@@ -27,6 +27,8 @@ import threading
 from multiprocessing.connection import Connection
 from typing import Any, Protocol
 
+from emneklar.core.system import prepare_standard_streams
+
 log = logging.getLogger(__name__)
 
 MAX_RESULT_BYTES = 64 * 1024 * 1024
@@ -105,6 +107,7 @@ def quiet_worker_logging() -> None:
 
 
 def worker_main(conn: Connection, memory_mb: int) -> None:
+    prepare_standard_streams()  # started by a program without a console window: there are no standard streams
     quiet_worker_logging()
     if sys.platform != "win32":
         _apply_posix_limits(memory_mb)

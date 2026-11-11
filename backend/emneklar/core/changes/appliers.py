@@ -48,6 +48,9 @@ class ChangeData:
 class Applier:
     kind: ClassVar[str]
     label: ClassVar[str]
+    #: What was done, in the past tense («Sideinnhold oppdatert») – for the history when nothing more specific is
+    #: recorded with the change.
+    done_label: ClassVar[str] = ""
     object_type: ClassVar[str]
     undo_capability: ClassVar[str] = "full"
     undo_note: ClassVar[str] = "Kan angres fra endringsloggen så lenge innholdet ikke er endret av andre etterpå."
@@ -68,6 +71,14 @@ class Applier:
 
     def conflict(self, before: dict[str, Any], current: dict[str, Any]) -> bool:
         return state_fingerprint(before) != state_fingerprint({k: current.get(k) for k in before})
+
+    def already_applied(self, proposed: dict[str, Any], current: dict[str, Any]) -> bool:
+        """True when Canvas already holds exactly the proposed values (an earlier attempt reached Canvas although its
+        answer was lost). Compared like :meth:`conflict`; anything uncertain counts as *not* applied."""
+        keys = [k for k in proposed if not k.startswith("_")]
+        if not keys or any(k not in current for k in keys):
+            return False
+        return state_fingerprint({k: proposed[k] for k in keys}) == state_fingerprint({k: current[k] for k in keys})
 
     def verify(self, proposed: dict[str, Any], after: dict[str, Any]) -> list[str]:
         """Fields Canvas accepted (HTTP 200) but did not store, judged from the state read back after the write.
@@ -110,6 +121,7 @@ class _HtmlField(Applier):
 class PageBody(_HtmlField):
     kind = "page.update_body"
     label = "Oppdater sideinnhold"
+    done_label = "Sideinnhold oppdatert"
     object_type = "page"
     field = "body"
 
@@ -131,6 +143,7 @@ class PageBody(_HtmlField):
 class AssignmentDescription(_HtmlField):
     kind = "assignment.update_description"
     label = "Oppdater oppgavetekst"
+    done_label = "Oppgavetekst oppdatert"
     object_type = "assignment"
     field = "description"
 
@@ -152,6 +165,7 @@ class AssignmentDescription(_HtmlField):
 class DiscussionMessage(_HtmlField):
     kind = "discussion.update_message"
     label = "Oppdater diskusjonstekst"
+    done_label = "Diskusjonstekst oppdatert"
     object_type = "discussion"
     field = "message"
 
@@ -173,6 +187,7 @@ class DiscussionMessage(_HtmlField):
 class QuizDescription(_HtmlField):
     kind = "quiz.update_description"
     label = "Oppdater quizbeskrivelse"
+    done_label = "Quizbeskrivelse oppdatert"
     object_type = "quiz"
     field = "description"
 
@@ -194,6 +209,7 @@ class QuizDescription(_HtmlField):
 class SyllabusBody(_HtmlField):
     kind = "syllabus.update_body"
     label = "Oppdater emneplan (syllabus)"
+    done_label = "Emneplan oppdatert"
     object_type = "syllabus"
     field = "syllabus_body"
 
@@ -221,6 +237,7 @@ class PageCreate(Applier):
     stores_created = True
     kind = "page.create"
     label = "Opprett ny side"
+    done_label = "Side opprettet"
     object_type = "page"
     undo_note = "Kan angres ved å slette siden EmneKlar opprettet, så lenge den ikke er endret etterpå."
 
@@ -274,6 +291,7 @@ class PageCreate(Applier):
 class FrontPageReplace(_HtmlField):
     kind = "front_page.replace"
     label = "Erstatt innholdet på forsiden"
+    done_label = "Forsiden erstattet"
     object_type = "front_page"
     field = "body"
     undo_note = "Forrige innhold er sikkerhetskopiert og kan gjenopprettes fra endringsloggen."
@@ -298,6 +316,7 @@ class FrontPageReplace(_HtmlField):
 class FrontPageSet(Applier):
     kind = "front_page.set"
     label = "Gjør siden til emnets forside"
+    done_label = "Siden er gjort til forside"
     object_type = "page"
     undo_capability = "partial"
     undo_note = ("Angring gjør den tidligere siden til forside igjen og gjenoppretter startsiden for emnet. "
@@ -330,6 +349,7 @@ class FrontPageSet(Applier):
 class ModuleItemUpdate(Applier):
     kind = "module_item.update"
     label = "Endre modulelement"
+    done_label = "Modulelement endret"
     object_type = "module_item"
     FIELDS = ("module_id", "position", "title", "indent", "completion_requirement")
 
@@ -408,6 +428,7 @@ async def _find_module_item(api: CanvasAPI, course_id: str, item_id: str) -> dic
 class ModuleUpdate(Applier):
     kind = "module.update"
     label = "Endre modulinnstillinger"
+    done_label = "Modulinnstillinger endret"
     object_type = "module"
     # The modules API applies name and require_sequential_progress. «All/one requirement» (requirement_type)
     # is documented but ignored by Canvas' controller (requirement_count is behind a feature flag), so it is
@@ -440,6 +461,7 @@ class ModuleItemCreate(Applier):
     stores_created = True
     kind = "module_item.create"
     label = "Legg til modulelement"
+    done_label = "Modulelement lagt til"
     object_type = "module_item"
     undo_note = "Kan angres ved å fjerne elementet fra modulen (innholdet selv slettes ikke)."
 
@@ -479,6 +501,7 @@ class ModuleItemCreate(Applier):
 class CourseSettings(Applier):
     kind = "course.update_settings"
     label = "Endre emneinnstillinger"
+    done_label = "Emneinnstillinger endret"
     object_type = "course"
 
     async def current(self, api: CanvasAPI, change: ChangeData) -> dict[str, Any]:
@@ -500,6 +523,7 @@ class CourseSettings(Applier):
 class CourseUpdate(Applier):
     kind = "course.update"
     label = "Endre emneegenskaper"
+    done_label = "Emneegenskaper endret"
     object_type = "course"
     FIELDS = ("default_view",)
 
@@ -531,6 +555,7 @@ class CourseUpdate(Applier):
 class BlueprintRestrict(Applier):
     kind = "blueprint.restrict"
     label = "Endre Blueprint-låsing"
+    done_label = "Blueprint-låsing endret"
     object_type = "course"
     undo_capability = "partial"
     undo_note = ("Angring setter låsestatus tilbake for elementer der tidligere status var kjent. "
@@ -572,10 +597,45 @@ class BlueprintRestrict(Applier):
         return {"items": restored}
 
 
+class BlueprintSync(Applier):
+    """Push the Blueprint course's unsynced changes to its associated courses
+    (``POST …/blueprint_templates/default/migrations``, docs/CANVAS_API.md). Canvas runs the sync in the background;
+    the result holds the migration id and state, which EmneKlar shows until Canvas reports it as finished."""
+
+    kind = "blueprint.sync"
+    label = "Synkroniser Blueprint-emnet"
+    done_label = "Blueprint-emnet synkronisert"
+    object_type = "course"
+    undo_capability = "none"
+    undo_note = ("En synkronisering kan ikke angres fra EmneKlar. Hver endring som ble synkronisert, har sin egen "
+                 "sikkerhetskopi og kan angres i Blueprint-emnet og synkroniseres på nytt.")
+
+    async def current(self, api: CanvasAPI, change: ChangeData) -> dict[str, Any]:
+        unsynced = await api.blueprint_unsynced_changes(change.course_id)
+        return {"unsynced": [{"asset_type": u.get("asset_type"), "asset_name": u.get("asset_name"),
+                              "change_type": u.get("change_type"), "locked": u.get("locked")} for u in unsynced[:500]],
+                "unsynced_count": len(unsynced)}
+
+    def conflict(self, before: dict[str, Any], current: dict[str, Any]) -> bool:
+        return False  # the sync always carries whatever is unsynced when it starts; the preview lists it
+
+    def already_applied(self, proposed: dict[str, Any], current: dict[str, Any]) -> bool:
+        return False
+
+    async def apply(self, api: CanvasAPI, change: ChangeData, permit: WritePermit) -> dict[str, Any]:
+        migration = await api.start_blueprint_migration(
+            change.course_id, comment=str(change.proposed.get("comment") or "Synkronisert fra EmneKlar"),
+            send_notification=False, permit=permit)
+        return {"migration_id": str(migration.get("id") or ""), "workflow_state": migration.get("workflow_state")}
+
+    def verify(self, proposed: dict[str, Any], after: dict[str, Any]) -> list[str]:
+        return []
+
+
 APPLIERS: dict[str, Applier] = {a.kind: a for a in (
     PageBody(), AssignmentDescription(), DiscussionMessage(), QuizDescription(), SyllabusBody(), PageCreate(),
     FrontPageReplace(), FrontPageSet(), ModuleItemUpdate(), ModuleUpdate(), ModuleItemCreate(), CourseSettings(),
-    CourseUpdate(), BlueprintRestrict(),
+    CourseUpdate(), BlueprintRestrict(), BlueprintSync(),
 )}
 
 

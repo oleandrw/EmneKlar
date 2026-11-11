@@ -88,7 +88,6 @@ export function PublishStep({ runId, catalog }: { runId: number; catalog: Catalo
             <Alert tone="danger">{preview.error.message}</Alert>
           ) : data ? (
             <>
-              {data.dry_run ? <Alert tone="info" title="Dry run er på">Ingenting sendes til Canvas. Du ser hva som ville blitt gjort i endringsloggen.</Alert> : null}
               <RadioGroup<Mode> legend="Hvordan vil du publisere?" name="illustration-publish" value={mode} onChange={setMode} variant="card" columns={2}
                 options={[
                   { value: "publish", label: "Gjennomgå og godkjenn (standard)", hint: "Du har godkjent bildene. Sidene oppdateres nå, side for side." },
@@ -161,7 +160,7 @@ export function PublishStep({ runId, catalog }: { runId: number; catalog: Catalo
             {dropped.length ? ` Canvas fjernet disse attributtene ved lagring: ${dropped.join(", ")}. Bildet vises likevel riktig.` : " Alle attributtene ble beholdt."}
           </p>
         ) : null}
-        <p className="ek-small ek-muted">Alle endringer finnes også i <Link to="/canvas-verktoy/endringslogg">Backup og endringslogg</Link>.</p>
+        <p className="ek-small ek-muted">Alle endringer finnes også i <Link to="/canvas-verktoy/endringslogg">Sikkerhetskopier og endringslogg</Link>.</p>
         {undo.error ? <Alert tone="danger">{undo.error.message}</Alert> : null}
       </Card>
       <ConfirmDialog open={undoPage !== null} onClose={() => setUndoPage(null)} onConfirm={() => undoPage && undo.mutate(undoPage)}

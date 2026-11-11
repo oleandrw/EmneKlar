@@ -118,6 +118,12 @@ class ProgressTracker:
             self._findings[key] += count
             self._bump()
 
+    def set_findings(self, counts: dict[str, int]) -> None:
+        """Replaces the running count of findings, e.g. with what was actually stored once a job is done."""
+        with self._lock:
+            self._findings = defaultdict(int, {k: v for k, v in counts.items() if v > 0})
+            self._bump()
+
     def note(self, message: str) -> None:
         with self._lock:
             self._messages.append(message)

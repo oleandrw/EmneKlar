@@ -3,17 +3,18 @@
  * legend); hints and errors are associated with aria-describedby, and errors
  * set aria-invalid. Errors use an icon + text, never colour alone.
  */
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, Eye, EyeOff } from "lucide-react";
 import {
   forwardRef,
   useId,
+  useState,
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
 
-import { cx, type Tone } from "./primitives";
+import { cx, Disclosure, type Tone } from "./primitives";
 
 interface FieldBase {
   label: ReactNode;
@@ -83,6 +84,43 @@ export const TextField = forwardRef<
         aria-describedby={describedBy(hint, error, ids, extraDescribedBy)}
         {...rest}
       />
+    </FieldShell>
+  );
+});
+
+/** A secret (token, key): hidden by default, with an eye button inside the right end of the field. The button never
+ * submits the form or clears the field, and its name says what it does («Vis …» / «Skjul …»). The text never runs
+ * under the button. */
+export const PasswordField = forwardRef<
+  HTMLInputElement,
+  FieldBase & Omit<InputHTMLAttributes<HTMLInputElement>, "size" | "type"> & { revealLabel?: string; concealLabel?: string }
+>(function PasswordField(
+  { label, hint, error, optional, hideLabel, id, className, revealLabel = "Vis", concealLabel = "Skjul",
+    "aria-describedby": extraDescribedBy, ...rest },
+  ref,
+) {
+  const ids = useFieldIds(id);
+  const [shown, setShown] = useState(false);
+  const toggleLabel = shown ? concealLabel : revealLabel;
+  return (
+    <FieldShell label={label} hint={hint} error={error} optional={optional} hideLabel={hideLabel} ids={ids}>
+      <div className="ek-input-affix">
+        <input
+          ref={ref}
+          id={ids.controlId}
+          type={shown ? "text" : "password"}
+          className={cx("ek-input", "ek-input--affix", className)}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy(hint, error, ids, extraDescribedBy)}
+          autoComplete="off"
+          spellCheck={false}
+          {...rest}
+        />
+        <button type="button" className="ek-input-affix__button" aria-label={toggleLabel} title={toggleLabel}
+          aria-controls={ids.controlId} onClick={() => setShown((v) => !v)}>
+          {shown ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+        </button>
+      </div>
     </FieldShell>
   );
 });
@@ -207,6 +245,8 @@ export interface RadioOption<T extends string> {
   /** Card variant only: a decorative icon in a tile of this tone. */
   icon?: ReactNode;
   tone?: Tone;
+  /** Card variant only: longer explanation behind «Vis detaljer» (outside the label, so the card stays one choice). */
+  details?: ReactNode;
 }
 
 export function RadioGroup<T extends string>({
@@ -220,6 +260,7 @@ export function RadioGroup<T extends string>({
   variant = "plain",
   hideLegend,
   columns = 1,
+  truncateLabels,
 }: {
   legend: ReactNode;
   name: string;
@@ -232,6 +273,9 @@ export function RadioGroup<T extends string>({
   hideLegend?: boolean;
   /** Card variant: choices side by side (fewer columns on narrow screens). */
   columns?: 1 | 2 | 3 | 4;
+  /** Long labels on one line with «…»; the full label shows on hover and keyboard focus, wraps on touch screens,
+   * with larger text and on narrow screens, and is always the radio's accessible name. */
+  truncateLabels?: boolean;
 }) {
   const choices = options.map((option) => (
     <RadioChoice
@@ -241,6 +285,7 @@ export function RadioGroup<T extends string>({
       checked={value === option.value}
       onSelect={() => onChange(option.value)}
       variant={variant}
+      truncate={truncateLabels}
     />
   ));
   return (
@@ -262,16 +307,21 @@ function RadioChoice<T extends string>({
   checked,
   onSelect,
   variant,
+  truncate,
 }: {
   name: string;
   option: RadioOption<T>;
   checked: boolean;
   onSelect: () => void;
   variant: "plain" | "card";
+  truncate?: boolean;
 }) {
   const hintId = useId();
-  return (
-    <label className={cx("ek-choice", variant === "card" && "ek-choice--card")}>
+  const labelId = useId();
+  const card = variant === "card";
+  const withDetails = card && option.details != null;
+  const label = (
+    <label className={cx("ek-choice", card && !withDetails && "ek-choice--card", withDetails && "ek-choice-card__label")}>
       <input
         type="radio"
         name={name}
@@ -279,15 +329,17 @@ function RadioChoice<T extends string>({
         checked={checked}
         disabled={option.disabled}
         onChange={onSelect}
+        // The name is the label alone and the hint its description – otherwise the hint is read twice.
+        aria-labelledby={labelId}
         aria-describedby={option.hint ? hintId : undefined}
       />
-      {variant === "card" && option.icon ? (
+      {card && option.icon ? (
         <span className="ek-tile" data-tone={option.tone ?? "info"} data-size="sm" aria-hidden="true">
           {option.icon}
         </span>
       ) : null}
       <span className="ek-choice__text">
-        <span>{option.label}</span>
+        <span className={cx("ek-choice__label", truncate && "ek-choice__label--truncate")} id={labelId}>{option.label}</span>
         {option.hint ? (
           <span className="ek-choice__hint ek-small" id={hintId}>
             {option.hint}
@@ -295,6 +347,19 @@ function RadioChoice<T extends string>({
         ) : null}
       </span>
     </label>
+  );
+  if (!withDetails) return label;
+  // A card with «Vis detaljer»: the label covers the whole card (a click anywhere selects it), and the details toggle
+  // lies above it, outside the label – never a button inside a label.
+  return (
+    <div className="ek-choice--card ek-choice-card">
+      {label}
+      <div className="ek-choice-card__details">
+        <Disclosure summary={<>Vis detaljer{" "}<span className="ek-visually-hidden">om {option.label}</span></>}>
+          {option.details}
+        </Disclosure>
+      </div>
+    </div>
   );
 }
 

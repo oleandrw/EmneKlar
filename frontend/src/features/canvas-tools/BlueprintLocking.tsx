@@ -6,7 +6,6 @@ import { useState } from "react";
 import { api } from "../../core/api/client";
 import { useCurrentCourse } from "../../core/course";
 import { formatDateTime } from "../../core/format";
-import { useSession } from "../../core/session";
 import { useUi } from "../../core/ui";
 import {
   Alert,
@@ -68,7 +67,6 @@ function countLabel(count: { total: number; locked: number; unknown: number } | 
 
 export function BlueprintLocking() {
   const { courseId } = useCurrentCourse();
-  const session = useSession();
   const ui = useUi();
   const toast = useToast();
   const client = useQueryClient();
@@ -106,7 +104,7 @@ export function BlueprintLocking() {
       toast.show({
         tone: "success",
         title: "Blueprint-endringen er lagt i endringskøen",
-        body: session.dry_run ? "Dry run er på – ingenting sendes til Canvas." : "Endringen krever ekstra bekreftelse når du gjennomfører den.",
+        body: "Endringen krever ekstra bekreftelse når du publiserer den.",
       });
       ui.openChanges();
     },

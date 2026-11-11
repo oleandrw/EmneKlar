@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 
 import { useCurrentCourse } from "../../../core/course";
 import { formatDateTime } from "../../../core/format";
-import { HelpLink } from "../../../core/HelpLink";
 import { useSession } from "../../../core/session";
 import {
   Alert,
@@ -71,8 +70,7 @@ export function IllustrationAssistant() {
 
   const header = (
     <PageHeader title="KI-bildeassistent"
-      description="Analyserer undervisningsinnholdet, foreslår faglig presise illustrasjoner i én gjennomgående stil, og setter dem inn med alternativ tekst og bildetekst etter godkjenning."
-      actions={<HelpLink topic="canvas-verktoy" />}
+      description="Analyserer undervisningsinnholdet, foreslår faglig presise illustrasjoner i én gjennomgående stil, og setter dem inn med alternativ tekst og bildetekst etter godkjenning – med mindre du velger «Automatisk innsetting», som setter inn bilder som består kvalitetskontrollen uten gjennomgang."
       status={<Badge tone="violet">KI-forslag – må vurderes</Badge>} />
   );
   if (session.flags.illustration_assistant === false) {
@@ -100,7 +98,6 @@ export function IllustrationAssistant() {
     <>
       {header}
       <div className="ek-stack" data-gap="6">
-        {data.dry_run ? <Alert tone="info" title="Dry run er på">Du kan analysere og lage bilder, men ingenting sendes til Canvas.</Alert> : null}
         {step === "innhold" ? <RunList runs={data.runs} onOpen={(run) => {
           setRunId(run.id);
           setStep("generer");

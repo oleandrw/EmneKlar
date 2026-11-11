@@ -114,16 +114,23 @@ async def run_analysis(job: JobContext, container: AppContainer, request: Analys
     tasks: list[AnalysisTask] = []
     object_checks = [(a.domain, check) for a in analyzers if (check := a.object_check(ctx)) is not None]
     covered: dict[str, set[str]] = {d: set() for d in request.domains}
+    # What each task re-checks, and what has actually been checked: a cancelled run covers only the objects it
+    # reached, so the findings from earlier analyses stay for the rest.
+    task_domains: dict[int, tuple[str, ...]] = {}
+    analysed: dict[str, set[str]] = {d: set() for d in request.domains}
     if object_checks:
         for obj in ctx.html_objects():
             if obj.body is None:
                 continue  # block-editor pages: handled by the accessibility analyzer as manual checks
-            tasks.append(_object_task(ctx, obj, object_checks))
+            object_task = _object_task(ctx, obj, object_checks)
+            tasks.append(object_task)
+            task_domains[id(object_task)] = tuple(domain for domain, _ in object_checks)
             for domain, _ in object_checks:
                 covered[domain].add(obj.ref)
     for analyzer in analyzers:
         for task in analyzer.tasks(ctx):
             tasks.append(task)
+            task_domains[id(task)] = (analyzer.domain,)
             covered[analyzer.domain].update(task.objects)
     tasks = interleave(tasks)
 
@@ -157,6 +164,9 @@ async def run_analysis(job: JobContext, container: AppContainer, request: Analys
                             exc_info=not hasattr(exc, "code"))
                 progress.note(f"Kunne ikke analysere {task.item}")
             progress.finish(task.type, t0, failed=failed)
+            if not failed:
+                for domain in task_domains.get(id(task), ()):
+                    analysed[domain].update(task.objects)
             if drafts:
                 await asyncio.to_thread(store.save, run_id, request.course_id, drafts)
                 for draft in drafts:
@@ -174,13 +184,20 @@ async def run_analysis(job: JobContext, container: AppContainer, request: Analys
                 await close()
             except Exception:
                 log.debug("Kunne ikke lukke klient", exc_info=True)
+    for analyzer in analyzers:
+        finish = getattr(analyzer, "finish", None)
+        if finish is not None:
+            finish(ctx)  # limitations only known when every task has run (e.g. YouTube refused requests)
     if failures:
         ctx.limitations.append(f"{failures} element(er) kunne ikke analyseres. Se loggen for detaljer.")
     if status == "complete" and (failures or view.errors):
         status = "partial"
     ctx.limitations.append(GENERAL_LIMITATION)
 
-    counts = dict(progress.snapshot()["findings"])
+    # «Funn så langt» counted drafts as they came in. The result counts what was stored – unique findings after equal
+    # fingerprints are merged, open ones only – so Analysestatus says the same as the pages and Rapporter.
+    counts = await asyncio.to_thread(store.run_counts, run_id)
+    progress.set_findings(counts)
     with container.db.session() as session:
         row = session.get(AnalysisRun, run_id)
         assert row is not None
@@ -190,7 +207,7 @@ async def run_analysis(job: JobContext, container: AppContainer, request: Analys
         row.limitations = ctx.limitations
         row.scope = {"type": request.scope, "module_ids": request.module_ids,
                      "items": [i.model_dump() for i in request.items],
-                     "objects": {d: sorted(v) for d, v in covered.items()},
+                     "objects": {d: sorted(v) for d, v in (analysed if status == "cancelled" else covered).items()},
                      "links": list(ctx.shared.get("link_results", {}).values()),
                      "stats": {k: len(view.get(k)) for k in ("page", "assignment", "discussion", "quiz", "file",
                                                               "module", "module_item", "media")}}

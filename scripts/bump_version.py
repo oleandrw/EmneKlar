@@ -1,6 +1,7 @@
 """Set a new EmneKlar version everywhere it is recorded.
 
     python scripts/bump_version.py 0.2.0 [--date 2026-10-06] [--root <repo>]
+    python scripts/bump_version.py 0.2.0-rc.1          (a pre-release: alpha, beta or rc, with a number)
 
 Updates
   * VERSION (the single source of truth),
@@ -9,8 +10,14 @@ Updates
   * CHANGELOG.md: the content of "## [Unreleased]" moves under a new "## [0.2.0] – 2026-10-06" heading and
     an empty [Unreleased] section is left on top (compare links at the bottom are updated if present).
 
-The new version must be MAJOR.MINOR.PATCH (as tests/test_foundation.py requires) and greater than the current
-one. Every file is checked and prepared first; nothing is written unless all of them can be updated.
+A pre-release (``0.2.0-rc.1``) gets the same version in every file, but CHANGELOG.md is left as it is: the changes
+stay under [Unreleased] until the real release, and the release notes of the pre-release are that section
+(scripts/package_release.py). The tag ``v0.2.0-rc.1`` is published as a pre-release on GitHub, so only installations
+on the channel «Også forhåndsversjoner» are offered it.
+
+The new version must be MAJOR.MINOR.PATCH, optionally followed by -alpha.N, -beta.N or -rc.N, and greater than the
+current one (0.2.0-rc.1 < 0.2.0-rc.2 < 0.2.0, the order the updater uses). Every file is checked and prepared first;
+nothing is written unless all of them can be updated.
 """
 
 from __future__ import annotations
@@ -26,7 +33,12 @@ from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CORE_SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+sys.path.insert(0, str(ROOT / "backend"))  # emneklar.core.updates.version uses only the standard library
+
+from emneklar.core.updates.version import Version  # noqa: E402 - the same ordering as the updater
+
+# alpha, beta and rc are the pre-release names that are valid both as SemVer and as a Python package version.
+VERSION_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(alpha|beta|rc)\.(0|[1-9]\d*))?$")
 UNRELEASED = re.compile(r"^## \[Unreleased\][ \t]*$", re.IGNORECASE | re.MULTILINE)
 
 
@@ -34,11 +46,12 @@ class BumpError(Exception):
     pass
 
 
-def parse_version(text: str) -> tuple[int, int, int]:
-    match = CORE_SEMVER.match(text.strip())
-    if not match:
-        raise BumpError(f"«{text.strip()}» er ikke en gyldig versjon. Bruk formen MAJOR.MINOR.PATCH, f.eks. 1.4.2.")
-    return int(match.group(1)), int(match.group(2)), int(match.group(3))
+def parse_version(text: str) -> Version:
+    version = Version.parse(text.strip()) if VERSION_RE.match(text.strip()) else None
+    if version is None:
+        raise BumpError(f"«{text.strip()}» er ikke en gyldig versjon. Bruk formen MAJOR.MINOR.PATCH, f.eks. 1.4.2 – "
+                        "eller en forhåndsversjon som 1.5.0-rc.1 (alpha, beta eller rc med et nummer).")
+    return version
 
 
 def bump_pyproject(text: str, old: str, new: str) -> str:
@@ -126,7 +139,8 @@ def main(argv: list[str] | None = None) -> int:
     root: Path = args.root
     try:
         new = args.version.strip().removeprefix("v")
-        new_key = parse_version(new)
+        new_version = parse_version(new)
+        prerelease = new_version.pre is not None
         day = args.date or date.today().isoformat()
         try:
             date.fromisoformat(day)
@@ -136,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
             raise BumpError(f"Ugyldig dato «{day}». Bruk formen ÅÅÅÅ-MM-DD.")
         version_file = root / "VERSION"
         old = version_file.read_text(encoding="utf-8").strip()
-        if new_key <= parse_version(old):
+        if not parse_version(old) < new_version:
             raise BumpError(f"Ny versjon ({new}) må være høyere enn nåværende versjon ({old}).")
 
         changes: list[tuple[Path, str, str]] = [(version_file, f"{new}\n", "\n")]
@@ -148,8 +162,14 @@ def main(argv: list[str] | None = None) -> int:
                 text, newline = _read(path)
                 changes.append((path, bump_package_json(text, new, name=f"frontend/{name}"), newline))
         text, newline = _read(root / "CHANGELOG.md")
-        changelog, had_content = bump_changelog(text, old, new, day)
-        changes.append((root / "CHANGELOG.md", changelog, newline))
+        if prerelease:
+            # The changes stay under [Unreleased] until the real release; they are the pre-release's release notes.
+            if UNRELEASED.search(text) is None:
+                raise BumpError("CHANGELOG.md mangler overskriften «## [Unreleased]».")
+            had_content = True
+        else:
+            changelog, had_content = bump_changelog(text, old, new, day)
+            changes.append((root / "CHANGELOG.md", changelog, newline))
     except (BumpError, OSError, ValueError, KeyError) as exc:
         print(f"Feil: {exc}", file=sys.stderr)
         print("Ingen filer er endret.", file=sys.stderr)
@@ -160,7 +180,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Versjon {old} → {new}")
     for path, _content, _newline in changes:
         print(f"  oppdatert: {path.relative_to(root).as_posix()}")
-    if not had_content:
+    if prerelease:
+        print("Forhåndsversjon: CHANGELOG.md er ikke endret. Endringene står fortsatt under [Unreleased] og blir "
+              "utgivelsesnotatene. Taggen publiseres som forhåndsversjon på GitHub.")
+    elif not had_content:
         print("Advarsel: [Unreleased] i CHANGELOG.md var tom – skriv inn endringene under "
               f"«## [{new}] – {day}» før utgivelsen.")
     print(f"Neste steg: se over endringene (git diff), commit dem og lag taggen v{new}.")

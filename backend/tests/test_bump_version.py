@@ -102,6 +102,38 @@ def test_invalid_or_not_greater_versions_change_nothing(repo: Path, version: str
     assert {p: p.read_bytes() for p in repo.rglob("*") if p.is_file()} == before
 
 
+def test_a_pre_release_sets_the_version_everywhere_and_leaves_the_changelog(repo: Path,
+                                                                             capsys: pytest.CaptureFixture[str]) -> None:
+    old = current(repo)
+    final = next_minor(old)
+    changelog_before = (repo / "CHANGELOG.md").read_bytes()
+    assert bump.main([f"{final}-rc.1", "--root", str(repo)]) == 0
+    assert "Forhåndsversjon: CHANGELOG.md er ikke endret" in capsys.readouterr().out
+    assert current(repo) == f"{final}-rc.1"
+    assert tomllib.loads((repo / "backend" / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"] \
+        == f"{final}-rc.1"
+    assert json.loads((repo / "frontend" / "package.json").read_text(encoding="utf-8"))["version"] == f"{final}-rc.1"
+    assert (repo / "CHANGELOG.md").read_bytes() == changelog_before, "the changes stay under [Unreleased]"
+
+    # The order the updater uses: rc.1 < rc.2 < the release. Going back is refused.
+    assert bump.main([f"{final}-rc.1", "--root", str(repo)]) == 1
+    assert bump.main([f"{final}-beta.9", "--root", str(repo)]) == 1
+    assert bump.main([f"{final}-rc.2", "--root", str(repo)]) == 0
+    assert bump.main([final, "--date", "2026-10-06", "--root", str(repo)]) == 0
+    assert current(repo) == final
+    sections = changelog_sections(repo / "CHANGELOG.md", limit=10)
+    assert [s["version"] for s in sections] == [final, "0.1.0"]
+    assert "Oppdatering fra appen." in sections[0]["body"], "everything since the last release is in the release"
+    assert bump.main([f"{final}-rc.3", "--root", str(repo)]) == 1, "a pre-release of a version that is released"
+
+
+@pytest.mark.parametrize("version", ["9.0.0-rc", "9.0.0-rc1", "9.0.0-test.1", "9.0.0-rc.01", "9.0.0-RC.1", "9.0.0+build"])
+def test_only_alpha_beta_and_rc_with_a_number_are_pre_releases(repo: Path, version: str) -> None:
+    before = current(repo)
+    assert bump.main([version, "--root", str(repo)]) == 1
+    assert current(repo) == before
+
+
 def test_inconsistent_pyproject_is_refused(repo: Path) -> None:
     pyproject = repo / "backend" / "pyproject.toml"
     old = current(repo)

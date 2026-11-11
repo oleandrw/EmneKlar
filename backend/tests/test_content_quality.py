@@ -166,11 +166,41 @@ def test_content_quality_analysis(canvas_client: TestClient, fake_state: FakeCan
     assert "CQ-LINK-UNKNOWN" in by_rule, "403 is reported as «could not verify», not as dead"
     assert "CQ-MEDIA-UNAVAILABLE" in by_rule
     assert all(f["category_label"] for f in data["items"])
+    # The classes the area's rules can give: «Feil», but no «Sannsynlig feil» in Innholdskvalitet.
+    assert data["classifications"] == ["violation", "should_review", "improvement", "manual_check"]
     links = canvas_client.get(f"/api/courses/{COURSE_ID}/links").json()
     states = {link["url"]: link["state"] for link in links["links"]}
     assert states["https://www.example.org/plan"] == "WORKING"
     assert states["https://www.example.org/missing"] == "DEAD"
     assert fake_state.writes == []
+
+
+def test_each_area_names_the_classes_its_rules_give() -> None:
+    from emneklar.features.findings.api import domain_classifications
+
+    assert domain_classifications("accessibility") == ["violation", "likely_violation", "should_review",
+                                                       "improvement", "manual_check"]
+    assert domain_classifications("structure") == ["should_review", "improvement"]
+    assert "likely_violation" in domain_classifications("quiz")
+
+
+def test_internal_dead_links_are_listed_with_the_external_ones(canvas_client: TestClient) -> None:
+    analyse(canvas_client)
+    links = canvas_client.get(f"/api/courses/{COURSE_ID}/links").json()
+    internal = [row for row in links["links"] if row.get("kind") == "internal"]
+    # «gammel side» on Bildeformater links to a page that does not exist.
+    assert [row["url"] for row in internal] == ["/courses/101/pages/finnes-ikke"]
+    row = internal[0]
+    assert row["category"] == "broken" and row["state"] == "DEAD"
+    assert row["open_url"].endswith("/courses/101/pages/finnes-ikke")
+    assert row["title"] == "gammel side", "the link text, never made up"
+    assert [use["title"] for use in row["uses"]] == ["Bildeformater"] and row["uses"][0]["finding_id"]
+    broken = [r for r in links["links"] if r["category"] == "broken"]
+    assert links["summary"]["broken"] == len(broken) and len(broken) > len(internal), "external and internal together"
+    # Re-checking an external link keeps the internal ones in the totals.
+    again = canvas_client.post("/api/content-quality/recheck",
+                               json={"url": "https://www.example.org/missing", "course_id": COURSE_ID}).json()
+    assert again["summary"]["broken"] == links["summary"]["broken"]
 
 
 def test_dead_link_fix_replace_and_unlink(canvas_client: TestClient, fake_state: FakeCanvasState) -> None:

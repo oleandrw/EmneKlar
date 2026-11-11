@@ -716,7 +716,8 @@ def test_youtube_captions_fall_back_to_any_language_and_explain_failures(monkeyp
     calls = len(FakeYouTubeApi.calls)
     monkeypatch.setitem(__import__("sys").modules, "youtube_transcript_api", None)  # package missing
     _, reason = _youtube(_online_state(tmp_path / "c"), "norsk")
-    assert isinstance(reason, Waiting) and "update.bat" in reason and len(FakeYouTubeApi.calls) == calls
+    assert isinstance(reason, Waiting) and "mangler i denne installasjonen" in reason
+    assert "update.bat" not in reason and len(FakeYouTubeApi.calls) == calls
 
 
 def test_handler_version_retries_only_that_kind(monkeypatch: pytest.MonkeyPatch) -> None:

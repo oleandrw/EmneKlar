@@ -66,3 +66,47 @@ export function relativeTime(value: string | null | undefined): string {
 export function plural(count: number, one: string, many: string): string {
   return `${formatNumber(count)} ${count === 1 ? one : many}`;
 }
+
+const dayMonth = new Intl.DateTimeFormat("nb-NO", { day: "numeric", month: "long" });
+const dayMonthYear = new Intl.DateTimeFormat("nb-NO", { day: "numeric", month: "long", year: "numeric" });
+const hourMinute = new Intl.DateTimeFormat("nb-NO", { hour: "2-digit", minute: "2-digit" });
+
+/** «6. november kl. 15.42» (with the year when it is not this year) – when results are from, in running text. */
+export function formatWhen(value: string | null | undefined, now: Date = new Date()): string {
+  if (!value) return "–";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "–";
+  const day = (date.getFullYear() === now.getFullYear() ? dayMonth : dayMonthYear).format(date);
+  return `${day} kl. ${clock(date)}`;
+}
+
+/** «kl. 15.42» today, otherwise «6. november kl. 15.42». */
+export function formatWhenShort(value: string | null | undefined, now: Date = new Date()): string {
+  if (!value) return "–";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "–";
+  return date.toDateString() === now.toDateString() ? `kl. ${clock(date)}` : formatWhen(value, now);
+}
+
+function clock(date: Date): string {
+  return hourMinute.format(date).replace(":", ".");
+}
+
+const dayMonthShort = new Intl.DateTimeFormat("nb-NO", { day: "numeric", month: "short" });
+const dayMonthShortYear = new Intl.DateTimeFormat("nb-NO", { day: "numeric", month: "short", year: "numeric" });
+
+/** «6. nov.» (with the year when it is not this year) – compact dates on cards. */
+export function formatShortDate(value: string | null | undefined, now: Date = new Date()): string {
+  if (!value) return "–";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "–";
+  return (date.getFullYear() === now.getFullYear() ? dayMonthShort : dayMonthShortYear).format(date);
+}
+
+/** «6. nov. kl. 15.42» – compact date and time on cards and in the page header. */
+export function formatShortWhen(value: string | null | undefined, now: Date = new Date()): string {
+  if (!value) return "–";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "–";
+  return `${formatShortDate(value, now)} kl. ${hourMinute.format(date).replace(":", ".")}`;
+}

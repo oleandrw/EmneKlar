@@ -60,6 +60,11 @@ class CourseData:
     blueprint_template: dict[str, Any] | None = None
     subscriptions: list[dict[str, Any]] = field(default_factory=list)
     restrictions: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
+    # Associated (child) course: content locked by the Blueprint course – Canvas refuses edits of it here.
+    child_locks: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
+    associated: list[str] = field(default_factory=list)  # Blueprint course: ids of the associated courses
+    unsynced: list[dict[str, Any]] = field(default_factory=list)  # Blueprint course: changes since the last sync
+    migrations: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass
@@ -295,6 +300,113 @@ def seed_state(origin: str = "http://canvas.test") -> FakeCanvasState:
     return state
 
 
+PNG_1X1 = bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010806000000"
+                        "1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082")
+CHILD_COURSE_ID = "104"
+LOCKED = {"content": True, "points": False, "due_dates": False, "availability_dates": False}
+
+
+def add_blueprint_child(state: FakeCanvasState) -> CourseData:
+    """An associated course (104) that gets content from the Blueprint course (102): the page «Malressurser» is locked
+    there (Canvas refuses edits: «locked by Master Course»); «Lokal side» is the course's own content."""
+    bp = state.courses[BLUEPRINT_COURSE_ID]
+    master_body = ("<h2>Ressurser</h2><p>Se <a href=\"https://www.example.org/missing\">ressurslisten</a> før første "
+                   "samling.</p><p><img src=\"/courses/102/files/9104/preview\"></p>")
+    bp.pages["mal-ressurser"]["body"] = master_body
+    bp.restrictions[("wiki_page", bp.pages["mal-ressurser"]["page_id"])] = {"restricted": True, "restrictions": LOCKED}
+    bp.associated = [CHILD_COURSE_ID]
+    bp.files["9104"] = {"id": "9104", "display_name": "samling.png", "filename": "samling.png",
+                        "content-type": "image/png", "size": len(PNG_1X1),
+                        "url": f"{state.origin}/files/9104/download?download_frd=1", "folder_id": "2",
+                        "created_at": "2026-08-01T10:00:00Z", "updated_at": "2026-08-01T10:00:00Z"}
+    state.file_bytes["9104"] = (PNG_1X1, "image/png")
+    child = CourseData(course={
+        "id": CHILD_COURSE_ID, "name": "Digital kompetanse – kull 2026", "course_code": "DIG-26",
+        "workflow_state": "available", "default_view": "modules", "blueprint": False,
+        "term": {"id": "7", "name": "Høst 2026"},
+        "enrollments": [{"type": "teacher", "role": "TeacherEnrollment", "enrollment_state": "active"}]})
+    child.permissions = dict(bp.permissions)
+    locked_page = _page("mal-ressurser", "Malressurser", master_body.replace("/courses/102/files/9104",
+                                                                             "/courses/104/files/9204"))
+    locked_page["html_url"] = "/courses/104/pages/mal-ressurser"
+    local = _page("lokal-side", "Lokal side", "<h2>Lokalt</h2><p>Les <a href=\"https://www.example.org/missing\">"
+                                              "den gamle lenken</a>.</p>")
+    local["html_url"] = "/courses/104/pages/lokal-side"
+    child.pages = {"mal-ressurser": locked_page, "lokal-side": local}
+    for p in child.pages.values():
+        child.revisions[p["url"]] = [{"revision_id": 1, "updated_at": p["updated_at"], "latest": True,
+                                      "title": p["title"], "body": p["body"]}]
+    child.child_locks = {("wiki_page", locked_page["page_id"]): LOCKED}
+    child.files["9204"] = {**bp.files["9104"], "id": "9204",
+                           "url": f"{state.origin}/files/9204/download?download_frd=1"}
+    state.file_bytes["9204"] = (PNG_1X1, "image/png")
+    child.modules = [{"id": "2101", "name": "Uke 1", "position": 1, "require_sequential_progress": False,
+                      "requirement_type": "all", "prerequisite_module_ids": [], "published": True, "unlock_at": None,
+                      "items": [{"id": "21001", "title": "Malressurser", "type": "Page", "page_url": "mal-ressurser",
+                                 "position": 1, "indent": 0, "published": True, "completion_requirement": None,
+                                 "html_url": "/courses/104/modules/items/21001"},
+                                {"id": "21002", "title": "Lokal side", "type": "Page", "page_url": "lokal-side",
+                                 "position": 2, "indent": 0, "published": True, "completion_requirement": None,
+                                 "html_url": "/courses/104/modules/items/21002"}]}]
+    child.subscriptions = [{"id": "1", "template_id": "1", "blueprint_course": {
+        "id": BLUEPRINT_COURSE_ID, "name": bp.course["name"], "course_code": bp.course["course_code"],
+        "term_name": "Standardsemester"}}]
+    state.courses[CHILD_COURSE_ID] = child
+    return child
+
+
+def fake_youtube_lookup(video_id: str) -> Any:
+    """Caption status of the fake course's YouTube videos without contacting YouTube (dev server, e2e)."""
+    from emneklar.features.accessibility.youtube_captions import CaptionInfo
+
+    known = {"dQw4w9WgXcQ": CaptionInfo("auto", ["en"])}
+    return known.get(video_id, CaptionInfo("manual", ["nb"]))
+
+
+def add_demo_data(state: FakeCanvasState, *, images: int = 24, links: int = 8) -> None:
+    """A large page for trying the workflow locally: many images without alt text, dead links and several findings on
+    one page (dev server only)."""
+    c = state.courses[COURSE_ID]
+    themes = ("regelen om tredjedeler", "komplementærfarger", "ledende linjer")
+    parts = ["<h2>Bildegalleri</h2><p>Bildene viser eksempler på komposisjon og fargebruk fra kurset.</p>"]
+    for n in range(1, images + 1):
+        fid = str(9300 + n)
+        c.files[fid] = {"id": fid, "display_name": f"eksempel-{n}.png", "filename": f"eksempel-{n}.png",
+                        "content-type": "image/png", "size": len(PNG_1X1),
+                        "url": f"{state.origin}/files/{fid}/download?download_frd=1", "folder_id": "1",
+                        "created_at": "2026-08-01T10:00:00Z", "updated_at": "2026-08-01T10:00:00Z"}
+        state.file_bytes[fid] = (PNG_1X1, "image/png")
+        parts.append(f"<h3>Eksempel {n}</h3><p>Eksempel {n} viser {themes[n % 3]}.</p>"
+                     f"<p><img src=\"/courses/101/files/{fid}/preview\"></p>")
+    for n in range(1, links + 1):
+        parts.append(f"<p>Les mer i <a href=\"https://www.example.org/missing\">artikkel {n}</a>.</p>")
+    page = _page("bildegalleri", "Bildegalleri", "".join(parts))
+    c.pages["bildegalleri"] = page
+    c.revisions["bildegalleri"] = [{"revision_id": 1, "updated_at": page["updated_at"], "latest": True,
+                                    "title": page["title"], "body": page["body"]}]
+    c.modules[1]["items"].append({"id": "1014", "title": "Bildegalleri", "type": "Page", "page_url": "bildegalleri",
+                                  "position": 5, "indent": 0, "published": True, "completion_requirement": None,
+                                  "html_url": "/courses/101/modules/items/1014"})
+    # Media of every kind: an audio recording (1.2.1, with a possible transcript next to it) and a recording whose
+    # kind Canvas does not state (manual check – the teacher says what it is).
+    c.media_objects.append({"media_id": "m-intervju", "title": "Intervju", "media_type": "audio", "media_tracks": []})
+    c.files["9400"] = {"id": "9400", "display_name": "intervju.m4a", "filename": "intervju.m4a",
+                       "content-type": "audio/mp4", "size": 10, "media_entry_id": "m-intervju",
+                       "url": f"{state.origin}/files/9400/download", "folder_id": "1"}
+    body = ('<h2>Intervju med en fotograf</h2><p><iframe title="Lydopptak: Intervju" data-media-type="audio" '
+            'data-media-id="m-intervju" src="/media_attachments_iframe/9400?type=audio&amp;embedded=true"></iframe></p>'
+            '<p><a href="/courses/101/files/9004/download">Transkripsjon av intervjuet</a></p>'
+            '<h2>Opptak fra feltarbeid</h2><p><video class="instructure_inline_media_comment" '
+            'data-media_comment_id="m-felt" controls></video></p>')
+    media_page = _page("lyd-og-opptak", "Lyd og opptak", body)
+    c.pages["lyd-og-opptak"] = media_page
+    c.revisions["lyd-og-opptak"] = [{"revision_id": 1, "updated_at": media_page["updated_at"], "latest": True,
+                                     "title": media_page["title"], "body": media_page["body"]}]
+    c.modules[1]["items"].append({"id": "1015", "title": "Lyd og opptak", "type": "Page", "page_url": "lyd-og-opptak",
+                                  "position": 6, "indent": 0, "published": True, "completion_requirement": None,
+                                  "html_url": "/courses/101/modules/items/1015"})
+
+
 # ------------------------------------------------------------------------------------- the app
 
 
@@ -402,7 +514,12 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
         raise _Http(404, "page not found")
 
     def with_locks(c: CourseData, content_type: str, items: list[dict[str, Any]], key: str = "id") -> list[dict[str, Any]]:
-        """Blueprint courses report lock status on list calls (like Canvas)."""
+        """Blueprint and associated courses report lock status on list calls (like Canvas)."""
+        if c.subscriptions:
+            return [{**item, "is_master_course_child_content": True,
+                     "restricted_by_master_course": (content_type, str(item.get(key))) in c.child_locks,
+                     "master_course_restrictions": c.child_locks.get((content_type, str(item.get(key))))}
+                    for item in items]
         if c.blueprint_template is None:
             return items
         result = []
@@ -444,11 +561,32 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
         items = [page_json(p, include_body) for p in sorted(c.pages.values(), key=lambda p: p["title"])]
         return paginate(request, with_locks(c, "wiki_page", items, key="page_id"))
 
+    def refuse_locked(c: CourseData, content_type: str, ident: str, data: dict[str, Any],
+                      fields: tuple[str, ...]) -> Response | None:
+        """Like canvas-lms MasterCourses::Restrictor: locked columns cannot change in an associated course."""
+        lock = c.child_locks.get((content_type, ident))
+        if lock and lock.get("content") and any(f in data for f in fields):
+            return err(400, f"cannot change column(s): {', '.join(f for f in fields if f in data)} - locked by "
+                            "Master Course")
+        return None
+
+    def note_unsynced(c: CourseData, asset_type: str, ident: str, name: str, html_url: str | None) -> None:
+        if c.blueprint_template is None:
+            return
+        c.unsynced = [u for u in c.unsynced if (u["asset_type"], u["asset_id"]) != (asset_type, ident)]
+        lock = c.restrictions.get((asset_type, ident))
+        c.unsynced.append({"asset_id": ident, "asset_type": asset_type, "asset_name": name, "change_type": "updated",
+                           "html_url": html_url, "locked": bool(lock and lock.get("restricted")), "exceptions": []})
+
     async def page(request: Request) -> Response:
         c = course(request)
         p = page_by_ref(c, request.path_params["ref"])
         if request.method == "PUT":
             data = (await body(request)).get("wiki_page", {})
+            refused = refuse_locked(c, "wiki_page", p["page_id"], data, ("body", "title"))
+            if refused is not None:
+                return refused
+            note_unsynced(c, "wiki_page", p["page_id"], p["title"], p.get("html_url"))
             if data.get("front_page") is True and not data.get("published", p["published"]):
                 return err(400, "The front page cannot be unpublished")
             if state.sanitize_pages and "body" in data:
@@ -856,7 +994,46 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
         c = course(request)
         if c.blueprint_template is None:
             return err(404, "The specified resource does not exist.")
-        return paginate(request, [])
+        return paginate(request, list(c.unsynced))
+
+    async def associated_courses(request: Request) -> Response:
+        c = course(request)
+        if c.blueprint_template is None:
+            return err(404, "The specified resource does not exist.")
+        return paginate(request, [copy.deepcopy(state.courses[cid].course) for cid in c.associated
+                                  if cid in state.courses])
+
+    async def migrations(request: Request) -> Response:
+        """Begin a sync: Blueprint pages are copied to the associated courses (course and file ids rewritten)."""
+        c = course(request)
+        if c.blueprint_template is None:
+            return err(404, "The specified resource does not exist.")
+        data = await body(request)
+        mid = next_id()
+        source = c.course["id"]
+        for cid in c.associated:
+            child = state.courses.get(cid)
+            if child is None:
+                continue
+            for slug, page_data in c.pages.items():
+                target = child.pages.get(slug)
+                if target is None:
+                    continue
+                synced = str(page_data.get("body") or "").replace(f"/courses/{source}/", f"/courses/{cid}/")
+                target["body"] = synced.replace("/files/9104/", "/files/9204/")
+                target["updated_at"] = now()
+        c.migrations[mid] = {"id": mid, "template_id": c.blueprint_template["id"], "workflow_state": "queued",
+                             "comment": data.get("comment"), "created_at": now(), "user_id": state.user["id"]}
+        c.unsynced = []
+        return JSONResponse(c.migrations[mid])
+
+    async def migration(request: Request) -> Response:
+        c = course(request)
+        found = c.migrations.get(request.path_params["mig"])
+        if found is None:
+            return err(404, "not found")
+        found["workflow_state"] = "completed"  # the fake finishes as soon as someone asks
+        return JSONResponse(found)
 
     async def subscriptions(request: Request) -> Response:
         return JSONResponse(course(request).subscriptions)
@@ -900,6 +1077,9 @@ def create_fake_canvas(state: FakeCanvasState | None = None) -> Any:
         Route("/api/v1/courses/{cid}/blueprint_templates/default", blueprint),
         Route("/api/v1/courses/{cid}/blueprint_templates/default/restrict_item", restrict_item, methods=["PUT"]),
         Route("/api/v1/courses/{cid}/blueprint_templates/default/unsynced_changes", unsynced),
+        Route("/api/v1/courses/{cid}/blueprint_templates/default/associated_courses", associated_courses),
+        Route("/api/v1/courses/{cid}/blueprint_templates/default/migrations", migrations, methods=["POST"]),
+        Route("/api/v1/courses/{cid}/blueprint_templates/default/migrations/{mig}", migration),
         Route("/api/v1/courses/{cid}/blueprint_subscriptions", subscriptions),
     ]
     async def http_error(_request: Request, exc: Exception) -> Response:

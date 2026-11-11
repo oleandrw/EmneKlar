@@ -8,16 +8,20 @@ from emneklar.features.accessibility.checks.embeds import check_iframes, check_m
 from emneklar.features.accessibility.checks.images import check_images
 from emneklar.features.accessibility.checks.language import check_language
 from emneklar.features.accessibility.checks.structure import check_headings, check_links, check_lists, check_tables
+from emneklar.features.accessibility.media_kinds import MediaKind
 
 HTML_CHECKS = (check_images, check_headings, check_links, check_tables, check_lists, check_language,
                check_contrast, check_iframes, check_markup)
 
 
-def run_html_checks(doc: ContentDoc, media_captions: dict[str, bool | None] | None = None) -> list[Issue]:
+def run_html_checks(doc: ContentDoc, media_captions: dict[str, bool | None] | None = None,
+                    youtube_captions: dict[str, str | None] | None = None, *,
+                    media_kinds: dict[str, MediaKind] | None = None,
+                    assessed: dict[str, str] | None = None) -> list[Issue]:
     issues: list[Issue] = []
     for check in HTML_CHECKS:
         issues.extend(check(doc))
-    issues.extend(check_media(doc, media_captions))
+    issues.extend(check_media(doc, media_captions, youtube_captions, media_kinds=media_kinds, assessed=assessed))
     return issues
 
 

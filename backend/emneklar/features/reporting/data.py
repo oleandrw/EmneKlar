@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from emneklar.core.container import AppContainer
 from emneklar.core.storage.models import Finding, Snapshot, SnapshotObject
-from emneklar.features.findings.api import category_label
+from emneklar.features.findings.api import category_label, decision_info
 from emneklar.features.findings.store import FindingStore
 
 REPORT_TYPES: dict[str, tuple[str, tuple[str, ...]]] = {
@@ -25,6 +25,17 @@ DOMAIN_LABELS = {"accessibility": "Universell utforming", "content_quality": "In
 CLASS_LABELS = {"violation": "Avvik", "likely_violation": "Sannsynlig avvik", "should_review": "Bør vurderes",
                 "improvement": "Forbedringsforslag", "manual_check": "Manuell kontroll"}
 CLASS_ORDER = list(CLASS_LABELS)
+#: «Avvik» is a breach of a universal-design success criterion; the other areas report «feil» (a dead link, a wrong
+#: answer key). The summary table spans every area, so its headings name both.
+ERROR_LABELS = {"violation": "Feil", "likely_violation": "Sannsynlig feil"}
+SUMMARY_LABELS = {**CLASS_LABELS, "violation": "Avvik / feil", "likely_violation": "Sannsynlig avvik / feil"}
+
+
+def class_label(classification: str, domain: str | None) -> str:
+    """The class in the words of the area: «Avvik» only in universal design."""
+    if domain != "accessibility" and classification in ERROR_LABELS:
+        return ERROR_LABELS[classification]
+    return CLASS_LABELS.get(classification, "")
 METHOD_LABELS = {"deterministic": "Deterministisk", "heuristic": "Heuristisk", "ai": "KI-assistert",
                  "manual": "Manuell"}
 SEVERITY_LABELS = {"critical": "Kritisk", "serious": "Alvorlig", "moderate": "Moderat", "minor": "Lav",
@@ -33,7 +44,8 @@ LEGAL_LABELS = {"required": "Lovkrav i valgt profil", "conditional": "Lovkrav un
                 "not_required": "Ikke lovkrav i valgt profil", "best_practice": "Anbefalt praksis",
                 "none": "Ikke knyttet til et krav"}
 SCOPE_LABELS = {"course": "Hele emnet", "modules": "Valgte moduler", "items": "Enkeltelementer"}
-STATUS_LABELS = {"open": "Åpen", "staged": "I endringskøen", "fixed": "Rettet", "ignored": "Ignorert"}
+STATUS_LABELS = {"open": "Åpen", "staged": "I endringskøen", "fixed": "Rettet", "ignored": "Ignorert",
+                 "verified": "Kontrollert"}
 DISCLAIMER = ("Rapporten viser resultatet av automatiske og delvis automatiske kontroller på tidspunktet for analysen. "
               "Den er ikke en erklæring eller sertifisering av at emnet oppfyller krav til universell utforming. "
               "Funn merket «Manuell kontroll» og «Bør vurderes» må vurderes av et menneske, og mange krav kan bare "
@@ -50,13 +62,14 @@ class DomainReport:
     manual: list[dict[str, Any]] = field(default_factory=list)
     fixed: list[dict[str, Any]] = field(default_factory=list)
     ignored: list[dict[str, Any]] = field(default_factory=list)
+    verified: list[dict[str, Any]] = field(default_factory=list)  # confirmed by the teacher (manual checks)
     limitations: list[str] = field(default_factory=list)
     rulesets: list[str] = field(default_factory=list)
 
     @property
     def counts(self) -> dict[str, int]:
         by_class = {c: sum(1 for f in self.remaining + self.manual if f["classification"] == c) for c in CLASS_ORDER}
-        return {**by_class, "fixed": len(self.fixed), "ignored": len(self.ignored)}
+        return {**by_class, "fixed": len(self.fixed), "ignored": len(self.ignored), "verified": len(self.verified)}
 
 
 @dataclass
@@ -76,10 +89,10 @@ class ReportData:
         return sorted({r["id"] for d in self.domains for r in d.runs})
 
 
-def _finding(row: Finding, profile: Any) -> dict[str, Any]:
+def _finding(row: Finding, profile: Any, decision: dict[str, Any] | None = None) -> dict[str, Any]:
     data: dict[str, Any] = {
         "id": row.id, "domain": row.domain, "rule_id": row.rule_id, "title": row.title, "message": row.message,
-        "classification": row.classification, "classification_label": CLASS_LABELS.get(row.classification, ""),
+        "classification": row.classification, "classification_label": class_label(row.classification, row.domain),
         "severity_label": SEVERITY_LABELS.get(row.severity, row.severity), "test_method": row.test_method,
         "method_label": METHOD_LABELS.get(row.test_method, row.test_method),
         "category_label": category_label(row.domain, row.category), "object_type": row.object_type,
@@ -87,6 +100,7 @@ def _finding(row: Finding, profile: Any) -> dict[str, Any]:
         "module": (row.location or {}).get("module"), "remediation": row.remediation or "", "status": row.status,
         "status_label": STATUS_LABELS.get(row.status, row.status), "criteria": [], "legal_label": "",
         "confidence": row.confidence,
+        "decision_label": (decision or {}).get("label") or "", "decision_note": (decision or {}).get("note") or "",
     }
     if row.domain == "accessibility" and profile is not None:
         from emneklar.features.accessibility.profiles import legal_status
@@ -133,17 +147,20 @@ def collect(c: AppContainer, course_id: str, report_type: str) -> ReportData:
                 report.limitations.append("En av analysene ble ikke fullført, så resultatene kan være ufullstendige.")
         report.limitations = list(dict.fromkeys(report.limitations))
         report.rulesets = sorted({str(r.ruleset_version) for r in runs if r.ruleset_version})
+        decisions = store.decisions(r.fingerprint for r in rows if r.status in ("ignored", "verified"))
         for row in rows:
-            item = _finding(row, profile)
+            item = _finding(row, profile, decision_info(row, decisions.get(row.fingerprint)))
             if row.status == "fixed":
                 report.fixed.append(item)
             elif row.status == "ignored":
                 report.ignored.append(item)
+            elif row.status == "verified":
+                report.verified.append(item)
             elif row.classification == "manual_check":
                 report.manual.append(item)
             else:
                 report.remaining.append(item)
-        for bucket in (report.remaining, report.manual, report.fixed, report.ignored):
+        for bucket in (report.remaining, report.manual, report.fixed, report.ignored, report.verified):
             bucket.sort(key=_sort_key)
         reports.append(report)
     name, code = _course_name(c, course_id)

@@ -11,10 +11,10 @@ import { SetupWizard } from "./features/setup/SetupWizard";
 // Feature pages are loaded on demand, so the first screen appears quickly.
 const AccessibilityPage = lazy(() => import("./features/accessibility/AccessibilityPage").then((m) => ({ default: m.AccessibilityPage })));
 const CanvasToolsPage = lazy(() => import("./features/canvas-tools/CanvasToolsPage").then((m) => ({ default: m.CanvasToolsPage })));
+const CourseDesignPage = lazy(() => import("./features/course-design/CourseDesign").then((m) => ({ default: m.CourseDesignPage })));
 const ContentQualityPage = lazy(() => import("./features/content-quality/ContentQualityPage").then((m) => ({ default: m.ContentQualityPage })));
 const CourseStructurePage = lazy(() => import("./features/course-structure/CourseStructurePage").then((m) => ({ default: m.CourseStructurePage })));
 const HelpPage = lazy(() => import("./features/help/HelpPage").then((m) => ({ default: m.HelpPage })));
-const HomepageBuilderPage = lazy(() => import("./features/homepage/HomepageBuilderPage").then((m) => ({ default: m.HomepageBuilderPage })));
 const QuizAssistantPage = lazy(() => import("./features/quiz-assistant/QuizAssistantPage").then((m) => ({ default: m.QuizAssistantPage })));
 const ReportsPage = lazy(() => import("./features/reports/ReportsPage").then((m) => ({ default: m.ReportsPage })));
 const SettingsPage = lazy(() => import("./features/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
@@ -25,7 +25,7 @@ const START_PATHS: Record<string, string> = {
   innholdskvalitet: "/innholdskvalitet",
   emnestruktur: "/emnestruktur",
   quizassistent: "/quizassistent",
-  emneforside: "/emneforside",
+  emnedesign: "/emnedesign",
   "canvas-verktoy": "/canvas-verktoy",
   rapporter: "/rapporter",
 };
@@ -70,7 +70,7 @@ export function AppRoutes() {
               <Route path="innholdskvalitet" element={<ContentQualityPage />} />
               <Route path="emnestruktur" element={<CourseStructurePage />} />
               <Route path="quizassistent/*" element={<QuizAssistantPage />} />
-              <Route path="emneforside" element={<HomepageBuilderPage />} />
+              <Route path="emnedesign" element={<CourseDesignPage />} />
               <Route path="canvas-verktoy/*" element={<CanvasToolsPage />} />
               <Route path="rapporter" element={<ReportsPage />} />
               <Route path="innstillinger/:section?" element={<SettingsPage />} />

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 
 import { api } from "../../core/api/client";
 import type { Job } from "../../core/api/types";
+import { JOBS_LIST_KEY, upsertJob } from "../../core/jobs";
+import { newerJob } from "../../core/jobs-model";
 
 export const FINAL_STATUSES = new Set(["completed", "failed", "cancelled", "interrupted"]);
 
@@ -26,10 +28,12 @@ export function useJob(jobId: string | null) {
     const source = new EventSource(`/api/jobs/${jobId}/events`);
     source.addEventListener("job", (event) => {
       const job = JSON.parse((event as MessageEvent<string>).data) as Job;
-      client.setQueryData(["jobs", jobId], job);
+      // The same snapshot goes into the shared job list, so «Analysestatus» and the page agree.
+      client.setQueryData<Job>(["jobs", jobId], (old) => newerJob(old, job));
+      upsertJob(client, job);
       if (FINAL_STATUSES.has(job.status)) {
         source.close();
-        void client.invalidateQueries({ queryKey: ["jobs", "active"] });
+        void client.invalidateQueries({ queryKey: JOBS_LIST_KEY });
       }
     });
     source.onerror = () => {

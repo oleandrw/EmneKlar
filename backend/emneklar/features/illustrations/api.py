@@ -138,7 +138,6 @@ async def status(course_id: str, c: AppContainer = Depends(get_container)) -> di
         "image_providers": image_providers(c),
         "design": profiles_store.active(course_id), "design_versions": profiles_store.versions(course_id)[:10],
         "runs": [_truthful(c, r) for r in _store(c).runs(course_id, limit=10)], "busy_job": _busy(c, course_id),
-        "dry_run": c.is_dry_run(),
         "text_models": [{"ref": f"{m['provider_id']}/{m['model_id']}", "display_name": m["display_name"],
                          "provider_id": m["provider_id"], "vision": m["vision"]}
                         for m in c.ai.registry.list() if m["enabled"] and m["capabilities_known"]],
@@ -910,7 +909,7 @@ async def publish_preview(run_id: int, body: PublishBody, c: AppContainer = Depe
                                          "caption": i["caption"] if i["caption_enabled"] else None,
                                          "thumb_url": i["thumb_url"]} for i in items]})
     course = await CanvasAPI(c.canvas()).get_course(run["course_id"], include=())
-    return {"pages": pages, "folder": folder, "dry_run": c.is_dry_run(),
+    return {"pages": pages, "folder": folder,
             "usage_rights_required": bool(course.get("usage_rights_required")),
             "note": ("Bildene lastes opp til Canvas-filene i mappen «" + folder + "», og figurene settes inn mellom "
                      "avsnittene. Eksisterende tekst endres ikke, og sidens publiseringsstatus beholdes.")}
@@ -940,7 +939,7 @@ async def publish(run_id: int, body: PublishBody, c: AppContainer = Depends(get_
         ids = [ch["id"] for ch in changes]
         c.changes.approve(ids)
         job = c.changes.submit_apply(ids, confirm_high_risk=body.confirm_high_risk, course_id=run["course_id"]).public()
-    return {"changes": changes, "errors": errors, "job": job, "dry_run": c.is_dry_run()}
+    return {"changes": changes, "errors": errors, "job": job}
 
 
 class UndoBody(BaseModel):

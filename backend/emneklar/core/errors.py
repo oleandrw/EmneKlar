@@ -15,12 +15,13 @@ MESSAGES: dict[str, str] = {
     "internal_error": "Noe gikk galt i EmneKlar. Prøv igjen, eller se loggen for detaljer.",
     "validation_error": "Forespørselen inneholdt ugyldige verdier.",
     "not_found": "Fant ikke det du lette etter.",
+    "method_not_allowed": "Denne handlingen støttes ikke på denne adressen.",
     "conflict": "Handlingen kan ikke utføres i nåværende tilstand.",
     "confirmation_required": "Handlingen må bekreftes før den kan utføres.",
     "feature_disabled": "Denne funksjonen er slått av under Innstillinger → Avanserte innstillinger.",
     "unsupported": "Dette støttes ikke.",
     # Local web security
-    "session_required": "Økten er ikke gyldig. Start EmneKlar på nytt med start.bat.",
+    "session_required": "Økten er ikke gyldig. Start EmneKlar på nytt fra Start-menyen (eller med start.bat).",
     "csrf_failed": "Sikkerhetskontrollen for forespørselen feilet. Last siden på nytt.",
     "origin_rejected": "Forespørselen kom fra en ukjent nettside og ble avvist.",
     "host_rejected": "Forespørselen brukte en ukjent vertsadresse og ble avvist.",
@@ -31,13 +32,16 @@ MESSAGES: dict[str, str] = {
     "canvas_url_invalid": "Canvas-adressen ser ikke gyldig ut. Bruk for eksempel https://hiof.instructure.com.",
     "canvas_token_missing": "Canvas API-token mangler. Legg det inn under Innstillinger → Canvas-tilkobling.",
     "canvas_token_invalid": "Canvas avviste tokenet. Det kan være utløpt, slettet eller skrevet inn feil.",
+    "canvas_token_other_url": "Tokenet som er lagret, hører til en annen Canvas-adresse. Lim inn et tilgangstoken for "
+                              "den nye adressen.",
+    "canvas_identity_changed": "Tokenet hører nå til en annen Canvas-bruker enn den du bekreftet. Ingenting er lagret – "
+                               "test tilkoblingen på nytt.",
     "canvas_forbidden": "Du mangler tilgang til dette i Canvas.",
     "canvas_not_found": "Canvas fant ikke ressursen. Den kan være slettet eller skjult.",
     "canvas_rate_limited": "Canvas ber EmneKlar vente litt (for mange forespørsler). Prøv igjen om et øyeblikk.",
     "canvas_unavailable": "Canvas svarte ikke. Kontroller nettverket og prøv igjen.",
     "canvas_error": "Canvas returnerte en feil.",
     "canvas_write_blocked": "Endringer i Canvas kan bare gjøres gjennom endringskøen.",
-    "dry_run_active": "Dry run er slått på. Ingen endringer sendes til Canvas.",
     "course_required": "Velg et emne først.",
     "course_not_found": "Fant ikke emnet. Du har kanskje ikke tilgang lenger.",
     "snapshot_missing": "Det finnes ingen analyse av emnet ennå. Kjør en analyse først.",
@@ -51,7 +55,9 @@ MESSAGES: dict[str, str] = {
     "change_not_editable": "Denne endringen kan ikke redigeres.",
     "change_conflict": "Innholdet er endret i Canvas etter at forslaget ble laget. Se over forslaget på nytt.",
     "change_state_invalid": "Endringen har en status som ikke tillater denne handlingen.",
+    "update_source_confirmation_required": "Et annet oppdateringsrepository enn standardkilden må bekreftes.",
     "change_requires_confirmation": "Endringen har høy risiko og må bekreftes eksplisitt.",
+    "publish_running": "En publisering til Canvas pågår allerede. Vent til den er ferdig.",
     "undo_not_possible": "Denne endringen kan ikke angres automatisk.",
     "undo_conflict": "Innholdet er endret etter at endringen ble gjort. Angring ville overskrevet nyere arbeid.",
     # Secrets
@@ -90,8 +96,8 @@ MESSAGES: dict[str, str] = {
     "rag_nothing_selected": "Velg minst én kildetype, og minst én modul hvis du har valgt «Valgte moduler».",
     "rag_download_required": "Lokale modeller må lastes ned første gang. Bekreft nedlastingen før du starter.",
     "rag_local_models_missing": (
-        "Lokale modeller er ikke installert. Lukk EmneKlar, kjør setup.bat på nytt og svar «j» på spørsmålet om "
-        "lokale modeller."
+        "Lokale modeller følger ikke med EmneKlar. Velg en KI-leverandør for semantisk søk eller transkripsjon i "
+        "innstillingene for kunnskapsbasen, eller bruk nøkkelordsøk og eksisterende teksting."
     ),
     "rag_query_empty": "Skriv et spørsmål.",
     # KI-bildeassistent

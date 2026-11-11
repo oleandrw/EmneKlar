@@ -8,7 +8,7 @@ import { AiConsent, AiNotConfigured, useAiConfigured, type AiPlan } from "../../
 import type { Finding } from "../../core/api/types";
 import { useCurrentCourse } from "../../core/course";
 import { formatNumber } from "../../core/format";
-import { CLASSIFICATION } from "../../core/labels";
+import { classificationFor } from "../../core/labels";
 import {
   Alert,
   Badge,
@@ -102,7 +102,7 @@ function QuestionCard({ question, findings, onOpen }: { question: QuizQuestion; 
         <ul className="ek-list-reset ek-stack ek-mt-2" data-gap="1" aria-label={`Funn for spørsmål ${question.position}`}>
           {findings.map((f) => (
             <li key={f.id} className="ek-cluster" data-gap="2">
-              <Badge tone={CLASSIFICATION[f.classification].tone}>{CLASSIFICATION[f.classification].label}</Badge>
+              <Badge tone={classificationFor(f.classification, "quiz").tone}>{classificationFor(f.classification, "quiz").label}</Badge>
               {f.test_method === "ai" ? <Badge tone="violet" icon={<Sparkles aria-hidden="true" size={12} />}>KI</Badge> : null}
               <span className="ek-small">{f.title}</span>
               <Button size="sm" variant="link" onClick={() => onOpen(f)}>
@@ -172,10 +172,12 @@ export function QuizReview() {
               ["Status", settings.published ? "Publisert" : "Upublisert"],
             ]}
           />
+          {/* «Analyser quizkvalitet» at the top right is the page's primary action (all quizzes); checking only this
+              quiz is a quiet action of the same check, not a second call to action. */}
           <div className="ek-cluster">
-            <Button variant="primary" icon={<ShieldCheck aria-hidden="true" />} onClick={() => start.mutate(false)}
+            <Button icon={<ShieldCheck aria-hidden="true" />} onClick={() => start.mutate(false)}
               loading={start.isPending && start.variables === false} disabled={running}>
-              Kontroller quizen
+              Kontroller bare denne quizen
             </Button>
             {aiConfigured ? (
               <Button icon={<Sparkles aria-hidden="true" />} onClick={() => prepare.mutate()} loading={prepare.isPending}
@@ -186,6 +188,7 @@ export function QuizReview() {
           </div>
           {!aiConfigured ? <AiNotConfigured what="KI-vurdering av fasit og formulering" /> : null}
           <p className="ek-xs ek-muted">
+            «Analyser quizkvalitet» øverst til høyre kontrollerer alle quizene i emnet; her kan du kontrollere bare denne.
             Kontrollen leser bare fra Canvas. KI-vurderingen sammenligner spørsmålene med teksten i emnet og må alltid
             vurderes av deg – EmneKlar endrer aldri en fasit automatisk.
           </p>
@@ -222,7 +225,7 @@ export function QuizReview() {
           <ul className="ek-list-reset ek-stack" data-gap="1">
             {quizLevel.map((f) => (
               <li key={f.id} className="ek-cluster" data-gap="2">
-                <Badge tone={CLASSIFICATION[f.classification].tone}>{CLASSIFICATION[f.classification].label}</Badge>
+                <Badge tone={classificationFor(f.classification, "quiz").tone}>{classificationFor(f.classification, "quiz").label}</Badge>
                 <span className="ek-small">{f.message}</span>
                 <Button size="sm" variant="link" onClick={() => setSelected(f)} aria-label={`Vis funn: ${f.message}`}>Vis</Button>
               </li>

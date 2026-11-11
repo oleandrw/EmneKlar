@@ -63,7 +63,12 @@ export function Dialog({
       if (target instanceof HTMLElement && target.isConnected) target.focus();
     };
     dialog.addEventListener("close", handleClose);
-    return () => dialog.removeEventListener("close", handleClose);
+    return () => {
+      dialog.removeEventListener("close", handleClose);
+      // Removed while open (the parent unmounts it instead of setting open=false): no «close» event fires, so return
+      // focus here – otherwise it is left on <body>.
+      if (dialog.open) handleClose();
+    };
   }, []);
 
   return (

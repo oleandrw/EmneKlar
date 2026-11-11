@@ -380,31 +380,6 @@ def test_pin_fallback_only_when_pins_do_not_exist() -> None:
     assert not update.pins_unavailable("ERROR: some other failure")
 
 
-def test_optional_extras_are_remembered_and_never_fail_the_install(tmp_path: Path,
-                                                                   monkeypatch: pytest.MonkeyPatch) -> None:
-    root = tmp_path / "EmneKlar"
-    (root / "backend").mkdir(parents=True)
-    write(root / "backend" / "constraints.txt", "fastapi==0.142.2\n")
-    assert update.chosen_extras(root) == []
-    update.remember_extra(root, "rag")
-    update.remember_extra(root, "rag")
-    assert update.chosen_extras(root) == ["rag"]
-    write(root / "backend" / ".venv" / update.EXTRAS_FILE, "rag\nunknown\n")
-    assert update.chosen_extras(root) == ["rag"]
-    commands: list[list[str]] = []
-
-    def fake_run(args: list[Any], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
-        commands.append([str(a) for a in args])
-        failing = any(str(a).endswith("[rag]") for a in args)
-        return subprocess.CompletedProcess(args, 1 if failing else 0, "", "")
-
-    monkeypatch.setattr(update, "run", fake_run)
-    reporter = update.Reporter(None, total_steps=1, title="test")
-    update.install_python_dependencies(Path("python"), root, reporter)
-    assert commands[0][-1].endswith("backend") and commands[1][-1].endswith("backend[rag]")
-    assert "-c" in commands[1]
-
-
 # ---------------------------------------------------------------------------- the whole update (faked)
 
 
@@ -687,3 +662,103 @@ def test_git_without_new_commits_is_up_to_date(tmp_path: Path, monkeypatch: pyte
     env.git["rev-list --count HEAD..@{u}"] = "0"
     assert run_update(root, data_dir) == update.EXIT_OK
     assert env.count("git pull") == 0 and env.started == 0
+
+
+# ------------------------------------------------------------------------------------------- release signatures
+
+RFC8032_VECTORS = [  # RFC 8032 section 7.1, tests 1 and 2: (public key, message, signature)
+    ("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a", "",
+     "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b"),
+    ("3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c", "72",
+     "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00"),
+]
+
+
+@pytest.mark.parametrize(("public", "message", "signature"), RFC8032_VECTORS)
+def test_ed25519_verification_matches_the_rfc_test_vectors(public: str, message: str, signature: str) -> None:
+    key, msg, sig = bytes.fromhex(public), bytes.fromhex(message), bytes.fromhex(signature)
+    assert update.ed25519_verify(key, msg, sig)
+    assert not update.ed25519_verify(key, msg + b"x", sig), "another message"
+    tampered = bytearray(sig)
+    tampered[5] ^= 1
+    assert not update.ed25519_verify(key, msg, bytes(tampered)), "a changed signature"
+    assert not update.ed25519_verify(key[:31], msg, sig) and not update.ed25519_verify(key, msg, sig[:63])
+
+
+def test_the_test_signer_agrees_with_the_rfc() -> None:
+    from tests import ed25519_testkey
+
+    secret = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
+    assert ed25519_testkey.public_key(secret).hex() == RFC8032_VECTORS[0][0]
+    assert ed25519_testkey.sign(b"", secret).hex() == RFC8032_VECTORS[0][2]
+
+
+def test_release_signature_valid_invalid_and_missing() -> None:
+    from tests import ed25519_testkey as test_key
+
+    checksum = b"0123456789abcdef" * 4 + b"  EmneKlar-0.2.0.zip\n"
+    key = test_key.public_key().hex()
+    good = test_key.signature_file(checksum)
+    assert "gyldig" in update.verify_release_signature(checksum, good, keys=[key], required=False)
+    with pytest.raises(update.UpdateError, match="ugyldig"):
+        update.verify_release_signature(checksum.replace(b"0123", b"9123"), good, keys=[key], required=False)
+    other = test_key.signature_file(checksum, bytes(32))
+    with pytest.raises(update.UpdateError, match="ugyldig"):
+        update.verify_release_signature(checksum, other, keys=[key], required=False)
+    with pytest.raises(update.UpdateError, match="ukjent format"):
+        update.verify_release_signature(checksum, "ikke base64!", keys=[key], required=False)
+    assert "ikke signert" in update.verify_release_signature(checksum, None, keys=[key], required=False)
+    with pytest.raises(update.UpdateError, match="mangler signaturfilen"):
+        update.verify_release_signature(checksum, None, keys=[key], required=True)
+    # This version has no key yet: signing is prepared, not switched on (and not required).
+    assert update.RELEASE_SIGNING_KEYS == () and update.SIGNATURE_REQUIRED is False
+    assert "forberedt" in update.verify_release_signature(checksum, good)
+
+
+def _sign_release(env: Any, version: str, *, tamper: bool = False) -> None:
+    from tests import ed25519_testkey as test_key
+
+    name = f"EmneKlar-{version}.zip"
+    checksum = env.files[f"{name}.sha256"]
+    signed = checksum.read_bytes() + (b"#" if tamper else b"")
+    signature = write(checksum.with_name(f"{name}.sha256.sig"), test_key.signature_file(signed))
+    env.files[signature.name] = signature
+    env.release.assets[signature.name] = env.release.assets[f"{name}.sha256"] + ".sig"
+
+
+def test_a_signed_release_is_installed_and_a_bad_signature_stops_the_update(tmp_path: Path,
+                                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests import ed25519_testkey as test_key
+
+    monkeypatch.setattr(update, "RELEASE_SIGNING_KEYS", (test_key.public_key().hex(),))
+    env, root, data_dir = release_install(tmp_path / "good", monkeypatch)
+    env.publish("0.1.1", NEW_RELEASE | {"VERSION": "0.1.1\n"})
+    _sign_release(env, "0.1.1")
+    assert run_update(root, data_dir, from_app=True) == update.EXIT_OK
+    assert (root / "VERSION").read_text().strip() == "0.1.1"
+    assert "Signaturen er gyldig" in (data_dir / "logs" / "update.log").read_text(encoding="utf-8")
+
+    env, root, data_dir = release_install(tmp_path / "bad", monkeypatch)
+    env.publish("0.1.1", NEW_RELEASE | {"VERSION": "0.1.1\n"})
+    _sign_release(env, "0.1.1", tamper=True)
+    code_before = snapshot(root)
+    assert run_update(root, data_dir, from_app=True) == update.EXIT_FAILED
+    assert snapshot(root) == code_before, "nothing is installed"
+    assert "Signaturen på utgivelsen er ugyldig" in (data_dir / "logs" / "update.log").read_text(encoding="utf-8")
+
+
+def test_a_missing_signature_stops_the_update_only_when_signing_is_required(tmp_path: Path,
+                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests import ed25519_testkey as test_key
+
+    monkeypatch.setattr(update, "RELEASE_SIGNING_KEYS", (test_key.public_key().hex(),))
+    env, root, data_dir = release_install(tmp_path / "optional", monkeypatch)
+    env.publish("0.1.1", NEW_RELEASE | {"VERSION": "0.1.1\n"})
+    assert run_update(root, data_dir, from_app=True) == update.EXIT_OK, "not required yet: SHA-256 only"
+
+    monkeypatch.setattr(update, "SIGNATURE_REQUIRED", True)
+    env, root, data_dir = release_install(tmp_path / "required", monkeypatch)
+    env.publish("0.1.1", NEW_RELEASE | {"VERSION": "0.1.1\n"})
+    code_before = snapshot(root)
+    assert run_update(root, data_dir, from_app=True) == update.EXIT_FAILED
+    assert snapshot(root) == code_before

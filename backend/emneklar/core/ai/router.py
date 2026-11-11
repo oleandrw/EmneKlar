@@ -41,7 +41,19 @@ TASKS: dict[str, TaskProfile] = {t.key: t for t in (
                 8000, 30_000),
     TaskProfile("course_structure", "Emnestruktur", "Semantisk vurdering av hele emnets struktur.", 3, 3, False, True,
                 3000, 30_000),
-    TaskProfile("homepage_content", "Emneforside", "Tekstforslag til emnets forside.", 2, 2, False, True, 3000, 30_000),
+    TaskProfile("link_text", "Lenketekst", "Forslag til beskrivende lenketekst ut fra lenken og teksten rundt.", 1, 1,
+                False, True, 300, 20_000),
+    TaskProfile("table_caption", "Tabelltittel", "Forslag til tabelltittel ut fra overskriftscellene og teksten rundt.",
+                1, 1, False, True, 300, 20_000),
+    TaskProfile("embed_title", "Tittel på innebygd innhold",
+                "Forslag til tittel på innebygd innhold ut fra adressen og teksten rundt.", 1, 1, False, True, 300,
+                20_000),
+    TaskProfile("link_alternatives", "Alternativ lenke",
+                "Vurderer kandidater fra søk, videresending og arkiv som erstatning for en lenke som ikke virker.", 2, 2,
+                False, True, 1200, 30_000),
+    TaskProfile("course_design_structure", "Emnedesign: oppbygging",
+                "Foreslår seksjoner og plassering av eksisterende innhold på én side (skriver ikke nytt innhold).", 2, 2,
+                False, True, 2000, 40_000),
     TaskProfile("rag_answer", "Emnets kunnskapsbase: svar",
                 "Svarer på spørsmål ut fra utdrag fra emnet, med kildehenvisninger.", 2, 2, False, True, 2500, 30_000),
     TaskProfile("rag_query", "Emnets kunnskapsbase: omskriving av søk", "Gjør vage spørsmål om til presise søk.", 1, 1,
@@ -66,8 +78,10 @@ TASKS: dict[str, TaskProfile] = {t.key: t for t in (
                 "Foreslår en felles visuell stil for emnets illustrasjoner.", 2, 2, False, True, 2500, 30_000),
 )}
 
-#: Usage log entries that are not routed tasks (embedding models are chosen under Emne-RAG, not by the router).
+#: Usage log entries that are not routed tasks (embedding models are chosen under Emne-RAG, not by the router),
+#: and tasks of removed features, so older usage entries keep a readable name.
 USAGE_LABELS: dict[str, str] = {"rag_embedding": "Emnets kunnskapsbase: embedding",
+                                 "homepage_content": "Emneforside (fjernet)",
                                  "rag_transcription": "Emnets kunnskapsbase: transkripsjon",
                                  "illustration_image": "KI-bildeassistent: bildegenerering"}
 

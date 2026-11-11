@@ -4,14 +4,14 @@
  * EmneKlar shares one visual language. All figures shown must be real data – there is no
  * placeholder mode.
  */
-import { ArrowRight, ChevronRight } from "lucide-react";
+import { ArrowRight, ChevronRight, Info, TriangleAlert } from "lucide-react";
 import { useId, type ReactNode } from "react";
 import { Link } from "react-router";
 
 import { Badge, Button, ButtonLink, cx, type Tone } from "./primitives";
 
-/** Colour of a key figure: critical (red) is for real problems only, so it never dominates. */
-export type ValueTone = "critical" | "warning" | "info" | "success" | "neutral";
+/** Colour of a key figure: critical (red) is for real problems only, so it never dominates. «zero» is a muted 0. */
+export type ValueTone = "critical" | "warning" | "info" | "success" | "neutral" | "zero";
 
 const numberFormat = new Intl.NumberFormat("nb-NO");
 const show = (value: ReactNode): ReactNode => (typeof value === "number" ? numberFormat.format(value) : value);
@@ -81,14 +81,21 @@ export interface StatusMetric {
   tone?: ValueTone;
 }
 
-/** One area of the course: large icon, title, the most important figures. The whole card is a link. */
+/**
+ * One area of the course, as one link: icon and title, one big figure with its label, a smaller line at the bottom, and
+ * an arrow in a circle – all inside the same link (one tab stop, Enter or one tap opens the area; no other control in
+ * it). A thin line in the area's colour finishes the card; it is decoration, not a progress bar. The coverage and age
+ * of the figures are read with the link (aria-describedby) and shown on the page outside the card. A figure of 0 is
+ * always muted, whatever its class.
+ */
 export function StatusCard({
   title,
   icon,
   tone,
   to,
-  metrics,
-  footnote,
+  metric,
+  secondary,
+  description,
   empty,
   headingLevel = 3,
 }: {
@@ -96,35 +103,40 @@ export function StatusCard({
   icon: ReactNode;
   tone: Tone;
   to: string;
-  metrics: StatusMetric[];
-  footnote?: ReactNode;
+  /** The one big figure. */
+  metric: StatusMetric;
+  /** The smaller line at the bottom, e.g. «12 sannsynlige avvik». */
+  secondary?: { text: string; tone?: ValueTone } | null;
+  /** Read with the card by screen readers, e.g. the coverage and age of the figures. */
+  description?: string | null;
   /** Shown instead of the figures, e.g. «Ikke analysert ennå». */
-  empty?: ReactNode;
+  empty?: string;
   headingLevel?: 2 | 3;
 }) {
   const Heading = `h${headingLevel}` as "h3";
+  const descriptionId = useId();
+  // The name comes from the visible text («Universell utforming: 28 bekreftede avvik, 12 sannsynlige avvik»); the
+  // colon and comma are only for screen readers, so the name always contains what is seen (WCAG 2.5.3).
   return (
-    <Link to={to} className="ek-status-card">
-      <span className="ek-status-card__head">
-        <IconTile tone={tone} size="lg">
-          {icon}
-        </IconTile>
-        <Heading className="ek-status-card__title">{title}</Heading>
-        <ChevronRight className="ek-status-card__chevron" aria-hidden="true" />
-      </span>
+    <Link to={to} className="ek-status-card" data-tone={tone} aria-describedby={description ? descriptionId : undefined}>
+      <div className="ek-status-card__head">
+        <IconTile tone={tone} size="lg">{icon}</IconTile>
+        <Heading className="ek-status-card__title">{title}<span className="ek-visually-hidden">:</span></Heading>
+      </div>
       {empty ? (
-        <span className="ek-status-card__empty">{empty}</span>
+        <p className="ek-status-card__empty">{empty}</p>
       ) : (
-        <span className="ek-status-card__metrics" data-count={metrics.length}>
-          {metrics.map((m) => (
-            <span key={m.label} className="ek-status-card__metric" data-value-tone={m.tone ?? "neutral"}>
-              <span className="ek-status-card__value">{show(m.value)}</span>{" "}
-              <span className="ek-status-card__label">{m.label}</span>
-            </span>
-          ))}
-        </span>
+        <p className="ek-status-card__figure" data-value-tone={metric.value === 0 ? "zero" : (metric.tone ?? "neutral")}>
+          <span className="ek-status-card__value">{show(metric.value)}</span>{" "}
+          <span className="ek-status-card__label">{metric.label}{secondary?.text ? <span className="ek-visually-hidden">,</span> : null}</span>
+        </p>
       )}
-      {footnote ? <span className="ek-status-card__foot">{footnote}</span> : null}
+      <div className="ek-status-card__foot">
+        <span className="ek-status-card__secondary" data-value-tone={secondary?.tone}>{empty ? null : secondary?.text}</span>
+        <span className="ek-status-card__arrow" aria-hidden="true"><ArrowRight /></span>
+      </div>
+      <span className="ek-status-card__accent" aria-hidden="true" />
+      {description ? <span id={descriptionId} hidden>{description}</span> : null}
     </Link>
   );
 }
@@ -143,6 +155,7 @@ export function MetricCard({
   to,
   onClick,
   pressed,
+  secondary,
 }: {
   icon: ReactNode;
   tone?: Tone;
@@ -151,6 +164,8 @@ export function MetricCard({
   label: ReactNode;
   description?: ReactNode;
   valueTone?: ValueTone;
+  /** A smaller figure under the label, e.g. «3 sannsynlige avvik» under the confirmed ones (0 is muted). */
+  secondary?: { value: number; label: string; tone?: ValueTone } | null;
   to?: string;
   onClick?: () => void;
   pressed?: boolean;
@@ -164,6 +179,11 @@ export function MetricCard({
       <span className="ek-metric-card__body">
         <span className="ek-metric-card__value">{show(value)}</span>{" "}
         <span className="ek-metric-card__label">{label}</span>
+        {secondary ? (
+          <span className="ek-metric-card__secondary" data-value-tone={secondary.value === 0 ? "zero" : (secondary.tone ?? "neutral")}>
+            <span className="ek-metric-card__secondary-value">{show(secondary.value)}</span> {secondary.label}
+          </span>
+        ) : null}
         {description ? <span className="ek-metric-card__description">{description}</span> : null}
       </span>
       {to || onClick ? <ChevronRight className="ek-metric-card__chevron" aria-hidden="true" /> : null}
@@ -201,7 +221,8 @@ export function ActionList({ children, label }: { children: ReactNode; label?: s
   );
 }
 
-/** A recommended step: icon, short title, one explaining line and a clear call to action. */
+/** A recommended step: icon, short title, one explaining line and a clear call to action. ``featured``: the one step
+ * recommended first – a stronger frame and a primary button. */
 export function ActionRow({
   icon,
   tone = "info",
@@ -210,6 +231,7 @@ export function ActionRow({
   actionLabel,
   to,
   onClick,
+  featured,
 }: {
   icon: ReactNode;
   tone?: Tone;
@@ -218,11 +240,13 @@ export function ActionRow({
   actionLabel: string;
   to?: string;
   onClick?: () => void;
+  featured?: boolean;
 }) {
   const titleId = useId();
   const arrow = <ArrowRight aria-hidden="true" />;
+  const variant = featured ? "primary" : "soft";
   return (
-    <li className="ek-action-row">
+    <li className="ek-action-row" data-featured={featured ? "true" : undefined}>
       <IconTile tone={tone}>{icon}</IconTile>
       <span className="ek-action-row__text">
         <span className="ek-action-row__title" id={titleId}>
@@ -232,11 +256,12 @@ export function ActionRow({
       </span>
       <span className="ek-action-row__action">
         {to ? (
-          <ButtonLink to={to} variant="soft" tone={tone} iconEnd={arrow} aria-describedby={titleId}>
+          <ButtonLink to={to} variant={variant} tone={featured ? undefined : tone} iconEnd={arrow} aria-describedby={titleId}>
             {actionLabel}
           </ButtonLink>
         ) : (
-          <Button variant="soft" tone={tone} onClick={onClick} aria-describedby={titleId} className="ek-btn--between">
+          <Button variant={variant} tone={featured ? undefined : tone} onClick={onClick} aria-describedby={titleId}
+            className="ek-btn--between">
             {actionLabel}
             {arrow}
           </Button>
@@ -256,16 +281,20 @@ export function FeatureCard({
   description,
   actionLabel,
   to,
-  children,
+  notice,
+  noticeTone = "warning",
   headingLevel = 2,
 }: {
   icon: ReactNode;
   tone: Tone;
   title: string;
   description: ReactNode;
+  /** The visible text is the link's accessible name – make it say what happens («Sett modulkrav»). */
   actionLabel?: string;
   to?: string;
-  children?: ReactNode;
+  /** Only what limits the tool here (missing access in Canvas, not a Blueprint course) – no status badges. */
+  notice?: ReactNode;
+  noticeTone?: "warning" | "info";
   headingLevel?: 2 | 3;
 }) {
   const id = useId();
@@ -273,7 +302,7 @@ export function FeatureCard({
   return (
     <section className="ek-feature-card" aria-labelledby={id}>
       <div className="ek-feature-card__head">
-        <IconTile tone={tone} size="lg" shape="square">
+        <IconTile tone={tone} size="md" shape="square">
           {icon}
         </IconTile>
         <div className="ek-feature-card__text">
@@ -281,12 +310,17 @@ export function FeatureCard({
             {title}
           </Heading>
           <p className="ek-feature-card__description">{description}</p>
+          {notice ? (
+            <p className="ek-feature-card__notice" data-tone={noticeTone}>
+              {noticeTone === "warning" ? <TriangleAlert aria-hidden="true" /> : <Info aria-hidden="true" />}
+              <span>{notice}</span>
+            </p>
+          ) : null}
         </div>
       </div>
-      {children ? <div className="ek-feature-card__body">{children}</div> : null}
       {to && actionLabel ? (
         <div className="ek-feature-card__action">
-          <ButtonLink to={to} variant="soft" tone={tone} size="lg" block iconEnd={<ArrowRight aria-hidden="true" />}
+          <ButtonLink to={to} variant="soft" tone={tone} block iconEnd={<ArrowRight aria-hidden="true" />}
             aria-describedby={id}>
             {actionLabel}
           </ButtonLink>
@@ -372,12 +406,18 @@ export function KeyFigure({
 
 /* -------------------------------------------------------------- activity list */
 
+/** Colour of an activity's status mark (the --status-* tokens): success = completed, warning = stopped or a conflict,
+ * danger = failed. */
+export type ActivityStatusTone = "success" | "warning" | "danger" | "info" | "neutral";
+
 export interface ActivityEntry {
   key: string;
   icon: ReactNode;
   tone: Tone;
   title: ReactNode;
   meta?: ReactNode;
+  /** A compact status mark: text and icon, so it never relies on colour; read as «Status: …». */
+  status?: { label: string; tone: ActivityStatusTone; icon: ReactNode };
   date?: string;
   time?: string;
 }
@@ -392,7 +432,18 @@ export function ActivityList({ items, label }: { items: ActivityEntry[]; label: 
           </IconTile>
           <span className="ek-activity__text">
             <span className="ek-activity__title">{item.title}</span>
-            {item.meta ? <span className="ek-activity__meta">{item.meta}</span> : null}
+            {item.status || item.meta ? (
+              <span className="ek-activity__sub">
+                {item.status ? (
+                  <span className="ek-activity__status" data-status-tone={item.status.tone}>
+                    <span className="ek-activity__status-icon" aria-hidden="true">{item.status.icon}</span>
+                    <span className="ek-visually-hidden">Status: </span>
+                    {item.status.label}
+                  </span>
+                ) : null}
+                {item.meta ? <span className="ek-activity__meta">{item.meta}</span> : null}
+              </span>
+            ) : null}
           </span>
           {item.date || item.time ? (
             <span className="ek-activity__time">

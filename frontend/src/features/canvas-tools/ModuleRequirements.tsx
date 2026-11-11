@@ -5,7 +5,6 @@ import { useMemo, useState } from "react";
 
 import { api } from "../../core/api/client";
 import { useCurrentCourse } from "../../core/course";
-import { useSession } from "../../core/session";
 import { useUi } from "../../core/ui";
 import {
   Alert,
@@ -65,7 +64,6 @@ const STATUS_TONE: Record<Row["status"], Tone> = {
 
 export function ModuleRequirements() {
   const { courseId } = useCurrentCourse();
-  const session = useSession();
   const ui = useUi();
   const toast = useToast();
   const client = useQueryClient();
@@ -115,7 +113,7 @@ export function ModuleRequirements() {
       toast.show({
         tone: "success",
         title: `${result.staged} endringer lagt i endringskøen`,
-        body: session.dry_run ? "Dry run er på – ingenting sendes til Canvas før du slår det av." : "Gjennomfør dem fra endringskøen.",
+        body: "Godkjenn og publiser dem fra endringskøen.",
       });
       ui.openChanges();
     },

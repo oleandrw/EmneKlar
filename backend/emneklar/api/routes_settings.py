@@ -6,8 +6,6 @@ Secrets never pass through these endpoints.
 
 from __future__ import annotations
 
-import os
-import sys
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
@@ -16,15 +14,16 @@ from pydantic import BaseModel, ValidationError
 
 from emneklar import __version__
 from emneklar.api.deps import get_container
-from emneklar.core import flags
+from emneklar.core import flags, system
 from emneklar.core.container import AppContainer
 from emneklar.core.errors import AppError, NotFoundError
 from emneklar.core.storage.maintenance import clear, storage_overview
 from emneklar.core.storage.settings import AppSettings
+from emneklar.core.updates.service import REPO_RE, same_repository
 
 router = APIRouter(prefix="/api")
 
-#: Fields the settings pages may change. Others (dry run, Canvas, AI) have dedicated endpoints.
+#: Fields the settings pages may change. Others (Canvas, AI) have dedicated endpoints.
 EDITABLE: dict[str, set[str]] = {
     "general": {"theme", "start_page", "default_course_id", "page_size"},
     "analysis": {"default_domains", "regulatory_profile", "check_external_links", "link_timeout_seconds",
@@ -58,6 +57,8 @@ async def patch_settings(section: str, body: dict[str, Any], c: AppContainer = D
     allowed = EDITABLE.get(section)
     if allowed is None:
         raise NotFoundError("not_found", detail="innstillingsdel")
+    # Choosing another update source than the standard one must be confirmed on purpose (updates run program code).
+    confirm_source = bool(body.pop("confirm_update_repository", False)) if section == "advanced" else False
     unknown = set(body) - allowed
     if unknown:
         raise AppError("validation_error", message="Disse innstillingene kan ikke endres her: "
@@ -74,6 +75,19 @@ async def patch_settings(section: str, body: dict[str, Any], c: AppContainer = D
         body["default_course_id"] = None
     if section == "advanced" and body.get("update_repository") == "":
         body["update_repository"] = None
+    if section == "advanced" and body.get("update_repository"):
+        new_source = str(body["update_repository"]).strip()
+        body["update_repository"] = new_source
+        default, _ = c.updates.default_repository()
+        # An invalid name is refused by the validation below (400); only a real other source needs confirming –
+        # the standard (or current) source written in other letters is the same repository on GitHub.
+        known = (c.settings.get().advanced.update_repository, default)
+        if (REPO_RE.match(new_source) and not any(same_repository(new_source, k) for k in known)
+                and not confirm_source):
+            raise AppError("update_source_confirmation_required", status=409,
+                           message=(f"Oppdateringer vil da hentes fra {new_source} i stedet for standardkilden "
+                                    f"({default or 'ukjent'}). Bekreft at du vil bytte kilde."),
+                           extra={"default_repository": default})
 
     def mutate(s: AppSettings) -> None:
         current = getattr(s, section).model_dump()
@@ -135,14 +149,14 @@ class FolderBody(BaseModel):
 
 @router.post("/system/open-folder")
 async def open_folder(body: FolderBody, c: AppContainer = Depends(get_container)) -> dict[str, bool]:
-    """Open a data folder in Windows Explorer (local machine only, fixed folders)."""
+    """Open a data folder in the file manager (local machine only, fixed folders)."""
     paths = {"data": c.config.data_dir, "backups": c.config.backups_dir, "reports": c.config.reports_dir,
              "logs": c.config.logs_dir}
-    # sys.platform (not os.name) so mypy narrows the platform and accepts the Windows-only os.startfile.
-    if sys.platform != "win32":
-        raise AppError("unsupported", status=409, message="Å åpne mapper støttes bare på Windows.")
     paths[body.folder].mkdir(parents=True, exist_ok=True)
-    os.startfile(paths[body.folder])  # noqa: S606 - fixed, known folder
+    try:
+        system.open_folder(paths[body.folder])  # fixed, known folders only
+    except system.UnsupportedOnThisPlatform as exc:
+        raise AppError("unsupported", status=409, message=str(exc)) from exc
     return {"ok": True}
 
 
@@ -177,5 +191,5 @@ class StartUpdate(BaseModel):
 
 @router.post("/updates/start")
 async def update_start(body: StartUpdate, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
-    # Updating EmneKlar itself never touches Canvas, so Dry run does not apply here.
+    # Updating EmneKlar itself never touches Canvas.
     return c.updates.start(confirm_major=body.confirm_major)

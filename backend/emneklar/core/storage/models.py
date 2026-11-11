@@ -167,19 +167,34 @@ class Finding(Base):
     remediation: Mapped[str] = mapped_column(Text, default="")
     fix: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     fingerprint: Mapped[str] = mapped_column(String(64))
-    status: Mapped[str] = mapped_column(String(16), default="open")  # open|ignored|staged|fixed
+    status: Mapped[str] = mapped_column(String(16), default="open")  # open|ignored|verified|staged|fixed
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class FindingDecision(Base):
-    """A user decision that survives re-analysis (e.g. «Ignorer»)."""
+    """A user decision that survives re-analysis: «Ignorer», or «verified» – the teacher confirmed what a manual check
+    asks for (e.g. that a recording has a transcript), with the confirmation chosen from the rule (``reason``)."""
 
     __tablename__ = "finding_decisions"
     fingerprint: Mapped[str] = mapped_column(String(64), primary_key=True)
     course_id: Mapped[str] = mapped_column(String(32), index=True)
-    decision: Mapped[str] = mapped_column(String(16))  # ignored
+    decision: Mapped[str] = mapped_column(String(16))  # ignored|verified
+    reason: Mapped[str | None] = mapped_column(String(32))  # verified: the rule's confirmation id
     note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
+class MediaAssessment(Base):
+    """The teacher's statement of what a recording is (audio only, video with sound, video without sound), per course
+    and media (``media_key``: ``media:<id>``, ``attachment:<id>``, ``youtube:<id>``, ``vimeo:<id>``, ``src:<url>``).
+    Analyses use it before Canvas' metadata – the requirement depends on the kind (WCAG 1.2.1 or 1.2.2)."""
+
+    __tablename__ = "media_assessments"
+    course_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    media_key: Mapped[str] = mapped_column(String(400), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))  # audio|video|video_no_audio
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
 
 
 class LinkCheck(Base):
@@ -230,17 +245,63 @@ class ChangeLogEntry(Base):
     object_type: Mapped[str | None] = mapped_column(String(32))
     object_id: Mapped[str | None] = mapped_column(String(64))
     object_title: Mapped[str | None] = mapped_column(String(1000))
-    action: Mapped[str] = mapped_column(String(32))  # apply|undo|dry_run|failed|conflict
+    # apply|undo|failed|conflict («dry_run» only in entries written before the Dry run switch was removed)
+    action: Mapped[str] = mapped_column(String(32))
     before: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     after: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     reason: Mapped[str] = mapped_column(Text, default="")
     api_result: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     user_action: Mapped[str] = mapped_column(String(64), default="")
-    dry_run: Mapped[bool] = mapped_column(Boolean, default=False)
     backup_id: Mapped[int | None] = mapped_column(Integer)
     undo_of: Mapped[int | None] = mapped_column(Integer)
     undoable: Mapped[bool] = mapped_column(Boolean, default=False)
     undone_by: Mapped[int | None] = mapped_column(Integer)
+
+
+class CourseDesign(Base):
+    """Emnedesign: the design profile (and its version) a course chose, and how it is applied. Saving the choice does not
+    change any content – the teacher previews and approves each item."""
+
+    __tablename__ = "course_designs"
+    course_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    profile_id: Mapped[str] = mapped_column(String(40))
+    profile_version: Mapped[str] = mapped_column(String(16))
+    mode: Mapped[str] = mapped_column(String(16), default="keep")  # keep|structure
+    illustrations: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+
+
+class CourseDesignExclusion(Base):
+    """«Behold eksisterende design»: content the course design is not applied to (until the teacher includes it)."""
+
+    __tablename__ = "course_design_exclusions"
+    course_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    item_key: Mapped[str] = mapped_column(String(200), primary_key=True)  # «page:<url>», «assignment:<id>» …
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+
+
+class AltTextSuggestion(Base):
+    """KI-forslag til alt-tekst, prepared ahead of review (one per image finding). Reused while the image and its
+    context are unchanged (``input_hash``); never sent to Canvas until the teacher approves a fix."""
+
+    __tablename__ = "alt_text_suggestions"
+    __table_args__ = (UniqueConstraint("course_id", "fingerprint", name="uq_alt_text_suggestions_finding"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    course_id: Mapped[str] = mapped_column(String(32), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    finding_id: Mapped[int | None] = mapped_column(Integer)
+    input_hash: Mapped[str] = mapped_column(String(64), default="")
+    status: Mapped[str] = mapped_column(String(16), default="queued")  # queued|running|ready|failed
+    suggestion: Mapped[str] = mapped_column(Text, default="")
+    decorative: Mapped[bool] = mapped_column(Boolean, default=False)
+    image_kind: Mapped[str] = mapped_column(String(16), default="")
+    confidence: Mapped[str] = mapped_column(String(8), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    provider: Mapped[str] = mapped_column(String(40), default="")
+    model: Mapped[str] = mapped_column(String(200), default="")
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
 
 
 class Backup(Base):
@@ -331,21 +392,6 @@ class QuizPreset(Base):
     settings: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     builtin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
-    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
-
-
-class HomepageDraft(Base):
-    __tablename__ = "homepage_drafts"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    course_id: Mapped[str] = mapped_column(String(32), index=True)
-    mode: Mapped[str] = mapped_column(String(24))  # design|design_content|improve
-    style: Mapped[str] = mapped_column(String(24))
-    sections: Mapped[list[Any]] = mapped_column(JSON, default=list)
-    options: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    html: Mapped[str] = mapped_column(Text, default="")
-    notes: Mapped[list[Any]] = mapped_column(JSON, default=list)
-    ai_used: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
 
 

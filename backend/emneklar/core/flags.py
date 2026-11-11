@@ -29,8 +29,6 @@ class FlagDef:
 FLAGS: tuple[FlagDef, ...] = (
     FlagDef("quiz_assistant", "Quizassistent",
             "Kvalitetssjekk av klassiske quizer, KI-spørsmålsbank og quizbygger.", "stable", True),
-    FlagDef("homepage_builder", "Emneforside",
-            "Bygg eller forbedre emnets forside med forhåndsvisning.", "stable", True),
     FlagDef("document_checks", "Dokumentanalyse (PDF og Office)",
             "Automatiske kontroller av PDF-, Word-, PowerPoint- og Excel-filer i emnet.", "beta", True),
     FlagDef("ai_alt_text", "KI-forslag til alt-tekst",
@@ -43,6 +41,9 @@ FLAGS: tuple[FlagDef, ...] = (
     FlagDef("illustration_assistant", "KI-bildeassistent",
             "Analyser emnet og lag faglig presise illustrasjoner med alt-tekst og bildetekst (Canvas-verktøy). "
             "Krever en KI-leverandør med bildegenerering.", "beta", True),
+    FlagDef("course_design", "Emnedesign",
+            "Gi hele emnet eller én modul et helhetlig design med forhåndsvisning og godkjenning.",
+            "beta", True),
     FlagDef("student_journey", "Studentreisen",
             "Visualisering av rekkefølgen studentene møter innholdet i.", "stable", True),
 )

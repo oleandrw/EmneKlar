@@ -37,6 +37,12 @@ REMOTE_RE = re.compile(r"github\.com[:/]+([A-Za-z0-9-]+/[A-Za-z0-9._-]+?)(?:\.gi
 CHECK_INTERVAL = timedelta(hours=24)
 
 
+def same_repository(a: str | None, b: str | None) -> bool:
+    """Whether two ``owner/repo`` names are the same GitHub repository – GitHub does not tell upper and lower case
+    apart, so «Oleandrw/emneklar» is the standard source «oleandrw/EmneKlar»."""
+    return bool(a and b) and str(a).strip().casefold() == str(b).strip().casefold()
+
+
 def git_remote_repository(repo_dir: Path) -> str | None:
     """owner/repo from .git/config's origin (no git process needed)."""
     try:
@@ -103,7 +109,18 @@ class UpdateService:
         configured = self.c.settings.get().advanced.update_repository
         if configured and REPO_RE.match(configured):
             return configured
-        return git_remote_repository(self.repo_dir) or install_json_repository(self.repo_dir)
+        return self.default_repository()[0]
+
+    def default_repository(self) -> tuple[str | None, str]:
+        """The standard source – used when the setting is empty: the repository EmneKlar was installed from, and
+        where that is recorded («Git-remote origin» or «install.json»). ``(None, "")`` when it is not known."""
+        remote = git_remote_repository(self.repo_dir)
+        if remote:
+            return remote, "Git-remote origin"
+        packaged = install_json_repository(self.repo_dir)
+        if packaged:
+            return packaged, "install.json"
+        return None, ""
 
     # -- status ---------------------------------------------------------------------------------
 
@@ -126,8 +143,13 @@ class UpdateService:
         current = Version.parse(__version__)
         latest = Version.parse((stored.get("latest") or {}).get("version"))
         available = bool(current and latest and current < latest)
+        default, default_source = self.default_repository()
         return {
             "current_version": __version__, "install": self.install_info(), "repository": self.repository(),
+            "default_repository": default, "default_repository_source": default_source,
+            # Another source than the standard one was chosen in Innstillinger (updates come from there).
+            "repository_is_custom": bool(settings.advanced.update_repository
+                                         and not same_repository(settings.advanced.update_repository, default)),
             "channel": settings.advanced.update_channel, "check_enabled": settings.advanced.check_updates,
             "last_checked_at": stored.get("checked_at"), "last_error": stored.get("error"),
             "latest": stored.get("latest"), "update_available": available,

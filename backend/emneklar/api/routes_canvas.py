@@ -19,6 +19,7 @@ from emneklar.core.canvas.api import CanvasAPI
 from emneklar.core.canvas.client import CanvasError, validate_base_url
 from emneklar.core.container import AppContainer
 from emneklar.core.errors import AppError
+from emneklar.core.security.redaction import register_secret
 from emneklar.core.storage.models import Course
 from emneklar.core.storage.settings import AppSettings, CanvasIdentity
 
@@ -38,11 +39,16 @@ CAPABILITIES: list[tuple[str, str, list[str]]] = [
 class ConnectionTest(BaseModel):
     base_url: str = Field(max_length=300)
     token: str | None = Field(default=None, max_length=2000)
+    #: Setup wizard: also check permissions in a sample of the teaching courses – with this connection, before it is
+    #: saved (read-only Canvas requests; nothing is stored).
+    capabilities: bool = False
 
 
 class ConnectionSave(BaseModel):
     base_url: str = Field(max_length=300)
     token: str | None = Field(default=None, max_length=2000)
+    #: The Canvas user the teacher confirmed. If the token now belongs to someone else, nothing is saved.
+    expected_user_id: str | None = Field(default=None, max_length=40)
 
 
 def _course_dict(course: dict[str, Any]) -> dict[str, Any]:
@@ -59,40 +65,68 @@ def _course_dict(course: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _test_connection(c: AppContainer, base_url: str, token: str | None) -> dict[str, Any]:
-    base = validate_base_url(base_url, allow_http=c.config.allow_insecure_canvas)
-    token_value = (token or "").strip() or c.canvas_token()
-    if not token_value:
+def _token_for(c: AppContainer, base: str, token: str | None) -> str:
+    """The token to test with: the one typed in, or the stored one – but the stored token only for the Canvas address it
+    was saved for, so it is never sent to another host."""
+    typed = (token or "").strip()
+    if typed:
+        register_secret(typed)  # masked in logs from now on, also if it is never saved
+        return typed
+    stored = c.canvas_token()
+    if not stored:
         raise AppError("canvas_token_missing")
+    saved_base = c.settings.get().canvas.base_url
+    if saved_base and saved_base != base:
+        raise AppError("canvas_token_other_url")
+    return stored
+
+
+async def _test_connection(c: AppContainer, base_url: str, token: str | None, *,
+                           capabilities: bool = False) -> dict[str, Any]:
+    base = validate_base_url(base_url, allow_http=c.config.allow_insecure_canvas)
+    token_value = _token_for(c, base, token)
     client = c.build_canvas_client(base, lambda: token_value, max_concurrency=2)
     try:
         api = CanvasAPI(client)
         me = await api.users_self()
         courses = await api.list_courses()
+        access = await _summarize_capabilities(api, [str(x["id"]) for x in courses]) if capabilities else None
     except CanvasError as exc:
         if exc.code == "canvas_not_found":
             raise AppError("canvas_url_invalid", detail="Fant ikke Canvas-API-et på denne adressen") from exc
         raise
     finally:
         await client.aclose()
-    return {
+    result: dict[str, Any] = {
         "base_url": base,
         "identity": {"id": str(me.get("id")), "name": me.get("name") or me.get("short_name") or ""},
         "teaching_courses": len(courses),
     }
+    if access is not None:
+        # The setup shows the courses by name (as in its course list); nothing about them is stored here.
+        result["courses"] = [_course_brief(x) for x in courses]
+        result["access"] = access
+    return result
 
 
 @router.post("/canvas/test")
 async def test_connection(body: ConnectionTest, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
-    result = await _test_connection(c, body.base_url, body.token)
+    """Test a connection without saving anything (a successful test never replaces the stored connection)."""
+    result = await _test_connection(c, body.base_url, body.token, capabilities=body.capabilities)
     return {"ok": True, **result}
 
 
 @router.put("/canvas/connection")
 async def save_connection(body: ConnectionSave, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
+    """Save a connection the teacher has confirmed. Tested again first; if the token now belongs to another user than
+    the one confirmed, or saving fails, the previous connection is kept as it was."""
     result = await _test_connection(c, body.base_url, body.token)
-    if body.token and body.token.strip():
-        c.secrets.set(CANVAS_TOKEN, body.token.strip())
+    if body.expected_user_id and result["identity"]["id"] != body.expected_user_id:
+        raise AppError("canvas_identity_changed", status=409)
+    new_token = (body.token or "").strip()
+    previous_token = c.canvas_token() if new_token else None
+    if new_token:
+        c.secrets.set(CANVAS_TOKEN, new_token)  # if this fails, nothing has changed
 
     def mutate(s: AppSettings) -> None:
         if s.canvas.base_url != result["base_url"]:
@@ -102,8 +136,17 @@ async def save_connection(body: ConnectionSave, c: AppContainer = Depends(get_co
         s.canvas.identity = CanvasIdentity(**result["identity"])
         s.canvas.last_verified_at = datetime.now(UTC)
 
-    c.settings.update(mutate)
-    c.reset_canvas()
+    try:
+        c.settings.update(mutate)
+    except Exception:
+        if new_token:  # put the previous token back, so the old (working) connection is not half-replaced
+            if previous_token:
+                c.secrets.set(CANVAS_TOKEN, previous_token)
+            else:
+                c.secrets.delete(CANVAS_TOKEN)
+        raise
+    finally:
+        c.reset_canvas()
     return {"ok": True, **result}
 
 
@@ -178,14 +221,37 @@ async def refresh_courses(c: AppContainer) -> list[dict[str, Any]]:
     return courses
 
 
+def _with_favorites(c: AppContainer, courses: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    favorites = set(c.settings.get().favorite_course_ids)
+    return [{**course, "favorite": course["id"] in favorites} for course in courses]
+
+
 @router.get("/courses")
 async def list_courses(refresh: bool = False, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
     cached, fetched_at = _cached_courses(c)
     if cached and not refresh:
-        return {"courses": cached, "fetched_at": fetched_at, "from_cache": True}
+        return {"courses": _with_favorites(c, cached), "fetched_at": fetched_at, "from_cache": True}
     await refresh_courses(c)
     courses, fetched_at = _cached_courses(c)
-    return {"courses": courses, "fetched_at": fetched_at, "from_cache": False}
+    return {"courses": _with_favorites(c, courses), "fetched_at": fetched_at, "from_cache": False}
+
+
+class CourseFavorite(BaseModel):
+    favorite: bool
+
+
+@router.put("/courses/{course_id}/favorite")
+async def set_favorite(course_id: str, body: CourseFavorite, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
+    """Mark or unmark a course as a favourite in the course selector. Stored in EmneKlar only – nothing is written to
+    Canvas (Canvas' own course favourites are left as they are)."""
+    course_id = require_course_id(course_id)
+
+    def mutate(s: AppSettings) -> None:
+        ids = [x for x in s.favorite_course_ids if x != course_id]
+        s.favorite_course_ids = [*ids, course_id] if body.favorite else ids
+
+    updated = c.settings.update(mutate)
+    return {"course_id": course_id, "favorite": body.favorite, "favorite_course_ids": updated.favorite_course_ids}
 
 
 class CourseSelect(BaseModel):
@@ -206,7 +272,10 @@ async def select_course(body: CourseSelect, c: AppContainer = Depends(get_contai
 
 
 async def course_capabilities(c: AppContainer, course_id: str) -> dict[str, Any]:
-    api = CanvasAPI(c.canvas())
+    return await _course_capabilities(CanvasAPI(c.canvas()), course_id)
+
+
+async def _course_capabilities(api: CanvasAPI, course_id: str) -> dict[str, Any]:
     perms, template, subscriptions = await asyncio.gather(
         api.course_permissions(course_id), api.blueprint_template(course_id), api.blueprint_subscriptions(course_id))
     capabilities = [
@@ -231,26 +300,52 @@ async def capabilities(course_id: str, c: AppContainer = Depends(get_container))
     return await course_capabilities(c, require_course_id(course_id))
 
 
-@router.get("/canvas/capability-summary")
-async def capability_summary(c: AppContainer = Depends(get_container)) -> dict[str, Any]:
-    """Setup step «Sjekk tilganger»: teaching courses and permissions in a sample of them."""
-    courses = await refresh_courses(c)
-    sample = courses[:5]
-    results = await asyncio.gather(*(course_capabilities(c, x["id"]) for x in sample), return_exceptions=True)
-    summary: dict[str, dict[str, int]] = {key: {"granted": 0, "checked": 0} for key, _, _ in CAPABILITIES}
-    errors = 0
-    for result in results:
+CAPABILITY_SAMPLE = 5
+
+
+def _course_brief(course: dict[str, Any]) -> dict[str, Any]:
+    """What the setup shows about a teaching course: its name, code and term (as in the course list)."""
+    term = course.get("term") or {}
+    return {"id": str(course["id"]), "name": course.get("name") or course.get("original_name") or "",
+            "course_code": course.get("course_code"), "term_name": term.get("name") if isinstance(term, dict) else None}
+
+
+async def _summarize_capabilities(api: CanvasAPI, course_ids: list[str]) -> dict[str, Any]:
+    """Permissions in a sample of the teaching courses, counted per capability («i 3 av 5 kontrollerte emner») and with
+    the courses (by id) where each one is missing – never generalised to all courses. Courses whose check failed are
+    listed apart (unknown, not missing). Read-only; the same requests as before, only reported in more detail."""
+    sample = course_ids[:CAPABILITY_SAMPLE]
+    results = await asyncio.gather(*(_course_capabilities(api, course_id) for course_id in sample),
+                                   return_exceptions=True)
+    summary: dict[str, dict[str, Any]] = {key: {"granted": 0, "checked": 0, "missing_in": []} for key, _, _ in CAPABILITIES}
+    checked_in: list[str] = []
+    failed_in: list[str] = []
+    for course_id, result in zip(sample, results, strict=True):
         if isinstance(result, BaseException):
-            errors += 1
+            failed_in.append(course_id)
             continue
+        checked_in.append(course_id)
         for cap in result["capabilities"]:
-            summary[cap["key"]]["checked"] += 1
-            summary[cap["key"]]["granted"] += int(cap["granted"])
+            entry = summary[cap["key"]]
+            entry["checked"] += 1
+            if cap["granted"]:
+                entry["granted"] += 1
+            else:
+                entry["missing_in"].append(course_id)
     return {
-        "teaching_courses": len(courses),
-        "checked_courses": len(sample) - errors,
+        "teaching_courses": len(course_ids),
+        "checked_courses": len(checked_in),
+        "checked_in": checked_in,
+        "failed_in": failed_in,
         "capabilities": [{"key": key, "label": label, **summary[key]} for key, label, _ in CAPABILITIES],
     }
+
+
+@router.get("/canvas/capability-summary")
+async def capability_summary(c: AppContainer = Depends(get_container)) -> dict[str, Any]:
+    """Teaching courses and permissions in a sample of them, with the stored connection."""
+    courses = await refresh_courses(c)
+    return await _summarize_capabilities(CanvasAPI(c.canvas()), [x["id"] for x in courses])
 
 
 @router.get("/canvas/image")

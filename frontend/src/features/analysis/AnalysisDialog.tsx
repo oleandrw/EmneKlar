@@ -1,10 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 
 import { api } from "../../core/api/client";
 import type { Job } from "../../core/api/types";
 import { useCurrentCourse } from "../../core/course";
+import { useCourseAnalysis, useJobs } from "../../core/jobs";
 import { DOMAIN_LABEL, type AnalysisDomain } from "../../core/labels";
 import { useSession } from "../../core/session";
 import { useUi } from "../../core/ui";
@@ -17,9 +18,7 @@ import {
   RadioGroup,
   Spinner,
   TextField,
-  useToast,
 } from "../../design-system";
-import { useActiveJobs } from "../../core/layout/HeaderControls";
 import { ProgressPanel } from "./ProgressPanel";
 import { FINAL_STATUSES, useJob } from "./useJob";
 
@@ -45,50 +44,27 @@ const RESULT_PATHS: Record<AnalysisDomain, string> = {
 };
 const TYPE_LABEL: Record<string, string> = { page: "Side", assignment: "Oppgave", discussion: "Diskusjon", quiz: "Quiz" };
 
-function useNotifyOnCompletion(job: Job | undefined) {
-  const toast = useToast();
-  const session = useSession();
-  const client = useQueryClient();
-  const [notified, setNotified] = useState<string | null>(null);
-  useEffect(() => {
-    if (!job || !FINAL_STATUSES.has(job.status) || notified === job.id) return;
-    setNotified(job.id);
-    void client.invalidateQueries({ queryKey: ["findings"] });
-    void client.invalidateQueries({ queryKey: ["overview"] });
-    void client.invalidateQueries({ queryKey: ["runs"] });
-    if (!session.notifications.notify_job_complete) return;
-    const ok = job.status === "completed";
-    toast.show({
-      tone: ok ? "success" : job.status === "failed" ? "danger" : "warning",
-      title: ok ? "Analysen er ferdig" : `Analysen ble ${job.status === "failed" ? "ikke fullført" : "avbrutt"}`,
-      body: ok ? "Resultatene er oppdatert." : (job.error ?? undefined),
-    });
-    if (session.notifications.browser_notifications && "Notification" in window && Notification.permission === "granted") {
-      new Notification("EmneKlar", { body: ok ? "Analysen er ferdig." : "Analysen ble ikke fullført." });
-    }
-  }, [job, notified, toast, session, client]);
-}
-
 export function AnalysisDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const ui = useUi();
   const session = useSession();
   const { courseId, course } = useCurrentCourse();
-  const active = useActiveJobs();
-  const runningAnalysis = active.data?.jobs.find((j) => j.kind === "analysis" && j.course_id === courseId);
-  const jobId = ui.watchedJobId ?? runningAnalysis?.id ?? null;
+  const jobs = useJobs();
+  // The details of an analysis («Detaljer» in «Analysestatus»), or the one running for the course: never a second one.
+  const { running } = useCourseAnalysis();
+  const jobId = ui.watchedJobId ?? running?.id ?? null;
   const job = useJob(jobId);
-  useNotifyOnCompletion(job.data);
 
   const [scope, setScope] = useState<Scope>("course");
   const [domains, setDomains] = useState<AnalysisDomain[]>(session.analysis.default_domains);
   const [modules, setModules] = useState<string[]>([]);
   const [items, setItems] = useState<string[]>([]);
   const [filter, setFilter] = useState("");
-  const client = useQueryClient();
 
+  // From a page for one area (the header button follows the page) only that area is analysed – never a full analysis.
+  const area = ui.analysisPreset?.area ?? null;
   useEffect(() => {
-    if (open) setDomains(ui.analysisPreset?.domains ?? session.analysis.default_domains);
-  }, [open, ui.analysisPreset, session.analysis.default_domains]);
+    if (open) setDomains(area ? [area] : (ui.analysisPreset?.domains ?? session.analysis.default_domains));
+  }, [open, area, ui.analysisPreset, session.analysis.default_domains]);
 
   const index = useQuery({
     queryKey: ["content-index", courseId],
@@ -99,10 +75,11 @@ export function AnalysisDialog({ open, onClose }: { open: boolean; onClose: () =
 
   const start = useMutation({
     mutationFn: (body: object) => api.post<Job>("/api/analysis", body),
+    // The analysis runs in the background: the dialog closes and «Analysestatus» opens as the confirmation.
     onSuccess: (created) => {
-      ui.watchJob(created.id);
-      client.setQueryData(["jobs", created.id], created);
-      void client.invalidateQueries({ queryKey: ["jobs", "active"] });
+      jobs.track(created);
+      ui.watchJob(null);
+      onClose();
     },
   });
 
@@ -155,30 +132,22 @@ export function AnalysisDialog({ open, onClose }: { open: boolean; onClose: () =
       open={open}
       onClose={close}
       size="lg"
-      title={showProgress ? (job.data?.title ?? "Analyse") : "Kjør ny analyse"}
+      title={showProgress ? (job.data?.title ?? "Analyse")
+        : area ? `Analyser ${DOMAIN_LABEL[area].toLowerCase()}` : "Analyser hele emnet"}
       description={course ? `${course.course_code ?? ""} ${course.name}`.trim() : undefined}
       footer={
         showProgress ? (
-          <>
-            {done ? (
-              <Button
-                onClick={() => {
-                  ui.watchJob(null);
-                }}
-              >
-                Ny analyse
-              </Button>
-            ) : null}
-            <Button variant="primary" onClick={close}>
-              Lukk
-            </Button>
-          </>
+          <Button variant="primary" onClick={close}>
+            Lukk
+          </Button>
         ) : (
           <>
             <Button onClick={close}>Avbryt</Button>
-            <Button onClick={() => submit(true)} disabled={!courseId || start.isPending}>
-              Full analyse
-            </Button>
+            {area ? null : (
+              <Button onClick={() => submit(true)} disabled={!courseId || start.isPending}>
+                Full analyse
+              </Button>
+            )}
             <Button variant="primary" onClick={() => submit(false)} disabled={!canStart} loading={start.isPending}>
               Start analyse
             </Button>
@@ -266,20 +235,30 @@ export function AnalysisDialog({ open, onClose }: { open: boolean; onClose: () =
               </div>
             )
           ) : null}
-          <Fieldset legend="Analyseområder" hint="Velg hva som skal kontrolleres.">
-            {availableDomains.map((d) => (
-              <Checkbox
-                key={d}
-                label={DOMAIN_LABEL[d]}
-                hint={DOMAIN_HINTS[d]}
-                checked={domains.includes(d)}
-                onChange={(e) => setDomains((cur) => (e.target.checked ? [...cur, d] : cur.filter((x) => x !== d)))}
-              />
-            ))}
-          </Fieldset>
-          <p className="ek-small ek-muted">
-            «Full analyse» kontrollerer hele emnet innen alle områder. Analysen leser bare fra Canvas – ingenting endres.
-          </p>
+          {area ? (
+            <p className="ek-small">
+              <span className="ek-strong">Område: {DOMAIN_LABEL[area]}.</span> {DOMAIN_HINTS[area]} Analysen leser bare
+              fra Canvas – ingenting endres.
+            </p>
+          ) : (
+            <>
+              <Fieldset legend="Analyseområder" hint="Velg hva som skal kontrolleres.">
+                {availableDomains.map((d) => (
+                  <Checkbox
+                    key={d}
+                    label={DOMAIN_LABEL[d]}
+                    hint={DOMAIN_HINTS[d]}
+                    checked={domains.includes(d)}
+                    onChange={(e) => setDomains((cur) => (e.target.checked ? [...cur, d] : cur.filter((x) => x !== d)))}
+                  />
+                ))}
+              </Fieldset>
+              <p className="ek-small ek-muted">
+                «Full analyse» kontrollerer hele emnet innen alle områder. Analysen leser bare fra Canvas – ingenting
+                endres.
+              </p>
+            </>
+          )}
         </div>
       )}
     </Dialog>

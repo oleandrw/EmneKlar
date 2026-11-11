@@ -1,10 +1,11 @@
 // Innstillinger: Analyse, Sikkerhet og personvern, Utseende, Varsler, Avanserte innstillinger.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, FolderOpen, LogOut, RotateCcw } from "lucide-react";
+import { Copy, FolderOpen, LogOut, Power, RotateCcw } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 
 import { api } from "../../core/api/client";
 import { DOMAIN_LABEL, type AnalysisDomain } from "../../core/labels";
+import { QuitDialog } from "../../core/quit";
 import {
   Alert,
   Badge,
@@ -23,6 +24,7 @@ import {
   useToast,
 } from "../../design-system";
 import { useSaveSettings, type AppSettings, type FlagInfo, type Section } from "./api";
+import type { UpdateStatus } from "./GeneralSettings";
 
 /** A settings form with local state, a dirty marker and one «Lagre» button. */
 function useSectionForm<T extends object>(section: Section, initial: T) {
@@ -66,7 +68,7 @@ export function AnalysisSettings({ settings }: { settings: AppSettings }) {
   return (
     <Card title="Analyse" headingLevel={2}>
       <form className="ek-stack" data-gap="6" onSubmit={onSubmit}>
-        <Fieldset legend="Forhåndsvalgte analyseområder" hint="Brukes i «Kjør ny analyse». Quizkvalitet er av som standard.">
+        <Fieldset legend="Forhåndsvalgte analyseområder" hint="Brukes i «Analyser emnet». Quizkvalitet er av som standard.">
           {domains.map((d) => (
             <Checkbox key={d} label={DOMAIN_LABEL[d]} checked={form.default_domains.includes(d)}
               onChange={(e) => setForm({ ...form, default_domains: e.target.checked ? [...form.default_domains, d] : form.default_domains.filter((x) => x !== d) })} />
@@ -150,6 +152,7 @@ export function PrivacySettings({ settings }: { settings: AppSettings }) {
   });
   const open = useMutation({ mutationFn: (folder: string) => api.post("/api/system/open-folder", { folder }) });
   const logout = useMutation({ mutationFn: () => api.post("/api/session/logout"), onSuccess: () => window.location.reload() });
+  const [quitting, setQuitting] = useState(false);
 
   return (
     <div className="ek-stack" data-gap="6">
@@ -180,10 +183,15 @@ export function PrivacySettings({ settings }: { settings: AppSettings }) {
             Canvas-token og API-nøkler lagres bare i Windows Legitimasjonsbehandling – aldri i filer, i databasen, i
             nettleseren eller i logger. EmneKlar kjører bare på denne maskinen (127.0.0.1) og kan ikke nås fra nettverket.
           </p>
-          <div>
+          <div className="ek-cluster">
             <Button icon={<LogOut aria-hidden="true" />} onClick={() => logout.mutate()} loading={logout.isPending}>Logg ut av denne økten</Button>
+            <Button icon={<Power aria-hidden="true" />} onClick={() => setQuitting(true)}>Avslutt EmneKlar</Button>
           </div>
-          <p className="ek-xs ek-muted">Etter utlogging åpner du EmneKlar igjen med start.bat.</p>
+          <p className="ek-xs ek-muted">
+            Utlogging gjelder bare denne fanen: EmneKlar kjører videre, og du åpner det igjen fra Start-menyen.
+            «Avslutt EmneKlar» stopper programmet på denne maskinen. Å lukke nettleserfanen stopper det ikke.
+          </p>
+          <QuitDialog open={quitting} onClose={() => setQuitting(false)} />
         </div>
       </Card>
 
@@ -301,6 +309,11 @@ const STAGE: Record<FlagInfo["stage"], { label: string; tone: "success" | "info"
   experimental: { label: "Eksperimentell", tone: "warning" },
 };
 
+/** GitHub does not tell upper and lower case apart in «owner/repo»: «Oleandrw/emneklar» is «oleandrw/EmneKlar». */
+export function sameRepository(a: string | null | undefined, b: string | null | undefined): boolean {
+  return Boolean(a?.trim() && b?.trim()) && a!.trim().toLowerCase() === b!.trim().toLowerCase();
+}
+
 export function AdvancedSettings({ settings, flags }: { settings: AppSettings; flags: FlagInfo[] }) {
   const client = useQueryClient();
   const toast = useToast();
@@ -308,7 +321,24 @@ export function AdvancedSettings({ settings, flags }: { settings: AppSettings; f
     update_repository: settings.advanced.update_repository ?? "", update_channel: settings.advanced.update_channel,
     check_updates: settings.advanced.check_updates, debug_logging: settings.advanced.debug_logging,
   };
-  const { form, setForm, dirty, save, onSubmit } = useSectionForm("advanced", initial);
+  const { form, setForm, dirty, save } = useSectionForm("advanced", initial);
+  // The update source: the standard one unless another is chosen – and choosing another is confirmed on purpose,
+  // since an update runs program code from that repository on this machine.
+  const updates = useQuery({ queryKey: ["update-status"], queryFn: () => api.get<UpdateStatus>("/api/updates/status") });
+  const defaultSource = updates.data?.default_repository ?? null;
+  const chosenSource = form.update_repository.trim();
+  const otherSource = Boolean(chosenSource) && !sameRepository(chosenSource, initial.update_repository)
+    && !sameRepository(chosenSource, defaultSource);
+  const [sourceConfirmed, setSourceConfirmed] = useState(false);
+  const onSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    save.mutate({ ...form, ...(otherSource ? { confirm_update_repository: sourceConfirmed } : {}) }, {
+      onSuccess: () => {
+        setSourceConfirmed(false);
+        void client.invalidateQueries({ queryKey: ["update-status"] });
+      },
+    });
+  };
   const setFlag = useMutation({
     mutationFn: ({ key, enabled }: { key: string; enabled: boolean | null }) => api.put(`/api/flags/${key}`, { enabled }),
     onSuccess: () => {
@@ -345,16 +375,45 @@ export function AdvancedSettings({ settings, flags }: { settings: AppSettings; f
 
       <Card title="Oppdateringer" headingLevel={2}>
         <form className="ek-stack" onSubmit={onSubmit}>
-          <TextField label="GitHub-repository for oppdateringer" placeholder="eier/EmneKlar" value={form.update_repository}
-            hint="La stå tomt for å bruke repositoriet EmneKlar ble installert fra (hvis kjent). Eneste data som sendes til GitHub, er en forespørsel om siste versjon."
-            onChange={(e) => setForm({ ...form, update_repository: e.target.value })} />
+          <TextField label="GitHub-repository for oppdateringer" placeholder={defaultSource ?? "eier/EmneKlar"}
+            value={form.update_repository}
+            hint={<>
+              {defaultSource
+                ? <>Standardkilde: <strong>{defaultSource}</strong> (fra {updates.data?.default_repository_source}). </>
+                : "EmneKlar vet ikke hvilket repository den ble installert fra. "}
+              La feltet stå tomt for å bruke standardkilden. Eneste data som sendes til GitHub, er en forespørsel om
+              siste versjon.
+            </>}
+            onChange={(e) => {
+              setForm({ ...form, update_repository: e.target.value });
+              setSourceConfirmed(false);
+            }} />
+          {updates.data?.repository_is_custom && !otherSource && sameRepository(chosenSource, initial.update_repository) ? (
+            <Alert tone="warning" title="Oppdateringer hentes fra en annen kilde">
+              Oppdateringer hentes fra <strong>{chosenSource}</strong>, ikke fra standardkilden
+              {defaultSource ? <> (<strong>{defaultSource}</strong>)</> : null}. Tøm feltet for å gå tilbake til standardkilden.
+            </Alert>
+          ) : null}
+          {otherSource ? (
+            <Alert tone="warning" title="Et annet repository betyr en annen kilde for oppdateringer">
+              <div className="ek-stack" data-gap="2">
+                <p>
+                  Oppdateringer vil hentes fra <strong>{chosenSource}</strong> i stedet for standardkilden
+                  {defaultSource ? <> <strong>{defaultSource}</strong></> : null}. En oppdatering kjører programkode fra
+                  dette repositoriet på maskinen din. Bruk bare et repository du stoler på.
+                </p>
+                <Checkbox label={`Ja, jeg vil hente oppdateringer fra ${chosenSource}`} checked={sourceConfirmed}
+                  onChange={(e) => setSourceConfirmed(e.target.checked)} />
+              </div>
+            </Alert>
+          ) : null}
           <SelectField label="Kanal" value={form.update_channel} onChange={(e) => setForm({ ...form, update_channel: e.target.value as "stable" | "prerelease" })}
             options={[{ value: "stable", label: "Stabile versjoner" }, { value: "prerelease", label: "Også forhåndsversjoner" }]} />
           <Checkbox label="Se etter oppdateringer automatisk (høyst én gang i døgnet)" checked={form.check_updates}
             onChange={(e) => setForm({ ...form, check_updates: e.target.checked })} />
           <Checkbox label="Detaljert logging (for feilsøking)" checked={form.debug_logging}
             hint="Loggen inneholder aldri token, nøkler eller emneinnhold." onChange={(e) => setForm({ ...form, debug_logging: e.target.checked })} />
-          <SaveRow dirty={dirty} saving={save.isPending} error={save.error} />
+          <SaveRow dirty={dirty && (!otherSource || sourceConfirmed)} saving={save.isPending} error={save.error} />
         </form>
       </Card>
 

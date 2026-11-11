@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import pytest
@@ -12,15 +11,15 @@ from emneklar.core.container import AppContainer
 from emneklar.core.storage.models import QuestionBankItem
 from emneklar.features.quiz_assistant.bank import generation_plan
 from emneklar.features.quiz_assistant.retrieval import Chunk
-from tests.conftest import wait_for_job
+from tests.conftest import approve_and_apply, wait_for_job
 from tests.fakes.fake_canvas import COURSE_ID, FakeCanvasState
-from tests.test_quiz_assistant import QUIZ, detail, enable_ai, quote_from, review, snapshot, sources_in
+from tests.test_quiz_assistant import QUIZ, block, detail, enable_ai, quote_from, review, snapshot, sources_in
 
 pytestmark = pytest.mark.invariant
 
 
 def apply(client: TestClient, ids: list[int], confirm: bool = False) -> dict:
-    response = client.post("/api/changes/apply", json={"ids": ids, "confirm_high_risk": confirm})
+    response = approve_and_apply(client, ids, confirm=confirm)
     assert response.status_code == 200, response.text
     job = wait_for_job(client, response.json()["id"])
     assert job["status"] == "completed", job
@@ -34,16 +33,25 @@ def last_log(client: TestClient) -> dict:
 # ------------------------------------------------------------------------- 1. undo never deletes newer work
 
 
-def create_page_from_draft(client: TestClient, title: str) -> dict:
-    draft = client.post(f"/api/courses/{COURSE_ID}/homepage/drafts", json={"mode": "design"}).json()
-    change = client.post(f"/api/homepage/drafts/{draft['id']}/stage", json={"action": "create_page", "title": title}).json()
+def stage_new_page(container: AppContainer, title: str, body: str = "<h2>Velkommen</h2><p>Utkast.</p>") -> dict:
+    """A queued «page.create» – kept for changes queued or applied before Emneforside was removed (undo needs it)."""
+    return container.changes.stage(
+        course_id=COURSE_ID, domain="homepage", kind="page.create", title=f"Ny side: {title}",
+        target={"object_type": "page", "object_id": "", "title": title},
+        before={}, proposed={"title": title, "body": body, "published": False},
+        rationale="Oppretter en ny, upublisert side.", risk="low", source={"feature": "homepage"})
+
+
+def create_page(container: AppContainer, client: TestClient, title: str) -> dict:
+    change = stage_new_page(container, title)
     assert apply(client, [change["id"]])["summary"] == {"applied": 1}
     return change
 
 
 def test_undo_of_a_created_page_is_blocked_when_the_page_was_edited(canvas_client: TestClient,
+                                                                     canvas_container: AppContainer,
                                                                      fake_state: FakeCanvasState) -> None:
-    create_page_from_draft(canvas_client, "Utkast A")
+    create_page(canvas_container, canvas_client, "Utkast A")
     page = fake_state.courses[COURSE_ID].pages["utkast-a"]
     page["body"] += "<p>Lagt til av læreren etterpå.</p>"
     entry = last_log(canvas_client)
@@ -53,8 +61,9 @@ def test_undo_of_a_created_page_is_blocked_when_the_page_was_edited(canvas_clien
 
 
 def test_undo_of_an_unchanged_created_page_backs_it_up_first(canvas_client: TestClient,
+                                                             canvas_container: AppContainer,
                                                              fake_state: FakeCanvasState) -> None:
-    create_page_from_draft(canvas_client, "Utkast B")
+    create_page(canvas_container, canvas_client, "Utkast B")
     body = fake_state.courses[COURSE_ID].pages["utkast-b"]["body"]
     entry = last_log(canvas_client)
     assert canvas_client.post(f"/api/changelog/{entry['id']}/undo").json()["status"] == "undone"
@@ -93,7 +102,7 @@ def _review_with(client: TestClient, container: AppContainer, entry_for_603: dic
 
     def answer(prompt: str) -> dict:
         sources = sources_in(prompt)
-        questions = json.loads(prompt.split("\n\nSPØRSMÅL (data):\n", 1)[1])
+        questions = block(prompt, "SPØRSMÅL")
         out = []
         for q in questions:
             entry: dict[str, Any] = {"question_id": q["question_id"], "key_assessment": "supported",
@@ -268,11 +277,9 @@ def test_the_default_course_is_selected_at_start(container: AppContainer) -> Non
     assert container.settings.get().current_course_id == "101"
 
 
-def test_queued_html_changes_preview_canvas_images_through_the_proxy(canvas_client: TestClient) -> None:
-    draft = canvas_client.post(f"/api/courses/{COURSE_ID}/homepage/drafts", json={"mode": "design"}).json()
-    canvas_client.put(f"/api/homepage/drafts/{draft['id']}",
-                      json={"html": '<p><img src="/courses/101/files/9004/preview" alt="Logo"></p>'})
-    change = canvas_client.post(f"/api/homepage/drafts/{draft['id']}/stage", json={"action": "create_page"}).json()
+def test_queued_html_changes_preview_canvas_images_through_the_proxy(canvas_client: TestClient,
+                                                                    canvas_container: AppContainer) -> None:
+    change = stage_new_page(canvas_container, "Med logo", '<p><img src="/courses/101/files/9004/preview" alt="Logo"></p>')
     preview = canvas_client.get(f"/api/changes/{change['id']}/preview").json()
     assert "/api/canvas/image?url=" in preview["html"]
 

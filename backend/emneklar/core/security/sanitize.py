@@ -1,7 +1,7 @@
 """HTML sanitisation mirroring what Canvas keeps (CanvasSanitize allowlist, docs/CANVAS_API.md).
 
 Used for (1) previews – always rendered in a sandboxed iframe as well – and
-(2) checking that generated HTML (homepage builder, fixes) survives Canvas'
+(2) checking that generated HTML (Emnedesign, fixes) survives Canvas'
 sanitiser, so what the teacher previews is what Canvas will store.
 """
 
@@ -11,6 +11,7 @@ import re
 from urllib.parse import quote, urlsplit
 
 import nh3
+from bs4 import BeautifulSoup
 
 ALLOWED_TAGS = {
     "a", "b", "blockquote", "br", "caption", "cite", "code", "col", "colgroup", "dd", "del", "div", "dl", "dt", "em",
@@ -73,6 +74,25 @@ def canvas_sanitize(html: str) -> str:
         link_rel=None,
         filter_style_properties=ALLOWED_CSS,
     )
+
+
+_STYLE_PROP = re.compile(r"(?:^|;)\s*([a-zA-Z-]+)\s*:")
+
+
+def canvas_safe(html: str) -> tuple[str, list[str]]:
+    """Sanitise like Canvas and report what Canvas would remove (so the preview matches the stored page)."""
+    soup = BeautifulSoup(html or "", "html.parser")
+    warnings: list[str] = []
+    removed_tags = sorted({t.name for t in soup.find_all(True) if t.name not in ALLOWED_TAGS})
+    if removed_tags:
+        warnings.append("Canvas fjerner disse elementene: " + ", ".join(f"<{t}>" for t in removed_tags) + ".")
+    props: set[str] = set()
+    for tag in soup.find_all(style=True):
+        props |= {p.lower() for p in _STYLE_PROP.findall(str(tag.get("style")))}
+    dropped = sorted(p for p in props if p not in ALLOWED_CSS)
+    if dropped:
+        warnings.append("Canvas fjerner disse stilene: " + ", ".join(dropped) + ".")
+    return canvas_sanitize(html), warnings
 
 
 _IMG_SRC = re.compile(r'(<img\b[^>]*?\bsrc=")([^"]+)(")', re.IGNORECASE)

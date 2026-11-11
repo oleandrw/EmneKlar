@@ -21,6 +21,13 @@ ORIGIN = f"http://127.0.0.1:{DEFAULT_PORT}"
 LAUNCH_TOKEN = "test-launch-token"
 
 
+@pytest.fixture(autouse=True)
+def _never_the_real_data_folder(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may read or write the user's own data folder – or start the one-time copy from the old folder name.
+    Anything that resolves the data folder from the environment gets a throw-away folder."""
+    monkeypatch.setenv("EMNEKLAR_DATA_DIR", str(tmp_path_factory.mktemp("datamappe")))
+
+
 @pytest.fixture
 def config(tmp_path: Path) -> RuntimeConfig:
     return RuntimeConfig(
@@ -113,3 +120,10 @@ def wait_for_job(client: TestClient, job_id: str, timeout: float = 30.0) -> dict
             return job
         time.sleep(0.05)
     raise AssertionError(f"job {job_id} did not finish: {job}")
+
+
+def approve_and_apply(client: TestClient, ids: list[int], *, confirm: bool = False) -> httpx.Response:
+    """«Publiser til Canvas» takes approved changes only – approve first, as the change queue does."""
+    approved = client.post("/api/changes/approve", json={"ids": ids})
+    assert approved.status_code == 200, approved.text
+    return client.post("/api/changes/apply", json={"ids": ids, "confirm_high_risk": confirm})

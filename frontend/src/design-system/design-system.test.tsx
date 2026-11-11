@@ -14,6 +14,7 @@ import {
   DataTable,
   Dialog,
   PageHeader,
+  PasswordField,
   RadioGroup,
   SelectField,
   Switch,
@@ -94,6 +95,28 @@ describe("Dialog", () => {
     render(<Dialog open onClose={() => {}} title="Lagrer" dismissible={false}>…</Dialog>);
     expect(screen.getByRole("button", { name: "Lukk" })).toBeDisabled();
   });
+
+  it("returns focus to the opener when the parent removes it instead of closing it", async () => {
+    function Example() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <Button onClick={() => setOpen(true)}>Endre lenke</Button>
+          {open ? (
+            <Dialog open onClose={() => setOpen(false)} title="Endre lenke">
+              <Button onClick={() => setOpen(false)}>Ferdig</Button>
+            </Dialog>
+          ) : null}
+        </>
+      );
+    }
+    const user = userEvent.setup();
+    render(<Example />);
+    await user.click(screen.getByRole("button", { name: "Endre lenke" }));
+    await user.click(screen.getByRole("button", { name: "Ferdig" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Endre lenke" })).toHaveFocus();
+  });
 });
 
 describe("Form fields", () => {
@@ -105,13 +128,28 @@ describe("Form fields", () => {
     expect(input).toHaveAccessibleDescription(/hiof\.instructure\.com/);
   });
 
+  it("hides a secret by default and shows it with a named button inside the field", async () => {
+    const { container } = render(
+      <form onSubmit={() => { throw new Error("must not submit"); }}>
+        <PasswordField label="Tilgangstoken" revealLabel="Vis tilgangstoken" concealLabel="Skjul tilgangstoken" defaultValue="hemmelig" />
+      </form>,
+    );
+    const input = screen.getByLabelText("Tilgangstoken");
+    expect(input).toHaveAttribute("type", "password");
+    await userEvent.click(screen.getByRole("button", { name: "Vis tilgangstoken" }));
+    expect(input).toHaveAttribute("type", "text");
+    expect(input).toHaveValue("hemmelig");
+    expect(screen.getByRole("button", { name: "Skjul tilgangstoken" })).toHaveAttribute("aria-controls", input.id);
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
   it("exposes switches with their state", async () => {
     function Example() {
       const [on, setOn] = useState(false);
-      return <Switch label="Dry run" checked={on} onChange={setOn} />;
+      return <Switch label="Varsle når jobben er ferdig" checked={on} onChange={setOn} />;
     }
     render(<Example />);
-    const toggle = screen.getByRole("switch", { name: /Dry run/ });
+    const toggle = screen.getByRole("switch", { name: /Varsle når jobben er ferdig/ });
     expect(toggle).toHaveAttribute("aria-checked", "false");
     await userEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-checked", "true");

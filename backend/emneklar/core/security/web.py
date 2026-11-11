@@ -12,7 +12,9 @@
   also forces a CORS preflight, which is never approved).
 * **CORS**: no CORS headers are ever sent – cross-origin reads are blocked.
 * **Clickjacking/XSS**: strict CSP (no inline scripts, no eval, no external
-  hosts), frame-ancestors 'none', nosniff, no referrer.
+  hosts), frame-ancestors 'self' and X-Frame-Options SAMEORIGIN (only EmneKlar
+  itself may show its pages in a frame – the illustration preview is a page of
+  its own shown in a frame), nosniff, no referrer.
 * **Control channel**: ``/control/*`` (used by start.bat/update.bat to open a
   new browser session or stop the app) requires the per-instance control
   secret, which only exists in the user's own data folder.
@@ -45,7 +47,11 @@ UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 PUBLIC_API_PATHS = {"/api/health"}
 
 # Previews of Canvas HTML are rendered in sandboxed srcdoc iframes (no scripts);
-# 'self' images allow the authenticated Canvas image proxy.
+# 'self' images allow the authenticated Canvas image proxy. style-src still has
+# 'unsafe-inline': a srcdoc frame inherits this policy, and Canvas HTML is styled
+# with style attributes (Emnedesign is built on them), as is the report view.
+# React's style props are set through the CSSOM and do not need it. Scripts never
+# run inline (script-src 'self').
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
     "font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; frame-src 'self'; "

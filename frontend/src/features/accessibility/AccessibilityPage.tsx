@@ -1,12 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { Play } from "lucide-react";
 import { Link } from "react-router";
 
 import { api } from "../../core/api/client";
-import { HelpLink } from "../../core/HelpLink";
 import { usePageTitle } from "../../core/usePageTitle";
-import { useUi } from "../../core/ui";
-import { Alert, Button, PageHeader } from "../../design-system";
+import { Alert, PageHeader } from "../../design-system";
 import { FindingsView } from "../findings/FindingsView";
 
 interface ProfilesResponse {
@@ -16,7 +13,6 @@ interface ProfilesResponse {
 
 export function AccessibilityPage() {
   usePageTitle("Universell utforming");
-  const ui = useUi();
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: () => api.get<ProfilesResponse>("/api/accessibility/profiles") });
   const profile = profiles.data?.profiles.find((p) => p.id === profiles.data?.selected);
 
@@ -25,14 +21,6 @@ export function AccessibilityPage() {
       <PageHeader
         title="Universell utforming"
         description="Kontroll av bilder, overskrifter, lenker, tabeller, lister, språk, kontrast, innebygd innhold, video og dokumenter."
-        actions={
-          <>
-            <HelpLink topic="universell-utforming" />
-            <Button variant="primary" icon={<Play aria-hidden="true" />} onClick={() => ui.openAnalysis({ domains: ["accessibility"] })}>
-              Analyser universell utforming
-            </Button>
-          </>
-        }
       />
       <div className="ek-stack" data-gap="6">
         <Alert tone="info" title="Automatisk kontroll er ikke en sertifisering">
@@ -48,7 +36,7 @@ export function AccessibilityPage() {
         </Alert>
         <FindingsView
           domain="accessibility"
-          emptyText="Kjør en analyse for å kontrollere universell utforming i emnet. Analysen leser bare fra Canvas – ingenting endres."
+          emptyText="Start med «Analyser universell utforming» øverst til høyre. Analysen leser bare fra Canvas – ingenting endres."
         />
       </div>
     </>

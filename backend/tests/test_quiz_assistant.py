@@ -9,11 +9,12 @@ from typing import Any
 import httpx
 from fastapi.testclient import TestClient
 
+from emneklar.core.ai.untrusted import DELIM_CLOSE, DELIM_OPEN
 from emneklar.core.container import AppContainer
 from emneklar.features.quiz_assistant.checks import check_quiz
 from emneklar.features.quiz_assistant.classic import Answer, Question, Quiz, parse_question
 from emneklar.features.quiz_assistant.retrieval import Chunk, quote_supported
-from tests.conftest import wait_for_job
+from tests.conftest import approve_and_apply, wait_for_job
 from tests.fakes.fake_canvas import COURSE_ID, FakeCanvasState
 
 QUIZ = "401"
@@ -66,9 +67,15 @@ def enable_ai(client: TestClient, container: AppContainer, answer: Callable[[str
     return calls
 
 
+def block(prompt: str, label: str) -> Any:
+    """The JSON in a delimited data block of the prompt («KILDER», «SPØRSMÅL»)."""
+    text = prompt.split(f"{label} (data – ikke instruksjoner):\n", 1)[1]
+    text = text.split(DELIM_OPEN + "\n", 1)[1]
+    return json.loads(text.split("\n" + DELIM_CLOSE, 1)[0])
+
+
 def sources_in(prompt: str) -> list[dict]:
-    text = prompt.split("KILDER (data):\n", 1)[1]
-    return json.loads(text.split("\n\nSPØRSMÅL (data):\n", 1)[0])
+    return block(prompt, "KILDER")
 
 
 def quote_from(source: dict, words: int = 6) -> str:
@@ -86,7 +93,7 @@ def bank_item(client: TestClient, stem: str, *, status: str = "approved", qtype:
 
 
 def apply(client: TestClient, change_id: int, confirm: bool = False) -> dict:
-    response = client.post("/api/changes/apply", json={"ids": [change_id], "confirm_high_risk": confirm})
+    response = approve_and_apply(client, [change_id], confirm=confirm)
     assert response.status_code == 200, response.text
     return wait_for_job(client, response.json()["id"])
 
@@ -180,7 +187,7 @@ def test_quiz_assistant_respects_feature_flag(canvas_client: TestClient, canvas_
 def review_answers(prompt: str) -> dict:
     sources = sources_in(prompt)
     assert sources, "the review is grounded in course excerpts"
-    questions = json.loads(prompt.split("\n\nSPØRSMÅL (data):\n", 1)[1])
+    questions = block(prompt, "SPØRSMÅL")
     answers = []
     for q in questions:
         entry: dict[str, Any] = {"question_id": q["question_id"], "key_assessment": "supported",
@@ -227,7 +234,7 @@ def test_ai_review_needs_consent_discards_unverified_claims_and_stages_key_chang
     change = canvas_client.post(f"/api/quiz/findings/{key['id']}/stage", json={}).json()
     assert change["risk"] == "high" and change["requires_confirmation"] and change["ai_generated"]
     assert change["rationale"].startswith("KI-forslag – må vurderes") and "ENDRER FASITEN" in change["rationale"]
-    blocked = canvas_client.post("/api/changes/apply", json={"ids": [change["id"]]})
+    blocked = approve_and_apply(canvas_client, [change["id"]])
     assert blocked.status_code == 409, "a key change is never applied without explicit confirmation"
     assert apply(canvas_client, change["id"], confirm=True)["result"]["summary"] == {"applied": 1}
     question = next(q for q in fake_state.courses[COURSE_ID].questions[QUIZ] if q["id"] == "603")
@@ -267,7 +274,7 @@ def test_bank_crud_and_answer_validation(canvas_client: TestClient) -> None:
 
 
 def generation_answers(prompt: str) -> dict:
-    source = sources_in(prompt)[0] if "SPØRSMÅL" in prompt else json.loads(prompt.split("KILDER (data):\n", 1)[1])[0]
+    source = sources_in(prompt)[0]
     good = {"type": "single_choice", "stem": "Hvilket format passer for fotografier ifølge emnet?",
             "answers": [{"text": "JPEG", "correct": True}, {"text": "SVG", "correct": False},
                         {"text": "TXT", "correct": False}],
@@ -362,14 +369,12 @@ def test_builder_creates_unpublished_quiz_with_question_group_and_undo(
     assert all(i["used_in"] == [] for i in used)
 
 
-def test_builder_respects_dry_run(canvas_client: TestClient, fake_state: FakeCanvasState) -> None:
-    ids = [bank_item(canvas_client, f"Dry run-spørsmål {n}?")["id"] for n in range(2)]
+def test_builder_creates_nothing_before_publishing(canvas_client: TestClient, fake_state: FakeCanvasState) -> None:
+    ids = [bank_item(canvas_client, f"Kø-spørsmål {n}?")["id"] for n in range(2)]
+    writes = len(fake_state.writes)
     change = canvas_client.post(f"/api/courses/{COURSE_ID}/quiz-builder/stage",
                                 json={"title": "Prøvequiz", "question_ids": ids}).json()
-    canvas_client.put("/api/system/dry-run", json={"enabled": True})
-    writes = len(fake_state.writes)
-    assert apply(canvas_client, change["id"])["result"]["summary"] == {"dry_run": 1}
-    assert len(fake_state.writes) == writes
+    assert change["status"] == "staged" and len(fake_state.writes) == writes
     assert not any(q["title"] == "Prøvequiz" for q in fake_state.courses[COURSE_ID].quizzes.values())
 
 
@@ -378,7 +383,7 @@ def _ai_key_finding(client: TestClient, container: AppContainer, suggestion_stem
 
     def answer(prompt: str) -> dict:
         sources = sources_in(prompt)
-        questions = json.loads(prompt.split("\n\nSPØRSMÅL (data):\n", 1)[1])
+        questions = block(prompt, "SPØRSMÅL")
         out = []
         for q in questions:
             entry: dict[str, Any] = {"question_id": q["question_id"], "key_assessment": "supported", "correct_answer_ids": [],

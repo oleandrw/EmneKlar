@@ -1,5 +1,5 @@
 """Standardiser videoavspillere (Innholdskvalitet → Media): YouTube detection, parameters, titles and provenance,
-Canvas-safe responsive markup, minimal changes, the change set and Dry run, idempotency and the metadata SSRF rules."""
+Canvas-safe responsive markup, minimal changes, the change set, idempotency and the metadata SSRF rules."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ from emneklar.features.content_quality.video import (
     standard_markup,
     validate_title,
 )
-from tests.conftest import fake_internet, wait_for_job
+from tests.conftest import approve_and_apply, fake_internet, wait_for_job
 from tests.fakes.fake_canvas import COURSE_ID, FakeCanvasState
 
 VIDEO_PAGE = "video-og-medier"  # fake Canvas: one fixed-size YouTube embed with autoplay, no title
@@ -474,7 +474,7 @@ def ref(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def apply(client: TestClient, ids: list[int]) -> dict[str, Any]:
-    response = client.post("/api/changes/apply", json={"ids": ids})
+    response = approve_and_apply(client, ids)
     assert response.status_code == 200, response.text
     return wait_for_job(client, response.json()["id"])
 
@@ -486,7 +486,7 @@ def test_scan_needs_an_analysis_first(canvas_client: TestClient) -> None:
 
 
 @pytest.mark.invariant
-def test_scan_preview_stage_dry_run_and_apply(canvas_container, canvas_client: TestClient,  # type: ignore[no-untyped-def]
+def test_scan_preview_stage_and_apply(canvas_container, canvas_client: TestClient,  # type: ignore[no-untyped-def]
                                              fake_state: FakeCanvasState) -> None:
     canvas_container.link_transport = internet({VIDEO_ID: "Never Gonna Give You Up"})
     analyse(canvas_client)
@@ -518,13 +518,7 @@ def test_scan_preview_stage_dry_run_and_apply(canvas_container, canvas_client: T
     assert "YouTube-metadata" in change["rationale"]
     assert fake_state.writes == [], "staging never writes"
 
-    canvas_client.put("/api/system/dry-run", json={"enabled": True})
-    job = apply(canvas_client, [change["id"]])
-    assert job["result"]["results"][0]["status"] == "dry_run"
-    assert not [w for w in fake_state.writes if w[0] in ("PUT", "POST", "DELETE")]
-    assert fake_state.courses[COURSE_ID].pages[VIDEO_PAGE]["body"] == original
-
-    canvas_client.put("/api/system/dry-run", json={"enabled": False})
+    assert fake_state.courses[COURSE_ID].pages[VIDEO_PAGE]["body"] == original, "nothing is written before publishing"
     job = apply(canvas_client, [change["id"]])
     assert job["result"]["results"][0]["status"] == "applied"
     assert fake_state.courses[COURSE_ID].pages[VIDEO_PAGE]["body"] == body
@@ -689,3 +683,79 @@ def test_ai_title_is_a_labelled_suggestion_with_minimal_context(canvas_container
     change = canvas_client.post(f"/api/courses/{COURSE_ID}/videos/stage", json={
         **ref(item), "title": answer["title"], "title_source": "ai_suggestion"}).json()
     assert change["ai_generated"] is True and "KI-forslag" in change["rationale"]
+
+
+# ------------------------------------------------------------- «Tittel på innebygd innhold» (Universell utforming)
+
+
+def iframe_finding(client: TestClient, page: str = VIDEO_PAGE) -> dict[str, Any]:
+    job = client.post("/api/analysis", json={"course_id": COURSE_ID, "domains": ["accessibility"]}).json()
+    assert wait_for_job(client, job["id"])["status"] == "completed"
+    items = client.get(f"/api/courses/{COURSE_ID}/findings?domain=accessibility&page_size=200").json()["items"]
+    (finding,) = [f for f in items if f["rule_id"] == "UU-IFRAME-NO-TITLE" and f["object_id"] == page]
+    return finding
+
+
+def test_the_iframe_fix_suggests_the_youtube_title(canvas_container, canvas_client: TestClient) -> None:  # type: ignore[no-untyped-def]
+    calls: list[str] = []
+    canvas_container.link_transport = internet({VIDEO_ID: "Never Gonna Give You Up"}, calls)
+    finding = iframe_finding(canvas_client)
+    suggestion = canvas_client.get(f"/api/findings/{finding['id']}/video-title").json()
+    assert suggestion["available"] and suggestion["title"] == "Video: Never Gonna Give You Up"
+    assert suggestion["source"] == "youtube_metadata" and suggestion["source_label"] == "YouTube-metadata"
+    assert suggestion["ai_possible"] is False and suggestion["metadata_message"] is None
+    assert suggestion["ref"] == {"object_type": "page", "object_id": VIDEO_PAGE, "object_title": finding["object_title"],
+                                 "video_id": VIDEO_ID, "occurrence": 0}
+    assert set(calls) == {VIDEO_ID}, "only YouTube's oEmbed service is asked, and only about this video"
+    # The suggestion is used like any text the teacher writes: only the iframe's title changes.
+    preview = canvas_client.post(f"/api/findings/{finding['id']}/fix/preview", json={"text": suggestion["title"]}).json()
+    assert 'title="Video: Never Gonna Give You Up"' in preview["after_display"] and preview["targeted"]
+
+
+def test_without_metadata_the_context_is_suggested_and_ki_can_be_asked(canvas_container,  # type: ignore[no-untyped-def]
+                                                                       canvas_client: TestClient) -> None:
+    canvas_container.link_transport = internet({VIDEO_ID: 404})
+    finding = iframe_finding(canvas_client)
+    suggestion = canvas_client.get(f"/api/findings/{finding['id']}/video-title").json()
+    assert suggestion["title"] == "Video: Introduksjonsvideo (Video og medier)" and suggestion["source"] == "page_context"
+    assert suggestion["ai_possible"] is True and "manuelt" in suggestion["metadata_message"]
+    assert "må vurderes" in suggestion["hint"]
+    # The reference is the one the KI-forslag endpoints of «Standardiser videoavspillere» take.
+    plan = canvas_client.post(f"/api/courses/{COURSE_ID}/videos/title-suggestion/prepare", json=suggestion["ref"])
+    assert plan.status_code == 200 and "available" in plan.json()
+
+
+def test_other_iframes_get_no_video_title(canvas_container, canvas_client: TestClient,  # type: ignore[no-untyped-def]
+                                          fake_state: FakeCanvasState) -> None:
+    fake_state.courses[COURSE_ID].pages["oppsummering"]["body"] = '<iframe src="https://tool.example.org/oppgave"></iframe>'
+    canvas_container.link_transport = internet({})
+    finding = iframe_finding(canvas_client, "oppsummering")
+    suggestion = canvas_client.get(f"/api/findings/{finding['id']}/video-title").json()
+    assert suggestion == {"available": False, "not_video": True,
+                          "reason": "Forslag fra YouTube hentes bare for YouTube-videoer."}
+
+
+def test_ki_can_be_compared_with_the_youtube_title_when_the_teacher_asks(canvas_container,  # type: ignore[no-untyped-def]
+                                                                         canvas_client: TestClient) -> None:
+    sent: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json={"content": [{"type": "text", "text": json.dumps(
+            {"title": "Slik virker greenscreen", "confidence": "high"})}], "stop_reason": "end_turn", "usage": {}})
+
+    configure_ai(canvas_container, canvas_client, handler)
+    canvas_container.link_transport = internet({VIDEO_ID: "Never Gonna Give You Up"})
+    finding = iframe_finding(canvas_client)
+    ref = canvas_client.get(f"/api/findings/{finding['id']}/video-title").json()["ref"]
+    # Without the explicit request, KI is refused as before (YouTube already gives a good title).
+    assert canvas_client.post(f"/api/courses/{COURSE_ID}/videos/title-suggestion/prepare", json=ref).status_code == 400
+    compare = {**ref, "even_with_title": True}
+    plan = canvas_client.post(f"/api/courses/{COURSE_ID}/videos/title-suggestion/prepare", json=compare).json()
+    assert plan["available"] and plan["needs_confirmation"]
+    refused = canvas_client.post(f"/api/courses/{COURSE_ID}/videos/title-suggestion", json=compare)
+    assert refused.status_code == 409 and sent == [], "nothing is sent before consent"
+    answer = canvas_client.post(f"/api/courses/{COURSE_ID}/videos/title-suggestion",
+                                json={**compare, "confirmed": True}).json()
+    assert answer["title"] == "Video: Slik virker greenscreen" and answer["label"] == "KI-forslag – må vurderes"
+    assert "Never Gonna Give You Up" in json.dumps(sent[0], ensure_ascii=False), "KI sees the YouTube title too"

@@ -1,4 +1,4 @@
-// «Backup og endringslogg»: every change EmneKlar has made (or simulated), with safe undo where possible.
+// «Sikkerhetskopier og endringslogg»: every change EmneKlar has published to Canvas, with safe undo where possible.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Undo2 } from "lucide-react";
 import { useState } from "react";
@@ -7,6 +7,7 @@ import { api } from "../../core/api/client";
 import { useCurrentCourse } from "../../core/course";
 import { formatDateTime } from "../../core/format";
 import { OBJECT_TYPE } from "../../core/labels";
+import { ACTION, type LogAction } from "../changes/history";
 import {
   Alert,
   Badge,
@@ -20,7 +21,6 @@ import {
   PageHeader,
   Spinner,
   useToast,
-  type Tone,
 } from "../../design-system";
 
 export interface LogEntry {
@@ -31,17 +31,18 @@ export interface LogEntry {
   object_type: string | null;
   object_id: string | null;
   object_title: string | null;
-  action: "apply" | "dry_run" | "conflict" | "failed" | "undo";
+  action: LogAction;
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
   reason: string | null;
   api_result: { sent?: boolean; message?: string; error?: string } | null;
   user_action: string | null;
-  dry_run: boolean;
   backup_id: number | null;
   undo_of: number | null;
   undoable: boolean;
   undone_by: number | null;
+  /** What was changed, from what was recorded with the change («Lenketekst oppdatert»); null when not recorded. */
+  summary?: string | null;
 }
 
 interface BackupInfo {
@@ -53,13 +54,7 @@ interface BackupInfo {
   size: number;
 }
 
-export const ACTION: Record<LogEntry["action"], { label: string; tone: Tone }> = {
-  apply: { label: "Gjennomført", tone: "success" },
-  dry_run: { label: "Dry run – ikke sendt", tone: "violet" },
-  conflict: { label: "Konflikt – ikke sendt", tone: "warning" },
-  failed: { label: "Feilet", tone: "danger" },
-  undo: { label: "Angret", tone: "info" },
-};
+export const CHANGE_LOG_TITLE = "Sikkerhetskopier og endringslogg";
 const HTML_KEYS = ["body", "description", "message", "syllabus_body", "question_text"];
 
 function StateView({ before, after }: { before: Record<string, unknown> | null; after: Record<string, unknown> | null }) {
@@ -104,10 +99,7 @@ export function ChangeLog() {
       void client.invalidateQueries({ queryKey: ["changelog"] });
       void client.invalidateQueries({ queryKey: ["backups"] });
       void client.invalidateQueries({ queryKey: ["findings"] });
-      toast.show({
-        tone: result.status === "dry_run" ? "info" : "success",
-        title: result.status === "dry_run" ? "Dry run: angring ikke sendt til Canvas" : "Endringen er angret",
-      });
+      toast.show({ tone: "success", title: result.message ?? "Endringen er angret" });
     },
   });
   const fetchBackup = useMutation({
@@ -119,8 +111,8 @@ export function ChangeLog() {
 
   return (
     <>
-      <PageHeader title="Backup og endringslogg"
-        description="Alle endringer EmneKlar har gjort eller simulert i emnet. Innhold sikkerhetskopieres før hver endring." />
+      <PageHeader title={CHANGE_LOG_TITLE}
+        description="Alle endringer EmneKlar har publisert til Canvas i emnet. Innholdet sikkerhetskopieres før hver endring." />
       <div className="ek-stack" data-gap="6">
         <Alert tone="info" title="Om angring">
           En endring kan angres når Canvas-API-et gjør det mulig og innholdet ikke er endret av andre etterpå. EmneKlar
@@ -153,6 +145,7 @@ export function ChangeLog() {
                       <p className="ek-strong">
                         {OBJECT_TYPE[entry.object_type ?? ""] ?? entry.object_type}: {entry.object_title ?? entry.object_id}
                       </p>
+                      {entry.summary ? <p>{entry.summary}</p> : null}
                       {entry.reason ? <p className="ek-small">{entry.reason}</p> : null}
                       {entry.api_result?.message || entry.api_result?.error ? (
                         <p className="ek-xs ek-muted">Canvas: {entry.api_result.error ?? entry.api_result.message}</p>

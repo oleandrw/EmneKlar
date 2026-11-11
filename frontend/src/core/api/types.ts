@@ -5,7 +5,6 @@ export interface SessionData {
   csrf_token: string;
   app: { name: string; version: string };
   setup_completed: boolean;
-  dry_run: boolean;
   current_course_id: string | null;
   canvas: { base_url: string | null; token_configured: boolean; identity: { id: string; name: string } | null };
   general: {
@@ -37,6 +36,8 @@ export interface Course {
   is_blueprint: boolean;
   default_view: string | null;
   roles: string[];
+  /** Marked as a favourite in the course selector (stored in EmneKlar, not in Canvas). */
+  favorite?: boolean;
 }
 
 export interface JobProgress {
@@ -61,6 +62,8 @@ export interface JobProgress {
   };
   in_flight: number;
   messages: string[];
+  /** Bumped on every change – the newest snapshot of a job wins when two sources disagree. */
+  version?: number;
 }
 
 export interface Job {
@@ -82,6 +85,7 @@ export interface Job {
 export interface Finding {
   id: number;
   run_id: number;
+  course_id?: string;
   domain: Domain;
   rule_id: string;
   ruleset_version: string | null;
@@ -96,16 +100,67 @@ export interface Finding {
   object_id: string | null;
   object_title: string | null;
   object_url: string | null;
-  location: { snippet?: string; context?: string; selector?: string; module?: string };
+  location: {
+    snippet?: string;
+    context?: string;
+    selector?: string;
+    module?: string;
+    modules?: string[];
+    module_id?: string;
+    module_item_id?: string;
+  };
   evidence: Record<string, unknown>;
   remediation: string;
   fix: { type: string; label: string; params?: Record<string, unknown> } | null;
-  status: "open" | "ignored" | "staged" | "fixed";
+  status: "open" | "ignored" | "verified" | "staged" | "fixed";
   created_at: string;
   fingerprint?: string;
+  /** The teacher's decision («Ignorer» or «Kontrollert» with the confirmation chosen), when there is one. */
+  decision?: FindingDecision | null;
   category_label?: string;
   rule?: RuleInfo;
   legal?: { status: string; note?: string | null; profile_title: string };
+  /** Direct links into Canvas (view, edit, module item, view with the finding's text highlighted). */
+  canvas?: CanvasLinks;
+  /** True for image findings that can get a KI-forslag til alt-tekst. */
+  image?: boolean;
+  alt_suggestion?: AltSuggestion | null;
+  /** «automatic» = the fix needs no input; «suggestion» = a text suggestion is ready; null = the teacher decides. */
+  ready?: "automatic" | "suggestion" | null;
+  /** Why the link's address cannot work (e.g. text pasted into the address field), when that is clear. */
+  href_problem?: string | null;
+}
+
+export interface CanvasLinks {
+  view: string | null;
+  edit: string | null;
+  module_item: string | null;
+  module?: string | null;
+  highlight: string | null;
+}
+
+export interface AltSuggestion {
+  status: "none" | "queued" | "running" | "ready" | "failed" | "stale";
+  suggestion?: string;
+  decorative?: boolean;
+  image_kind?: string | null;
+  confidence?: string | null;
+  notes?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  error?: string | null;
+  label?: string;
+}
+
+export interface BlueprintWhere {
+  course_id: string;
+  course_name: string | null;
+  role: "blueprint" | "associated" | "course";
+  locked: boolean;
+  parent: { id: string; name: string | null; course_code?: string | null } | null;
+  associated_course_count: number | null;
+  sync_needed: boolean;
+  message: string;
 }
 
 export interface RuleInfo {
@@ -125,7 +180,30 @@ export interface RuleInfo {
   sources: { title: string; url: string }[];
   fix_policy: string;
   ruleset_version: string;
+  /** What the teacher can confirm after checking by hand – marks the finding «Kontrollert». */
+  confirmations?: RuleConfirmation[];
+  /** Media rules: the teacher can state what the recording is (audio only, video with or without sound). */
+  media_kind_choice?: boolean;
 }
+
+export interface RuleConfirmation {
+  id: string;
+  label: string;
+  hint: string;
+  /** Offered only when the finding's evidence has this key (e.g. «exemption_hint» for older documents). */
+  requires_evidence?: string | null;
+}
+
+export interface FindingDecision {
+  decision: "ignored" | "verified";
+  reason: string | null;
+  note: string | null;
+  created_at: string | null;
+  /** The confirmation's label («Transkripsjonen finnes …») for «Kontrollert». */
+  label: string | null;
+}
+
+export type MediaKind = "audio" | "video" | "video_no_audio";
 
 export interface Page<T> {
   items: T[];

@@ -22,9 +22,12 @@ from emneklar.core.security.redaction import register_secret, unregister_secret
 
 log = logging.getLogger(__name__)
 
-# Not plain "EmneKlar": another implementation of the same specification stores its secrets under that name,
-# and the Windows keyring backend re-saves an existing entry when a new one is added under the same service.
-KEYRING_SERVICE = "EmneKlar-Claude"
+# The program's final name (decided before the first public release). Another implementation of the same
+# specification also stores secrets under the service «EmneKlar», so the two programs must not be used by the same
+# Windows user: they would read and replace each other's entries.
+KEYRING_SERVICE = "EmneKlar"
+#: The service name of versions before the first public release (copied once, see core/storage/legacy.py).
+LEGACY_KEYRING_SERVICE = "EmneKlar-Claude"
 CANVAS_TOKEN = "canvas_token"
 MAX_SECRET_LENGTH = 2000  # Windows Credential Manager caps blobs at 2560 bytes
 _NAME_RE = re.compile(r"^(canvas_token|ai_key:[a-z0-9_-]{1,40})$")
@@ -149,5 +152,17 @@ class MemorySecretStore(SecretStore):
         return "minne (test)"
 
 
+def keyring_service() -> str:
+    """The credential-store service of this installation: «EmneKlar» – or the name in ``emneklar.local.json``
+    (config.py). The test build of the installer has its own, so a token saved in «EmneKlar (test)» never replaces
+    the one an ordinary installation uses."""
+    from emneklar.config import installation_defaults  # local import: config is not needed to load this module
+
+    name = installation_defaults().get("keyring_service")
+    if isinstance(name, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 ._-]{0,60}", name):
+        return name
+    return KEYRING_SERVICE
+
+
 def create_secret_store(backend: str) -> SecretStore:
-    return MemorySecretStore() if backend == "memory" else KeyringSecretStore()
+    return MemorySecretStore() if backend == "memory" else KeyringSecretStore(keyring_service())
