@@ -15,7 +15,7 @@ Status per 11. november 2026. «I GitHub Actions» betyr at jobben har kjørt og
 | Windows på ARM | Ingen egen pakke. x64-pakken kan trolig kjøre under emulering | Nei | Nei | – | Nei – ikke prøvd |
 | macOS, Apple Silicon (arm64) | Ingen | Nei | Bare én ting: programmet starter fra kildekoden og svarer på `/api/health` i GitHub Actions (`macos-latest`, 11.11.2026). Ingen pakke, installasjon, nøkkelring eller oppdatering er prøvd | Nei – krever Apple Developer ID | Nei |
 | macOS, Intel (x86_64) | Ingen | Nei | Som over, på `macos-15-intel` (11.11.2026) | Nei | Nei |
-| Linux, x86_64 | Ingen | Nei | At programmet starter fra kildekoden og svarer på `/api/health` (GitHub Actions, 11.11.2026). Backend-testene kjørte på Ubuntu samme dag (Python 3.11–3.14): 823 besto, én hoppes over fordi den trenger `cmd.exe`, og én feilet – en test av pakkingen som selv forutsatte Windows-oppsettet av kjøretiden (testen er rettet; resultatet etter rettingen er ikke ført inn her). Ingen pakke, installasjon, nøkkelring eller oppdatering er prøvd | – | Nei |
+| Linux, x86_64 | Ingen | Nei | At programmet starter fra kildekoden og svarer på `/api/health`, og at backend-testene består på Ubuntu med Python 3.11–3.14 (824 består, én hoppes over fordi den trenger `cmd.exe`) – begge i GitHub Actions, 11.11.2026. Ingen pakke, installasjon, nøkkelring eller oppdatering er prøvd | – | Nei |
 | Linux, ARM (aarch64) | Ingen | Nei | Nei | – | Nei |
 
 ## Windows
@@ -92,7 +92,7 @@ Linux-kompatibilitet.
 
 Det som er kjent:
 
-* **Backend-testene** er satt opp på Ubuntu i CI (Python 3.11–3.14; resultatet av siste kjøring står i tabellen),
+* **Backend-testene** består på Ubuntu i CI (Python 3.11–3.14, 11.11.2026; én hoppes over fordi den trenger `cmd.exe`),
   og en startprøve har vist at programmet starter fra kildekoden og svarer (11.11.2026). Det viser at programkoden
   kan lastes, testes og startes der – ikke at EmneKlar kan installeres, startes av en lærer eller oppdateres.
 * **Avhengighetene:** alle 42 pakkene har ferdigbygde filer for CPython 3.14 på Linux x86_64 og aarch64
