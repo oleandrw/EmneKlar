@@ -1,8 +1,8 @@
 // Innstillinger → KI-assistenter: providers (keys go to the OS credential store), model registry,
 // cost/quality-aware routing and the metadata-only usage log.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, PlugZap, Search, Trash } from "lucide-react";
-import { useState } from "react";
+import { KeyRound, Plus, PlugZap, Search, ShieldCheck, Trash } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import { api } from "../../core/api/client";
@@ -16,7 +16,9 @@ import {
   DataTable,
   Dialog,
   Disclosure,
+  ExternalLink,
   IconButton,
+  PasswordField,
   RadioGroup,
   SelectField,
   Spinner,
@@ -40,7 +42,14 @@ interface Provider {
   local: boolean;
   data_leaves_machine: boolean;
   needs_key: boolean;
+  /** The provider's own page for API keys (OpenAI, Anthropic). */
+  key_page: string | null;
+  /** The cached model list is old: fetched again in the background. */
+  models_stale: boolean;
 }
+
+/** Providers connected with one action, «Koble til» (a key checked before it is stored). */
+const KEY_PROVIDERS: Provider["type"][] = ["openai", "anthropic"];
 
 interface Model {
   id: number;
@@ -112,6 +121,167 @@ function useAiRefresh() {
   };
 }
 
+/** One status per card: in the header, never repeated in a box below. */
+function connectionStatus(provider: Provider): { tone: "success" | "danger" | "neutral"; label: string } {
+  if (provider.needs_key && !provider.key_configured) return { tone: "neutral", label: "Ikke tilkoblet" };
+  if (provider.last_status === "ok") return { tone: "success", label: "Tilkoblet" };
+  if (provider.last_status === "error") return { tone: "danger", label: "Feil" };
+  return { tone: "neutral", label: "Ikke kontrollert" };
+}
+
+function ProviderBadges({ provider }: { provider: Provider }) {
+  const status = connectionStatus(provider);
+  return (
+    <>
+      {provider.local ? <Badge tone="teal">Lokal – data forlater ikke maskinen</Badge> : <Badge>Ekstern tjeneste</Badge>}
+      <Badge tone={status.tone}>{status.label}</Badge>
+    </>
+  );
+}
+
+/** The last check failed: what went wrong, said once. */
+function ProviderError({ provider }: { provider: Provider }) {
+  return provider.last_status === "error" && provider.last_message
+    ? <p className="ek-provider-error ek-small">{provider.last_message}</p> : null;
+}
+
+function SwitchNote({ provider }: { provider: Provider }) {
+  return provider.key_configured && !provider.enabled ? (
+    <p className="ek-small ek-muted">Nøkkelen er lagret, men {provider.name} brukes ikke før «Bruk {provider.name}» er slått på.</p>
+  ) : null;
+}
+
+/** OpenAI and Anthropic: one action, «Koble til», that checks the key with the provider and stores it only when the
+ * check succeeds. The model list is fetched with the check (and later in the background); endpoint and a manual check
+ * are under «Avansert». */
+function KeyProviderCard({ provider }: { provider: Provider }) {
+  const refresh = useAiRefresh();
+  const [key, setKey] = useState("");
+  const [replacing, setReplacing] = useState(false);
+  const [endpoint, setEndpoint] = useState(provider.endpoint ?? "");
+  const keyField = useRef<HTMLInputElement>(null);
+  const changeButton = useRef<HTMLButtonElement>(null);
+  const connect = useMutation({
+    mutationFn: (apiKey: string) => api.post<Provider>(`/api/ai/providers/${provider.id}/connect`, { api_key: apiKey }),
+    onSuccess: () => {
+      setKey("");
+      setReplacing(false);
+      refresh();
+    },
+  });
+  const check = useMutation({ mutationFn: () => api.post<Provider>(`/api/ai/providers/${provider.id}/connect`, {}), onSettled: refresh });
+  const update = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.put<Provider>(`/api/ai/providers/${provider.id}`, body),
+    onSuccess: refresh,
+  });
+  const remove = useMutation({
+    mutationFn: () => api.delete(`/api/ai/providers/${provider.id}/key`),
+    onSuccess: () => {
+      setReplacing(false);
+      refresh();
+    },
+  });
+  const showForm = !provider.key_configured || replacing;
+  // Focus follows the change: into the key field for «Bytt nøkkel», back to «Bytt nøkkel» after connecting or «Avbryt».
+  const focusAfter = useRef<"field" | "change" | null>(null);
+  useEffect(() => {
+    if (focusAfter.current === "field" && showForm) keyField.current?.focus();
+    if (focusAfter.current === "change" && !showForm) changeButton.current?.focus();
+    focusAfter.current = null;
+  }, [showForm]);
+  const submit = () => {
+    if (connect.isPending) return; // no double requests
+    focusAfter.current = provider.key_configured ? "change" : null;
+    connect.mutate(key);
+  };
+
+  return (
+    <Card title={provider.name} headingLevel={3} actions={<ProviderBadges provider={provider} />}>
+      <div className="ek-stack">
+        <Switch label={`Bruk ${provider.name}`} checked={provider.enabled} onChange={(enabled) => update.mutate({ enabled })} />
+        <SwitchNote provider={provider} />
+        {showForm ? (
+          <form className="ek-stack" data-gap="3" noValidate onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}>
+            <PasswordField ref={keyField} label="API-nøkkel" value={key} revealLabel="Vis API-nøkkelen" concealLabel="Skjul API-nøkkelen"
+              onChange={(e) => setKey(e.target.value)} readOnly={connect.isPending}
+              hint="EmneKlar kontrollerer nøkkelen hos leverandøren og lagrer den bare i Windows Legitimasjonsbehandling. Den vises aldri igjen." />
+            {provider.key_page ? (
+              <p className="ek-small">
+                <ExternalLink href={provider.key_page}>Finn eller lag en API-nøkkel hos {provider.name}</ExternalLink>
+              </p>
+            ) : null}
+            <div className="ek-cluster">
+              <Button type="submit" variant="primary" icon={<PlugZap aria-hidden="true" />} loading={connect.isPending}>
+                {connect.isPending ? "Kobler til …" : "Koble til"}
+              </Button>
+              {replacing ? (
+                <Button variant="ghost" disabled={connect.isPending} onClick={() => {
+                  focusAfter.current = "change";
+                  setKey("");
+                  connect.reset();
+                  setReplacing(false);
+                }}>Avbryt</Button>
+              ) : null}
+            </div>
+            {connect.error ? <Alert tone="danger" role="alert">{connect.error.message}</Alert> : null}
+          </form>
+        ) : (
+          <div className="ek-stack" data-gap="3">
+            <p className="ek-provider-key">
+              <ShieldCheck aria-hidden="true" size={18} />
+              <span><span className="ek-strong">Nøkkel lagret sikkert</span> <span className="ek-muted">i Windows Legitimasjonsbehandling</span></span>
+            </p>
+            <ProviderError provider={provider} />
+            <div className="ek-cluster">
+              <Button ref={changeButton} icon={<KeyRound aria-hidden="true" />} onClick={() => {
+                focusAfter.current = "field";
+                connect.reset();
+                setReplacing(true);
+              }}>Bytt nøkkel</Button>
+              <Button variant="ghost" icon={<Trash aria-hidden="true" />} loading={remove.isPending} onClick={() => remove.mutate()}
+                aria-label={`Fjern nøkkelen til ${provider.name}`}>
+                Fjern
+              </Button>
+            </div>
+          </div>
+        )}
+        {remove.error || update.error ? <Alert tone="danger" role="alert">{(remove.error ?? update.error)!.message}</Alert> : null}
+        <Disclosure summary="Avansert">
+          <div className="ek-stack" data-gap="4">
+            {provider.type === "openai" ? (
+              <form className="ek-stack" data-gap="2" onSubmit={(e) => {
+                e.preventDefault();
+                update.mutate({ endpoint });
+              }}>
+                <TextField label="Endepunkt" type="url" value={endpoint} onChange={(e) => setEndpoint(e.target.value)}
+                  hint="Standard er https://api.openai.com/v1. Endre bare hvis du bruker en egen proxy med samme API." />
+                <div><Button type="submit" size="sm" loading={update.isPending}>Lagre endepunkt</Button></div>
+              </form>
+            ) : null}
+            <div className="ek-stack" data-gap="1">
+              <div>
+                <Button size="sm" icon={<PlugZap aria-hidden="true" />} disabled={!provider.key_configured}
+                  loading={check.isPending} onClick={() => check.mutate()}>
+                  {check.isPending ? "Kontrollerer …" : "Kontroller tilkoblingen"}
+                </Button>
+              </div>
+              <p className="ek-xs ek-muted">
+                {provider.key_configured
+                  ? `Kontrollerer den lagrede nøkkelen hos ${provider.name} på nytt.${provider.last_checked_at ? ` Sist kontrollert ${formatDateTime(provider.last_checked_at)}.` : ""}`
+                  : "Koble til med en nøkkel først."}
+              </p>
+            </div>
+          </div>
+        </Disclosure>
+      </div>
+    </Card>
+  );
+}
+
+/** Azure OpenAI and own (local) servers: endpoint, optional key and a manual check. */
 function ProviderCard({ provider, discoveryEnabled }: { provider: Provider; discoveryEnabled: boolean }) {
   const refresh = useAiRefresh();
   const toast = useToast();
@@ -127,35 +297,24 @@ function ProviderCard({ provider, discoveryEnabled }: { provider: Provider; disc
   });
   const test = useMutation({
     mutationFn: () => api.post<{ ok: boolean; message: string }>(`/api/ai/providers/${provider.id}/test`),
-    onSuccess: refresh,
+    onSettled: refresh,
   });
   const discover = useMutation({
     mutationFn: () => api.post<{ found: number; added: number; note: string | null }>(`/api/ai/providers/${provider.id}/discover`),
     onSuccess: (r) => {
       refresh();
-      toast.show({ tone: "info", title: `Fant ${r.found} modeller, ${r.added} nye`, body: r.note ?? "Nye modeller må klassifiseres før de kan brukes." });
+      toast.show({ tone: "info", title: r.added ? `${r.added} nye modeller i listen` : "Ingen nye modeller",
+        body: r.note ?? (r.added ? "Nye modeller må klassifiseres før de kan brukes." : undefined) });
     },
   });
   const deleteKey = useMutation({ mutationFn: () => api.delete(`/api/ai/providers/${provider.id}/key`), onSuccess: refresh });
   const needsEndpoint = provider.type !== "anthropic";
 
   return (
-    <Card
-      title={provider.name}
-      headingLevel={3}
-      actions={
-        <>
-          {provider.local ? <Badge tone="teal">Lokal – data forlater ikke maskinen</Badge> : <Badge>Ekstern tjeneste</Badge>}
-          {provider.last_status === "ok" ? <Badge tone="success">Virker</Badge> : null}
-          {provider.last_status === "error" ? <Badge tone="danger">Feil</Badge> : null}
-        </>
-      }
-    >
+    <Card title={provider.name} headingLevel={3} actions={<ProviderBadges provider={provider} />}>
       <div className="ek-stack">
         <Switch label={`Bruk ${provider.name}`} checked={provider.enabled} onChange={(enabled) => update.mutate({ enabled })} />
-        {provider.key_configured && !provider.enabled ? (
-          <p className="ek-small ek-muted">Nøkkelen er lagret, men {provider.name} brukes ikke før «Bruk {provider.name}» er slått på.</p>
-        ) : null}
+        <SwitchNote provider={provider} />
         <form className="ek-stack" onSubmit={(e) => {
           e.preventDefault();
           update.mutate({ endpoint: needsEndpoint ? endpoint : undefined, api_version: provider.type === "azure_openai" ? apiVersion : undefined, api_key: key || undefined });
@@ -185,10 +344,7 @@ function ProviderCard({ provider, discoveryEnabled }: { provider: Provider; disc
             ) : null}
           </div>
         </form>
-        {provider.last_message ? (
-          <p className="ek-xs ek-muted">Siste test {formatDateTime(provider.last_checked_at)}: {provider.last_message}</p>
-        ) : null}
-        {test.data ? <Alert tone={test.data.ok ? "success" : "danger"} role="status">{test.data.message}</Alert> : null}
+        <ProviderError provider={provider} />
         {update.error || test.error || discover.error ? (
           <Alert tone="danger" role="alert">{((update.error ?? test.error ?? discover.error) as Error).message}</Alert>
         ) : null}
@@ -255,6 +411,21 @@ export function AiSettings() {
   const routing = useQuery({ queryKey: ["ai-routing"], queryFn: () => api.get<Routing>("/api/ai/routing") });
   const usage = useQuery({ queryKey: ["ai-usage"], queryFn: () => api.get<Usage>("/api/ai/usage?limit=50") });
   const [classify, setClassify] = useState<Model | null | "new">(null);
+  const discoveryEnabled = session.flags.ai_model_discovery !== false;
+  // The model list is kept fresh in the background (once per visit, only for a connected provider with an old list).
+  const refreshModels = useMutation({
+    mutationFn: (id: string) => api.post(`/api/ai/providers/${id}/refresh-models`),
+    onSuccess: refresh,
+  });
+  const refreshed = useRef(new Set<string>());
+  useEffect(() => {
+    for (const p of providers.data?.providers ?? []) {
+      if (p.models_stale && discoveryEnabled && !refreshed.current.has(p.id)) {
+        refreshed.current.add(p.id);
+        refreshModels.mutate(p.id);
+      }
+    }
+  }, [providers.data, discoveryEnabled, refreshModels]);
   const updateModel = useMutation({
     mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) => api.put(`/api/ai/models/${id}`, { enabled }),
     onSuccess: refresh,
@@ -311,7 +482,9 @@ export function AiSettings() {
       <section className="ek-stack" aria-labelledby="leverandorer">
         <h2 id="leverandorer">Leverandører</h2>
         <p className="ek-small ek-muted">EmneKlar virker uten KI. KI brukes bare til forslag, og alle forslag merkes «KI-forslag – må vurderes».</p>
-        {providerList.map((p) => <ProviderCard key={p.id} provider={p} discoveryEnabled={session.flags.ai_model_discovery !== false} />)}
+        {providerList.map((p) => (KEY_PROVIDERS.includes(p.type)
+          ? <KeyProviderCard key={p.id} provider={p} />
+          : <ProviderCard key={p.id} provider={p} discoveryEnabled={discoveryEnabled} />))}
       </section>
 
       <Card title="Modellvalg" headingLevel={2}>

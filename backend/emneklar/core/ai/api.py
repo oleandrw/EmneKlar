@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -18,16 +18,31 @@ from emneklar.core.ai.service import is_local
 from emneklar.core.auth.secrets import ai_key_name
 from emneklar.core.container import AppContainer
 from emneklar.core.errors import AppError, NotFoundError
+from emneklar.core.security.redaction import register_secret, unregister_secret
 from emneklar.core.storage.models import AIUsage
 from emneklar.core.storage.settings import AppSettings, ProviderConfig
 
 router = APIRouter(prefix="/api/ai")
 
 
+#: The provider's own page where the teacher creates or finds an API key (linked next to the key field).
+KEY_PAGES = {"openai": "https://platform.openai.com/api-keys",
+             "anthropic": "https://platform.claude.com/settings/keys"}
+#: How the start of a key from each provider looks (named when a key is rejected or pasted under the wrong provider).
+KEY_PREFIXES = {"openai": "sk-", "anthropic": "sk-ant-"}
+#: The model list is fetched again in the background when it is older than this.
+MODEL_REFRESH = timedelta(hours=24)
+
+
 def provider_dict(c: AppContainer, p: ProviderConfig) -> dict[str, Any]:
     local = is_local(p)
-    return {**p.model_dump(mode="json"), "key_configured": c.secrets.has(ai_key_name(p.id)), "local": local,
-            "data_leaves_machine": not local, "needs_key": p.type != "openai_compatible"}
+    key_configured = c.secrets.has(ai_key_name(p.id))
+    fetched = p.models_fetched_at
+    stale = p.enabled and key_configured and p.type in KEY_PAGES and (
+        fetched is None or datetime.now(UTC) - fetched > MODEL_REFRESH)
+    return {**p.model_dump(mode="json"), "key_configured": key_configured, "local": local,
+            "data_leaves_machine": not local, "needs_key": p.type != "openai_compatible",
+            "key_page": KEY_PAGES.get(p.type), "models_stale": stale}
 
 
 def _find(settings: AppSettings, provider_id: str) -> ProviderConfig:
@@ -83,11 +98,17 @@ async def update_provider(provider_id: str, body: ProviderUpdate,
             # Saving a key means «use this provider» – the switch is turned on with it (it can be turned off again).
             # Sending course content to external AI still needs its own privacy setting.
             p.enabled = True
-        if endpoint:
+        changed = new_key
+        if endpoint and endpoint != p.endpoint:
             p.endpoint = endpoint
-        if body.api_version is not None:
+            changed = True
+        if body.api_version is not None and (body.api_version.strip() or None) != p.api_version:
             p.api_version = body.api_version.strip() or None
-        p.last_status = "unknown"
+            changed = True
+        if changed:
+            # Only a new key, endpoint or version makes the last check out of date – not the on/off switch.
+            p.last_status = "unknown"
+            p.last_message = None
 
     updated = c.settings.update(mutate)
     return provider_dict(c, _find(updated, provider_id))
@@ -97,7 +118,153 @@ async def update_provider(provider_id: str, body: ProviderUpdate,
 async def delete_key(provider_id: str, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
     _find(c.settings.get(), provider_id)
     c.secrets.delete(ai_key_name(provider_id))
+
+    def mutate(s: AppSettings) -> None:
+        # Without a key the provider cannot be used: switched off, and no old status that says «Tilkoblet».
+        p = _find(s, provider_id)
+        if p.type != "openai_compatible":
+            p.enabled = False
+        p.last_status = "unknown"
+        p.last_message = None
+        p.last_checked_at = None
+
+    c.settings.update(mutate)
     return {"ok": True}
+
+
+# -- «Koble til»: check a key with the provider before it is stored ----------------------------------------------------
+
+
+
+class ConnectBody(BaseModel):
+    #: A new key to check and store. None = check the stored key again («Kontroller tilkoblingen»).
+    api_key: str | None = Field(default=None, max_length=2000)
+
+
+def key_problem(provider: ProviderConfig, key: str) -> str | None:
+    """A concrete reason a pasted key cannot be right – found before anything is sent (and before a key from one
+    provider is sent to the other). The key itself is never part of the message."""
+    name = provider.name
+    if not key:
+        return "Lim inn API-nøkkelen først."
+    if any(ch.isspace() for ch in key):
+        return f"Nøkkelen inneholder mellomrom eller linjeskift. Kopier den på nytt fra {name}."
+    if not key.isascii() or not key.isprintable():
+        return f"Nøkkelen inneholder tegn som ikke finnes i en API-nøkkel. Kopier den på nytt fra {name}."
+    if provider.type == "openai" and key.startswith("sk-ant-"):
+        return "Dette er en nøkkel fra Anthropic. Lim den inn under Anthropic."
+    if provider.type == "anthropic" and key.startswith("sk-") and not key.startswith("sk-ant-"):
+        return "Dette ser ut som en nøkkel fra OpenAI. Nøkler fra Anthropic starter med «sk-ant-»."
+    if len(key) < 20:
+        return f"Nøkkelen er for kort til å være en API-nøkkel. Kopier hele nøkkelen fra {name}."
+    return None
+
+
+def connect_message(provider: ProviderConfig, exc: AIError) -> str:
+    """What went wrong when the provider was asked, in words the teacher can act on. Never the key, and never the
+    provider's raw response (it may repeat part of the key)."""
+    name = provider.name
+    detail = (exc.detail or "").lower()
+    if exc.code == "ai_key_invalid":
+        prefix = KEY_PREFIXES.get(provider.type)
+        return (f"{name} avviste nøkkelen. Kontroller at hele nøkkelen er kopiert, og at den ikke er slettet eller "
+                f"utløpt hos {name}." + (f" Nøkler fra {name} starter med «{prefix}»." if prefix else ""))
+    if exc.code == "ai_key_missing":
+        return "Lim inn API-nøkkelen først."
+    if exc.code == "ai_rate_limited":
+        if "kvoten" in detail or "kostnadsgrensen" in detail:
+            return (f"Kontoen hos {name} har ikke mer kreditt, eller kostnadsgrensen er nådd. Legg inn betaling eller "
+                    f"øk grensen hos {name}, og prøv igjen.")
+        return f"{name} ber EmneKlar vente litt (for mange forespørsler). Prøv igjen om et minutt."
+    if exc.code == "ai_timeout":
+        return f"{name} svarte ikke i tide. Kontroller nettverket og prøv igjen."
+    if exc.code == "ai_unavailable":
+        if detail.startswith("http"):
+            return f"{name} er midlertidig utilgjengelig. Prøv igjen om litt."
+        return (f"Fikk ikke kontakt med {name}. Kontroller at maskinen er på nett (og eventuell proxy eller "
+                "brannmur), og prøv igjen.")
+    if exc.code in ("ai_model_missing", "ai_bad_response"):
+        return (f"Endepunktet svarte ikke som {name}s API. Kontroller endepunktet under «Avansert», eller tilbakestill "
+                "det til standardadressen.")
+    if exc.code == "ai_not_configured":
+        return exc.message
+    return f"Tilkoblingen til {name} feilet: {exc.message}"
+
+
+def _connected(c: AppContainer, provider_id: str, *, switch_on: bool) -> None:
+    def mutate(s: AppSettings) -> None:
+        p = _find(s, provider_id)
+        now = datetime.now(UTC)
+        if switch_on:
+            p.enabled = True  # connecting means «use this provider»; the switch can turn it off again
+        p.last_status = "ok"
+        p.last_message = "Tilkoblet."
+        p.last_checked_at = now
+        p.models_fetched_at = now
+
+    c.settings.update(mutate)
+
+
+@router.post("/providers/{provider_id}/connect")
+async def connect(provider_id: str, body: ConnectBody, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
+    """Check the key with the provider and store it in the OS credential store only when the check succeeds. A key that
+    fails is never stored, and an earlier key is kept. The model list from the check is cached in the registry."""
+    settings = c.settings.get()
+    provider = _find(settings, provider_id)
+    stored = c.ai.key_for(provider_id)
+    new_key = body.api_key is not None
+    key = (body.api_key or "").strip() if new_key else (stored or "")
+    if new_key or provider.type != "openai_compatible":
+        problem = key_problem(provider, key) if new_key else (None if key else "Lim inn API-nøkkelen først.")
+        if problem:
+            raise AppError("validation_error", status=422, message=problem)
+    if key and key != stored:
+        register_secret(key)  # redacted wherever it could show up while it is checked
+    try:
+        models = await c.ai.check_key(provider, key or None)
+    except AIError as exc:
+        if key and key != stored:
+            unregister_secret(key)
+        message = connect_message(provider, exc)
+        if not new_key:
+            _record_status(c, provider_id, False, message)
+        elif stored:
+            message += " Den lagrede nøkkelen er beholdt."
+        else:
+            message += " Nøkkelen er ikke lagret."
+        # A wrong key or endpoint is the teacher's input (400); an unreachable or busy provider keeps its own status.
+        status = 400 if exc.code in ("ai_key_invalid", "ai_key_missing", "ai_model_missing", "ai_bad_response") \
+            else exc.status
+        raise AppError(exc.code, status=status, message=message) from None
+    if new_key:
+        c.secrets.set(ai_key_name(provider_id), key)
+    if flags.is_enabled(c.settings.get(), "ai_model_discovery"):
+        c.ai.registry.merge_discovered(provider_id, models, local=is_local(provider))
+    _connected(c, provider_id, switch_on=new_key)
+    return provider_dict(c, _find(c.settings.get(), provider_id))
+
+
+@router.post("/providers/{provider_id}/refresh-models")
+async def refresh_models(provider_id: str, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
+    """Fetch the model list again in the background (the settings page asks when it is older than a day). A key the
+    provider no longer accepts is shown as an error on the card; other failures are left for the next time."""
+    settings = c.settings.get()
+    provider = _find(settings, provider_id)
+    if not flags.is_enabled(settings, "ai_model_discovery") or not c.ai.configured(provider):
+        return {"refreshed": False, "added": 0}
+    try:
+        models = await c.ai.check_key(provider, c.ai.key_for(provider_id))
+    except AIError as exc:
+        if exc.code == "ai_key_invalid":
+            _record_status(c, provider_id, False, connect_message(provider, exc))
+        return {"refreshed": False, "added": 0}
+    added = c.ai.registry.merge_discovered(provider_id, models, local=is_local(provider))
+
+    def mutate(s: AppSettings) -> None:
+        _find(s, provider_id).models_fetched_at = datetime.now(UTC)
+
+    c.settings.update(mutate)
+    return {"refreshed": True, "added": added}
 
 
 def _record_status(c: AppContainer, provider_id: str, ok: bool, message: str) -> None:

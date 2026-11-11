@@ -33,6 +33,8 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\b\d{1,8}~[A-Za-z0-9]{20,}\b"), REDACTED),
     # Anthropic / OpenAI style keys
     (re.compile(r"\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{16,}\b"), REDACTED),
+    # …and the masked form providers repeat in error messages ("Incorrect API key provided: sk-proj-****abcd")
+    (re.compile(r"\bsk-[A-Za-z0-9_-]*\*{3,}[A-Za-z0-9_*-]*"), REDACTED),
     # Canvas file verifiers and other signed query parameters
     (
         re.compile(

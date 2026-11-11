@@ -53,12 +53,13 @@ export function PlanSummary({ runId, onNext }: { runId: number; onNext: () => vo
             {module.pages.map((page) => (
               <li key={page.page_url}>
                 <strong>{page.title}</strong>
-                <span className="ek-small ek-muted"> – {page.proposed === 0 ? "Ingen bilder nødvendig" : `${page.proposed} foreslått${page.proposed === 1 ? "" : "e"} bilde${page.proposed === 1 ? "" : "r"}`}</span>
+                <span className="ek-small ek-muted"> – {page.proposed === 0 ? "Ingen illustrasjon anbefalt" : `${page.proposed} foreslått${page.proposed === 1 ? "" : "e"} bilde${page.proposed === 1 ? "" : "r"}`}</span>
                 {page.illustrations.length ? (
                   <ul className="ek-stack" data-gap="1">
                     {page.illustrations.map((i) => (
                       <li key={i.id} className="ek-small">
-                        {i.placement_label}{i.section.title ? ` i «${i.section.title}»` : ""}: {i.plan.pedagogical_purpose ?? i.plan.concept}
+                        <span className="ek-strong">{i.plan.pedagogical_purpose ?? i.plan.concept}</span>
+                        <br />{i.placement_label}{i.plan.placement_reason ? <span className="ek-muted"> – {i.plan.placement_reason}</span> : null}
                       </li>
                     ))}
                   </ul>

@@ -172,12 +172,17 @@ export interface ScopeIndex {
 
 export interface Anchor {
   placement: string;
+  /** The spot in the page's own words («Etter punktlisten «…», før «…»»). */
   placement_label: string;
   section_id: string | null;
   section_title: string;
   block_index: number;
+  block_hash?: string | null;
   block_text: string;
   warning: string | null;
+  /** The text right before and right after the spot (empty for older proposals). */
+  before_text?: string;
+  after_text?: string;
 }
 
 export interface Illustration {
@@ -197,6 +202,9 @@ export interface Illustration {
     concept?: string;
     learning_goal?: string;
     motif?: string;
+    people?: string;
+    scenes?: string[];
+    shows_sequence?: boolean | null;
     composition?: string;
     must_show?: string[];
     must_not_show?: string[];
@@ -204,6 +212,8 @@ export interface Illustration {
     accuracy_notes?: string;
     adds_value?: string;
     placement_reason?: string;
+    /** The spot the plan chose (placement_reason is about it), also after the teacher has moved the image. */
+    suggested_placement?: { block_index: number; block_hash: string | null; label: string };
   };
   prompt: string;
   style_override: string | null;

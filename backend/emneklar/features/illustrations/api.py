@@ -41,6 +41,7 @@ from emneklar.features.illustrations.placement import (
     Insertion,
     PlacementError,
     candidate_anchors,
+    excerpt_around,
     figure_html,
     insert,
 )
@@ -58,7 +59,8 @@ USAGE_RIGHT_LABELS = {"own_copyright": "Jeg har opphavsretten", "used_by_permiss
 AMOUNT_LABELS = {"low": "Lav", "balanced": "Balansert", "high": "Høy"}
 FORMAT_LABELS = {"auto": "Automatisk (anbefalt)", "16:9": "Bred 16:9", "3:2": "Liggende 3:2", "4:3": "Liggende 4:3",
                  "1:1": "Kvadratisk 1:1", "2:3": "Stående 2:3"}
-IMAGE_TYPE_LABELS = {"scene": "Situasjon", "illustration": "Illustrasjon", "object": "Gjenstand", "diagram": "Diagram",
+IMAGE_TYPE_LABELS = {"scene": "Situasjon", "comparison": "Sammenligning i flere scener", "illustration": "Illustrasjon",
+                     "object": "Gjenstand", "diagram": "Diagram",
                      "model": "Modell", "infographic": "Infografikk", "process": "Prosess", "concept_map": "Begrepskart"}
 
 
@@ -699,10 +701,12 @@ async def regenerate(illustration_id: int, body: RegenerateBody, c: AppContainer
 
 
 @router.get("/illustrations/{illustration_id}/page-preview")
-async def page_preview(illustration_id: int, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
+async def page_preview(illustration_id: int, around: bool = False,
+                       c: AppContainer = Depends(get_container)) -> dict[str, Any]:
     """The live page with this illustration – and the page's other illustrations from the run that are not
     rejected or skipped – inserted where they would go, sanitised like Canvas does. Our images are embedded as data
-    URLs because the sandboxed preview frame cannot load anything that needs the session."""
+    URLs because the sandboxed preview frame cannot load anything that needs the session. With ``around`` only the
+    illustration with the text right before and after it is returned (the placement in its surroundings)."""
     _flag(c)
     store = _store(c)
     ill = store.get(illustration_id)
@@ -729,6 +733,8 @@ async def page_preview(illustration_id: int, c: AppContainer = Depends(get_conta
             html = insert(html, [insertion])
         except PlacementError:
             skipped.append(insertion.marker)
+    if around:
+        html = excerpt_around(html, f"preview-{ill['id']}") or ""
     from emneklar.core.security.sanitize import preview_html
 
     clean = preview_html(html, c.settings.get().canvas.base_url)
@@ -903,7 +909,7 @@ async def publish_preview(run_id: int, body: PublishBody, c: AppContainer = Depe
                       "published": page.get("published"), "replaces": built["replaces"],
                       "already_on_page": built["already_on_page"],
                       "illustrations": [{"id": i["id"], "placement": i["anchor"].get("placement"),
-                                         "placement_label": PLACEMENTS.get(i["anchor"].get("placement", ""), ""),
+                                         "placement_label": i["placement_label"],
                                          "section": i["anchor"].get("section_title"), "alt_text": i["alt_text"],
                                          "decorative": i["decorative"],
                                          "caption": i["caption"] if i["caption_enabled"] else None,

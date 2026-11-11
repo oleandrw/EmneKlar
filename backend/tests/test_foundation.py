@@ -89,6 +89,8 @@ def test_redaction_patterns() -> None:
     assert "sk-ant-abcdefghijklmnopqrstu" not in out
     assert "SIGNED123" not in out
     assert "my-very-secret-value" not in out
+    masked = redact("Incorrect API key provided: sk-proj-****************************abcd. You can find your API key")
+    assert "abcd" not in masked and "sk-proj" not in masked, "the masked form a provider repeats is hidden too"
 
 
 def test_logging_filter_redacts(caplog: pytest.LogCaptureFixture) -> None:

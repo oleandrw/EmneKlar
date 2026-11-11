@@ -1,10 +1,13 @@
 """Deterministic placement and insertion of illustrations in Canvas page HTML.
 
-The AI proposes *where* an illustration helps (a section and a placement type); this module turns that into a
+The page's *insertion points* are the boundaries between units (see :mod:`structure`): never between an introductory
+sentence and its list, a heading and its first paragraph, an example and its explanation, or an image and its caption.
+The AI chooses one of these points (by id) together with what the image should show; this module turns it into a
 concrete, robust anchor (the block's tag + a hash of its text, not a fragile path or a text search) and inserts a
-``<figure>`` by splicing the original HTML at a block boundary. Existing content is never rewritten, moved or
-deleted. Removal (undo) cuts out exactly the figures EmneKlar inserted – identified by ``data-emneklar-illustration`` –
-so everything else the teacher has changed in the meantime is kept.
+``<figure>`` by splicing the original HTML at that block boundary. Before inserting, the point is checked again on the
+page as it is now. Existing content is never rewritten, moved or deleted. Removal (undo) cuts out exactly the figures
+EmneKlar inserted – identified by ``data-emneklar-illustration`` – so everything else the teacher has changed in the
+meantime is kept.
 """
 
 from __future__ import annotations
@@ -16,17 +19,23 @@ from typing import Any
 
 from emneklar.core.changes.appliers import normalise_html
 from emneklar.features.illustrations.htmlspans import scan
-from emneklar.features.illustrations.structure import MARKER_ATTR, Block, PageStructure, Section, parse_page
+from emneklar.features.illustrations.structure import (
+    MARKER_ATTR,
+    PageStructure,
+    Section,
+    Unit,
+    looks_like_task,
+    parse_page,
+)
 
 PLACEMENTS = {
     "page_start": "I starten av siden",
     "after_intro": "Etter innledningen",
-    "under_heading": "Rett under overskriften",
+    "under_heading": "Etter første avsnitt under overskriften",
     "after_explanation": "Etter den faglige forklaringen",
     "end_of_section": "Mellom to tekstseksjoner (etter seksjonen)",
     "before_task": "Før oppgaven",
 }
-TEXT_KINDS = ("paragraph",)
 
 
 class PlacementError(Exception):
@@ -35,7 +44,11 @@ class PlacementError(Exception):
 
 @dataclass
 class Anchor:
-    """Insert *after* block ``block_index`` (or at the start of the container when ``block_index`` is -1)."""
+    """Insert *after* block ``block_index`` (or at the start of the container when ``block_index`` is -1).
+
+    ``label`` describes the spot in the page's own words («Etter punktlisten «…», før «…»»); ``before_text`` and
+    ``after_text`` are the text right before and after it (shown with the preview, so the teacher sees the image in
+    its surroundings)."""
 
     placement: str
     section_id: str | None
@@ -45,129 +58,221 @@ class Anchor:
     block_text: str = ""
     section_title: str = ""
     warning: str | None = None
+    label: str = ""
+    before_text: str = ""
+    after_text: str = ""
 
     def as_dict(self) -> dict[str, Any]:
-        return {"placement": self.placement, "placement_label": PLACEMENTS.get(self.placement, self.placement),
+        return {"placement": self.placement,
+                "placement_label": self.label or PLACEMENTS.get(self.placement, self.placement),
                 "section_id": self.section_id, "section_title": self.section_title, "block_index": self.block_index,
                 "block_tag": self.block_tag, "block_hash": self.block_hash, "block_text": self.block_text,
-                "warning": self.warning}
+                "warning": self.warning, "label": self.label, "before_text": self.before_text,
+                "after_text": self.after_text}
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Anchor:
         return cls(placement=str(data.get("placement") or "end_of_section"), section_id=data.get("section_id"),
                    block_index=int(data.get("block_index", -1)), block_tag=data.get("block_tag"),
                    block_hash=data.get("block_hash"), block_text=str(data.get("block_text") or ""),
-                   section_title=str(data.get("section_title") or ""), warning=data.get("warning"))
+                   section_title=str(data.get("section_title") or ""), warning=data.get("warning"),
+                   label=str(data.get("label") or ""), before_text=str(data.get("before_text") or ""),
+                   after_text=str(data.get("after_text") or ""))
 
 
-def _start_anchor(placement: str, section: Section | None) -> Anchor:
-    return Anchor(placement=placement, section_id=section.id if section else None, block_index=-1,
-                  section_title=section.title if section else "")
+# -------------------------------------------------------------------------------- insertion points
+
+#: How the spot is described: the kind of the unit's last block.
+KIND_WORDS = {"paragraph": "avsnittet", "table": "tabellen", "quote": "sitatet", "code": "kodeeksempelet",
+              "media": "videoen", "image": "bildet", "figure": "figuren", "component": "innholdsboksen",
+              "rule": "skillelinjen", "other": "innholdet", "heading": "overskriften"}
+NEAR_IMAGE = "Plasseringen ligger rett ved et eksisterende bilde eller en video."
 
 
-def _after(structure: PageStructure, index: int, placement: str, section: Section | None) -> Anchor:
+@dataclass
+class Point:
+    """A place an illustration can go: after block ``after`` – the last block of a unit (-1 = the top of the page)."""
+
+    id: str
+    after: int  # block index; -1 = top of the page
+    placement: str
+    section: Section | None
+    label: str
+    before_text: str
+    after_text: str
+    next_heading: str
+    near_image: bool
+
+    def anchor(self, structure: PageStructure) -> Anchor:
+        section_id = self.section.id if self.section else None
+        title = self.section.title if self.section else ""
+        anchor = Anchor(placement=self.placement, section_id=section_id, block_index=self.after, section_title=title,
+                        label=self.label, before_text=self.before_text, after_text=self.after_text,
+                        warning=NEAR_IMAGE if self.near_image else None)
+        if self.after >= 0:
+            block = structure.blocks[self.after]
+            anchor.block_tag, anchor.block_hash, anchor.block_text = block.tag, block.fingerprint, block.text[:140]
+        return anchor
+
+    def for_ai(self) -> dict[str, Any]:
+        """The point as the planner sees it: where it is, the text it follows and what comes next."""
+        return {"id": self.id, "section_id": self.section.id if self.section else None,
+                "section_title": self.section.title if self.section else "", "type": self.placement,
+                "after_text": self.before_text or "(toppen av siden)",
+                "next": f"Neste deloverskrift: «{self.next_heading}»" if self.next_heading
+                else (self.after_text or "(slutten av siden)")}
+
+
+def _words(text: str, count: int) -> str:
+    words = text.split()
+    return " ".join(words[:count]) + (" …" if len(words) > count else "")
+
+
+def _tail(text: str, limit: int = 220) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else "… " + text[-limit:].split(" ", 1)[-1]
+
+
+def _head(text: str, limit: int = 180) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + " …"
+
+
+def _kind_word(structure: PageStructure, index: int) -> str:
     block = structure.blocks[index]
-    anchor = Anchor(placement=placement, section_id=section.id if section else None, block_index=index,
-                    section_title=section.title if section else "", **{
-                        k: v for k, v in block.anchor().items() if k != "block_index"})
-    neighbours = [structure.blocks[i] for i in (index, index + 1) if 0 <= i < len(structure.blocks)]
-    if any(b.kind in ("image", "figure", "media") for b in neighbours):
-        anchor.warning = "Plasseringen ligger rett ved et eksisterende bilde eller en video."
-    return anchor
+    if block.kind == "list":
+        return "den nummererte listen" if block.tag == "ol" else "punktlisten"
+    return KIND_WORDS.get(block.kind, "innholdet")
+
+
+def insertion_points(structure: PageStructure) -> list[Point]:
+    """Every place an illustration may go, in page order: the top of the page, then after each unit that has content
+    (never right under a bare heading). ``p0`` is always the top of the page."""
+    blocks, units = structure.blocks, structure.units
+    first_heading = next((b.text for b in blocks[:1] if b.kind == "heading"), "")
+    top = Point(id="p0", after=-1, placement="page_start", section=structure.sections[0] if structure.sections else None,
+                label="Øverst på siden", before_text="", after_text=_head(structure.unit_text(units[0])) if units else "",
+                next_heading=first_heading, near_image=bool(blocks) and blocks[0].kind in ("image", "figure", "media"))
+    points = [top]
+    for position, unit in enumerate(units):
+        if all(blocks[i].kind == "heading" for i in range(unit.first, unit.last + 1)):
+            continue
+        following: Unit | None = units[position + 1] if position + 1 < len(units) else None
+        section = structure.section_of(unit.last)
+        next_block = blocks[following.first] if following else None
+        next_heading = next_block.text if next_block is not None and next_block.kind == "heading" else ""
+        if section is None or section.heading_index is None:
+            placement = "after_intro"
+        elif following is None or next_heading:
+            placement = "end_of_section"
+            following_section = structure.section_of(following.first) if following else None
+            if following_section is not None and _looks_like_task(structure, following_section):
+                placement = "before_task"
+        else:
+            placement = "after_explanation"
+        last = blocks[unit.last]
+        label = f"Etter {_kind_word(structure, unit.last)}"
+        if last.text:
+            label += f" «{_words(last.text, 8)}»"
+        if next_heading:
+            label += f", før «{_words(next_heading, 10)}»"
+        elif following is None:
+            label += ", nederst på siden"
+        # Right after an image or video (with its caption), or right before one: two pictures in a row.
+        visual = ("image", "figure", "media")
+        near = last.kind in visual or "caption" in unit.reasons or (following is not None and (
+            blocks[following.first].kind in visual or "caption" in following.reasons))
+        points.append(Point(id=f"p{len(points)}", after=unit.last, placement=placement, section=section, label=label,
+                            before_text=_tail(structure.unit_text(unit)),
+                            after_text=_head(structure.unit_text(following)) if following else "",
+                            next_heading=next_heading, near_image=near))
+    return points
+
+
+def _looks_like_task(structure: PageStructure, section: Section) -> bool:
+    return looks_like_task(section.title) or any(looks_like_task(structure.blocks[i].text[:200])
+                                                 for i in section.block_indices[:2])
+
+
+def planner_points(structure: PageStructure) -> list[Point]:
+    """The points the planner may choose from: not right next to an existing image or video (unless nothing else is
+    left), and the top of the page only as an opening image."""
+    points = insertion_points(structure)
+    clear = [p for p in points if not p.near_image]
+    return clear or points
 
 
 def anchor_for(structure: PageStructure, section_id: str | None, placement: str) -> Anchor:
-    """The concrete anchor for a proposed placement. Falls back to the nearest sensible position."""
+    """A placement *type* in a section turned into an insertion point (used when no point id is given, e.g. for older
+    proposals). Always lands between units; falls back to the nearest sensible point."""
+    points = insertion_points(structure)
     if placement not in PLACEMENTS:
         placement = "end_of_section"
-    sections = structure.sections
-    if not structure.blocks:
-        return _start_anchor("page_start", sections[0] if sections else None)
-    section = structure.section(section_id or "") or sections[0]
-    if placement == "page_start":
-        return _start_anchor(placement, sections[0])
-    if placement == "after_intro":
-        intro = structure.section("s0")
-        first_text = next((i for i in (intro.block_indices if intro else []) if structure.blocks[i].kind == "paragraph"),
-                          None)
-        if first_text is not None:
-            return _after(structure, first_text, placement, intro)
-        first = sections[0]
-        if first.heading_index is not None:
-            return _after(structure, first.heading_index, "under_heading", first)
-        return _start_anchor("page_start", first)
-    if placement == "under_heading":
-        if section.heading_index is not None:
-            return _after(structure, section.heading_index, placement, section)
-        placement = "after_explanation"
-    if placement == "after_explanation":
-        run_end = None
-        for index in section.block_indices:
-            if structure.blocks[index].kind in TEXT_KINDS:
-                run_end = index
-            elif run_end is not None:
-                break
-        if run_end is not None:
-            return _after(structure, run_end, placement, section)
-        placement = "end_of_section"
+    if not structure.blocks or placement == "page_start" or len(points) == 1:
+        return points[0].anchor(structure)
+    section = structure.section(section_id or "") or structure.sections[0]
+    inside = [p for p in points[1:] if p.section is not None and p.section.id == section.id]
     if placement == "before_task":
-        position = sections.index(section)
-        if section.heading_index is None or position == 0:
-            return _start_anchor("page_start", section)
-        previous = sections[position - 1]
-        last = previous.last
-        if last is None:
-            return _start_anchor("page_start", section)
-        anchor = _after(structure, last, placement, section)
-        return anchor
-    last = section.last
-    if last is None:
-        return _start_anchor("page_start", section)
-    return _after(structure, last, "end_of_section", section)
+        position = structure.sections.index(section)
+        previous = structure.sections[position - 1] if position > 0 else None
+        earlier = [p for p in points[1:] if previous is not None and p.section is not None
+                   and p.section.id == previous.id]
+        return (earlier[-1] if earlier else points[0]).anchor(structure)
+    if placement == "after_intro":
+        intro = [p for p in points[1:] if p.section is not None and p.section.heading_index is None]
+        return (intro[0] if intro else points[1]).anchor(structure)
+    if not inside:
+        before = [p for p in points if p.after < (section.first if section.first is not None else 0)]
+        return (before[-1] if before else points[0]).anchor(structure)
+    if placement == "under_heading":
+        return inside[0].anchor(structure)
+    if placement == "after_explanation":
+        # The end of the first run of explanatory text: the first point followed by something other than a paragraph.
+        for point in inside:
+            nxt = point.after + 1
+            if nxt >= len(structure.blocks) or structure.blocks[nxt].kind != "paragraph":
+                return point.anchor(structure)
+    return inside[-1].anchor(structure)
 
 
 def candidate_anchors(structure: PageStructure) -> list[dict[str, Any]]:
-    """Every placement the teacher can choose for this page (for «Endre plassering»)."""
-    out: list[dict[str, Any]] = [anchor_for(structure, None, "page_start").as_dict()]
-    seen: set[int] = {-1}
-    for section in structure.sections:
-        kinds = ("after_intro", "end_of_section") if section.heading_index is None else (
-            "under_heading", "after_explanation", "end_of_section")
-        for placement in kinds:
-            anchor = anchor_for(structure, section.id, placement)
-            if anchor.block_index in seen:
-                continue
-            seen.add(anchor.block_index)
-            out.append(anchor.as_dict())
-    return out
+    """Every placement the teacher can choose for this page (for «Endre plassering»), in page order."""
+    return [point.anchor(structure).as_dict() for point in insertion_points(structure)]
 
 
 def resolve(structure: PageStructure, anchor: Anchor) -> int:
-    """Offset in ``structure.html`` where the figure goes. Raises :class:`PlacementError` when the anchor's block no
-    longer exists (the page was changed): the illustration must then be placed again."""
+    """Offset in ``structure.html`` where the figure goes – checked on the page as it is now. Raises
+    :class:`PlacementError` when the anchor's block no longer exists, or when the page has changed so that the
+    figure would now split text that belongs together: the illustration must then be placed again."""
     if anchor.block_index < 0:
         container = structure.container
         return container.start_end if container.tag != "#root" else 0
-    candidates: list[Block] = [b for b in structure.blocks if b.tag == anchor.block_tag
-                               and b.fingerprint == anchor.block_hash]
+    candidates = [b for b in structure.blocks if b.tag == anchor.block_tag and b.fingerprint == anchor.block_hash]
     if not candidates:
         raise PlacementError("Fant ikke avsnittet illustrasjonen skulle stå ved. Siden er endret – velg plassering på nytt.")
     block = min(candidates, key=lambda b: abs(b.index - anchor.block_index))
+    unit = structure.unit_of(block.index)
+    if unit is not None and unit.last != block.index:
+        raise PlacementError("Plasseringen ville nå delt opp tekst som hører sammen (for eksempel en innledende setning "
+                             "og listen etter den). Velg plassering på nytt.")
     return block.span.end
 
 
 DEFAULT_MAX_WIDTH = 900
+#: The tallest an illustration is shown in the text column (px): wide images use the full width, square and tall
+#: images are narrower, so no image fills the whole screen.
+MAX_DISPLAY_HEIGHT = 560
+MIN_DISPLAY_WIDTH = 360
 EAGER_PLACEMENTS = ("page_start", "after_intro")
 
 
 def display_width(max_width: int, width: int | None, height: int | None) -> int:
-    """Maximum display width: the configured width for landscape images, narrower for square and portrait images so
-    they do not fill the whole screen height."""
-    if not width or not height or width > height * 1.1:
+    """Maximum display width: as wide as the text column allows (``max_width``), but never taller than
+    ``MAX_DISPLAY_HEIGHT`` – so a 16:9 or 3:2 image uses the column, a square or portrait image is narrower."""
+    if not width or not height:
         return max_width
-    if width >= height * 0.9:
-        return min(max_width, 720)
-    return min(max_width, 560)
+    by_height = round(MAX_DISPLAY_HEIGHT * width / height)
+    return max(min(max_width, MIN_DISPLAY_WIDTH), min(max_width, by_height))
 
 
 def lazy_for(anchor: Anchor) -> bool:
@@ -266,6 +371,24 @@ def insert(html: str, insertions: list[Insertion]) -> str:
 
 
 DUPLICATE_SEPARATOR = "\n<!-- emneklar: same marker again -->\n"
+
+
+def excerpt_around(html: str, marker: str, *, units_before: int = 1, units_after: int = 1) -> str | None:
+    """The figure with ``marker`` with the text right around it – the unit before and the unit after (a heading with
+    its first paragraph counts as one unit) – inside the page's own content wrapper, so it looks as on the page."""
+    structure = parse_page(html)
+    index = next((b.index for b in structure.blocks if b.emneklar_marker == marker), None)
+    if index is None:
+        return None
+    position = next(i for i, u in enumerate(structure.units) if u.first <= index <= u.last)
+    first = structure.units[max(0, position - units_before)]
+    last = structure.units[min(len(structure.units) - 1, position + units_after)]
+    start, end = structure.blocks[first.first].span.start, structure.blocks[last.last].span.end
+    body = html[start:end]
+    container = structure.container
+    if container.tag != "#root":
+        body = html[container.start:container.start_end] + body + f"</{container.tag}>"
+    return body
 
 
 def find_figures(html: str) -> dict[str, str]:

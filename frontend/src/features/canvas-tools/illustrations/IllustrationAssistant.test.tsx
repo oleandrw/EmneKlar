@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "../../../design-system";
 import { AnalyseStep } from "./AnalyseStep";
 import { DEFAULT_SCOPE, type Catalog, type Estimate, type Illustration, type IllustrationSettings, type RunDetail, type Scope, type ScopeIndex, type Status } from "./api";
+import { IllustrationDetail } from "./IllustrationDetail";
 import { ImageSettingsStep } from "./ImageSettingsStep";
 import { ReviewStep } from "./ReviewStep";
 import { ScopeStep } from "./ScopeStep";
@@ -205,12 +206,80 @@ describe("ReviewStep", () => {
     expect(await screen.findByRole("heading", { name: "Modul 1 – Introduksjon" })).toBeInTheDocument();
     expect(screen.getByText("2 foreslåtte bilder")).toBeInTheDocument();
     expect(screen.getByText("1 foreslått bilde")).toBeInTheDocument();
-    expect(screen.getByText(/Ingen bilder nødvendig/)).toBeInTheDocument();
+    expect(screen.getByText(/Ingen illustrasjon anbefalt/)).toBeInTheDocument();
     expect(screen.getByText("Manuell kontroll")).toBeInTheDocument();
     const page1 = screen.getByRole("region", { name: "Side 1" });
     await user.click(within(page1).getByRole("button", { name: "Godkjenn alle på siden" }));
     await waitFor(() => expect(calls.some((c) => c.url.includes("/illustrations/bulk"))).toBe(true));
     expect(calls.find((c) => c.url.includes("/illustrations/bulk"))!.body).toEqual({ run_id: 3, level: "page", page_url: "Side 1" });
     expect(await axeViolations(container)).toEqual([]);
+  });
+});
+
+describe("IllustrationDetail: placement", () => {
+  const points = [
+    { placement: "page_start", placement_label: "Øverst på siden", section_id: "s0", section_title: "Introduksjon", block_index: -1,
+      block_text: "", warning: null, before_text: "", after_text: "Introduksjon Har du lest …" },
+    { placement: "after_intro", placement_label: "Etter avsnittet «Det er forskjell på å oppleve …»", section_id: "s0",
+      section_title: "Introduksjon", block_index: 2, block_hash: "h2", block_text: "Det er forskjell", warning: null,
+      before_text: "Det er forskjell på å oppleve at vi forstår noe.", after_text: "I denne delen skal vi se nærmere på tre sentrale begreper: …" },
+    { placement: "end_of_section", placement_label: "Etter avsnittet «Disse begrepene henger tett sammen …», før «2.1.1 Metakognisjon»",
+      section_id: "s0", section_title: "Introduksjon", block_index: 5, block_hash: "h5", block_text: "Disse begrepene", warning: null,
+      before_text: "… Disse begrepene henger tett sammen.", after_text: "2.1.1 Metakognisjon Metakognisjon er …" },
+  ];
+  const plan = { concept: "Gjenkjenne, hente fram, forklare", pedagogical_purpose: "Vise forskjellen på å kjenne igjen og å kunne",
+    placement_reason: "Etter listen og avsnittet som oppsummerer de tre begrepene, før neste deloverskrift.",
+    suggested_placement: { block_index: 2, block_hash: "h2", label: "Etter avsnittet «Det er forskjell på å oppleve …»" },
+    motif: "Samme voksne student i tre situasjoner", people: "En voksen deltidsstudent", scenes: ["Recognises", "Recalls", "Explains"] };
+
+  it("shows where the image goes and why, the image in the text around it, and moves it between allowed spots", async () => {
+    const user = userEvent.setup();
+    const item = ill(1, "Side 1", "generated", { anchor: points[1], placement_label: points[1].placement_label, plan });
+    const calls = mockApi({
+      "/anchors": { anchors: points, page_changed: false },
+      "page-preview": { html: "<p>Det er forskjell.</p><figure><img alt=\"x\" src=\"data:image/png;base64,AA\"></figure><p>I denne delen</p>",
+        title: "Side 1", skipped: [], page_changed: false },
+      "/api/illustrations/1": { ...item, anchor: points[2], placement_label: points[2].placement_label },
+    });
+    render(wrap(<IllustrationDetail item={item} catalog={catalog} onClose={() => {}} onJob={() => {}} />));
+    const region = await screen.findByRole("region", { name: "Plassering i teksten" });
+    expect(within(region).getByText("Etter avsnittet «Det er forskjell på å oppleve …» (i «Introduksjon»)")).toBeInTheDocument();
+    expect(within(region).getByText(/Etter listen og avsnittet som oppsummerer de tre begrepene/)).toBeInTheDocument();
+    const preview = await screen.findByTitle("Bildet i teksten på «Side 1»");
+    expect(preview.getAttribute("srcdoc")).toContain("<figure>");
+    expect(calls.some((c) => c.url === "/api/illustrations/1/page-preview?around=true")).toBe(true);
+    expect(screen.getByText("Faglig poeng").nextElementSibling).toHaveTextContent("Vise forskjellen på å kjenne igjen og å kunne");
+    expect(screen.getByText("Scener").nextElementSibling).toHaveTextContent("1: Recognises · 2: Recalls · 3: Explains");
+
+    const up = within(region).getByRole("button", { name: "Flytt opp" });
+    const down = within(region).getByRole("button", { name: "Flytt ned" });
+    await waitFor(() => expect(down).toBeEnabled());
+    expect(up).toBeEnabled();
+    await user.click(down);
+    await waitFor(() => expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ anchor: points[2] }));
+    expect(await within(region).findByText(/Bildet er flyttet: Etter avsnittet «Disse begrepene henger tett sammen …»/)).toBeInTheDocument();
+  });
+
+  it("says when the teacher has moved the image away from the planned spot", async () => {
+    const item = ill(3, "Side 1", "generated", { anchor: points[2], placement_label: points[2].placement_label, plan });
+    mockApi({ "/anchors": { anchors: points, page_changed: false }, "page-preview": { html: "<p>x</p>", title: "Side 1", skipped: [], page_changed: false } });
+    render(wrap(<IllustrationDetail item={item} catalog={catalog} onClose={() => {}} onJob={() => {}} />));
+    const region = await screen.findByRole("region", { name: "Plassering i teksten" });
+    expect(region).toHaveTextContent("Du har flyttet bildet. KI foreslo: Etter avsnittet «Det er forskjell på å oppleve …» – Etter listen");
+    expect(within(region).queryByText("Hvorfor her:")).toBeNull();
+  });
+
+  it("shows the spot in text form before the image is made, and the planned scenes and people", async () => {
+    const item = ill(2, "Side 1", "proposed", { asset_id: null, image_url: null, thumb_url: null, anchor: points[2],
+      placement_label: points[2].placement_label, plan });
+    const calls = mockApi({ "/anchors": { anchors: points, page_changed: false } });
+    render(wrap(<IllustrationDetail item={item} catalog={catalog} onClose={() => {}} onJob={() => {}} />));
+    expect(await screen.findByText("Bildet settes inn her")).toBeInTheDocument();
+    expect(screen.getByText("… Disse begrepene henger tett sammen.")).toBeInTheDocument();
+    expect(screen.getByText("2.1.1 Metakognisjon Metakognisjon er …")).toBeInTheDocument();
+    expect(screen.getByText("Personer").nextElementSibling).toHaveTextContent("En voksen deltidsstudent");
+    await waitFor(() => expect(within(screen.getByRole("region", { name: "Plassering i teksten" }))
+      .getByRole("button", { name: "Flytt ned" })).toBeDisabled());
+    expect(calls.some((c) => c.url.includes("page-preview")), "nothing to preview without an image").toBe(false);
   });
 });

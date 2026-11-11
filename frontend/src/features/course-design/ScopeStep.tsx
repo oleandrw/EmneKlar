@@ -1,15 +1,15 @@
 // Emnedesign, step 1 «Omfang»: the whole course or one module, what is actually affected (from Canvas – never sample
-// figures), Blueprint in one short, correct explanation, and a small sample of a designed page.
+// figures) and Blueprint in one short, correct explanation. The designs themselves are shown in the next step.
 // Counts are of unique content: a page used in several modules, or used as the front page, is one item; the kinds are
 // disjoint, so the breakdown adds up to the total.
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import { Layers, LibraryBig, Maximize2 } from "lucide-react";
+import { Layers, LibraryBig } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { api, ApiError } from "../../core/api/client";
 import { plural } from "../../core/format";
-import { Alert, Button, Card, Dialog, Disclosure, HtmlPreview, RadioGroup, ScaledPreview, Spinner, TextField } from "../../design-system";
-import type { BlueprintSelection, ContentKind, DesignProfile, Inventory, InventoryItem, InventoryModule } from "./api";
+import { Alert, Button, Card, Disclosure, RadioGroup, Spinner, TextField } from "../../design-system";
+import type { BlueprintSelection, ContentKind, Inventory, InventoryItem, InventoryModule } from "./api";
 
 export type Scope = "course" | "module";
 
@@ -294,25 +294,6 @@ function NotChanged({ inventory }: { inventory: UseQueryResult<Inventory> }) {
   );
 }
 
-function Example({ sample }: { sample: DesignProfile }) {
-  const [open, setOpen] = useState(false);
-  const page = (body: string) => `<h1 style="font-size:1.75em;margin:0 0 0.6em">${sample.sample_title ?? "Eksempelside"}</h1>${body}`;
-  return (
-    <aside className="ek-design-start__example" aria-labelledby="eksempel-design">
-      <h2 id="eksempel-design">Eksempel på design</h2>
-      <p className="ek-xs ek-muted">Eksempelinnhold i designet «{sample.label}» – ikke ditt emne og ikke et valg. Du velger design i neste steg.</p>
-      <ScaledPreview html={page(sample.sample_compact ?? sample.sample_keep)} width={560} height={340} />
-      <div>
-        <Button size="sm" icon={<Maximize2 aria-hidden="true" />} onClick={() => setOpen(true)} aria-haspopup="dialog">Se større eksempel</Button>
-      </div>
-      <Dialog open={open} onClose={() => setOpen(false)} size="xl" title="Eksempel på design"
-        description={`Eksempelinnhold i designet «${sample.label}» – ikke ditt emne. Du velger design i neste steg.`}>
-        <HtmlPreview html={page(sample.sample_keep)} title={`Eksempel på design: ${sample.label} (eksempelinnhold)`} device="desktop" minHeight={560} />
-      </Dialog>
-    </aside>
-  );
-}
-
 /** Why «Neste» is not available yet (or null when it is). */
 export function blockedReason(scope: Scope, moduleId: string, inventory: UseQueryResult<Inventory>): string | null {
   if (scope === "module" && !moduleId) return "Velg en modul først.";
@@ -322,7 +303,7 @@ export function blockedReason(scope: Scope, moduleId: string, inventory: UseQuer
   return null;
 }
 
-export function ScopeStep({ courseId, scope, setScope, moduleId, setModuleId, courseInventory, inventory, sample, onNext }: {
+export function ScopeStep({ courseId, scope, setScope, moduleId, setModuleId, courseInventory, inventory, onNext }: {
   courseId: string;
   scope: Scope;
   setScope: (scope: Scope) => void;
@@ -330,8 +311,6 @@ export function ScopeStep({ courseId, scope, setScope, moduleId, setModuleId, co
   setModuleId: (id: string) => void;
   courseInventory: UseQueryResult<Inventory>;
   inventory: UseQueryResult<Inventory>;
-  /** The profile whose sample is shown – the default one, not a choice. */
-  sample: DesignProfile | undefined;
   onNext: () => void;
 }) {
   const reasonId = useId();
@@ -340,29 +319,26 @@ export function ScopeStep({ courseId, scope, setScope, moduleId, setModuleId, co
   const reason = blockedReason(scope, moduleId, inventory);
   const module = scope === "module" ? courseInventory.data?.modules.find((m) => m.id === moduleId) : undefined;
   return (
-    <div className="ek-design-start">
-      <div className="ek-stack" data-gap="3">
-        <Card title="Velg omfang">
-          <div className="ek-stack" data-gap="4">
-            <RadioGroup<Scope> legend="Hva skal få designet?" name="design-scope" variant="card" columns={2} value={scope} onChange={setScope}
-              options={[
-                { value: "course", label: "Hele emnet", hint: "Gi støttet innhold i emnet en felles designprofil.", icon: <LibraryBig />, tone: "info" },
-                { value: "module", label: "Én modul", icon: <Layers />, tone: "violet", disabled: noModules,
-                  hint: noModules ? "Emnet har ingen moduler." : "Gi innholdet i en valgt modul en felles designprofil." },
-              ]} />
-            {scope === "module" ? <ModulePicker courseInventory={courseInventory} moduleId={moduleId} setModuleId={setModuleId} /> : null}
-            {valid ? <ScopeSummary inventory={inventory} courseId={courseId} scope={scope} module={module} /> : null}
-            <NotChanged inventory={inventory} />
-          </div>
-        </Card>
-        <div className="ek-action-bar">
-          {reason ? <span id={reasonId} className="ek-small ek-muted">{reason}</span> : null}
-          <Button variant="primary" disabled={reason !== null} aria-describedby={reason ? reasonId : undefined} onClick={onNext}>
-            Neste: velg design
-          </Button>
+    <div className="ek-stack" data-gap="3">
+      <Card title="Velg omfang">
+        <div className="ek-stack" data-gap="4">
+          <RadioGroup<Scope> legend="Hva skal få designet?" name="design-scope" variant="card" columns={2} value={scope} onChange={setScope}
+            options={[
+              { value: "course", label: "Hele emnet", hint: "Gi støttet innhold i emnet en felles designprofil.", icon: <LibraryBig />, tone: "info" },
+              { value: "module", label: "Én modul", icon: <Layers />, tone: "violet", disabled: noModules,
+                hint: noModules ? "Emnet har ingen moduler." : "Gi innholdet i en valgt modul en felles designprofil." },
+            ]} />
+          {scope === "module" ? <ModulePicker courseInventory={courseInventory} moduleId={moduleId} setModuleId={setModuleId} /> : null}
+          {valid ? <ScopeSummary inventory={inventory} courseId={courseId} scope={scope} module={module} /> : null}
+          <NotChanged inventory={inventory} />
         </div>
+      </Card>
+      <div className="ek-action-bar">
+        {reason ? <span id={reasonId} className="ek-small ek-muted">{reason}</span> : null}
+        <Button variant="primary" disabled={reason !== null} aria-describedby={reason ? reasonId : undefined} onClick={onNext}>
+          Neste: velg design
+        </Button>
       </div>
-      {sample ? <Example sample={sample} /> : null}
     </div>
   );
 }

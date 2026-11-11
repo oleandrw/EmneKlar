@@ -6,6 +6,10 @@ single wrapper ``<div>`` that many Canvas templates put around everything). Illu
 so the text and layout of the page stay exactly as the teacher wrote them.
 
 Sections start at headings. Section ``s0`` is the introduction before the first heading.
+
+*Units* are runs of blocks that belong together and are never split by an illustration: a heading and its first
+paragraph, an introductory sentence and the list (or table) it introduces, a list and the paragraph that sums it up, an
+example and the explanation that goes with it, and an image and its caption. Illustrations go only *between* units.
 """
 
 from __future__ import annotations
@@ -33,6 +37,28 @@ TASK_WORDS = re.compile(r"\b(oppgave|oppgaver|øving|refleksjon|refleksjonsspør
 COMPONENT_HINTS = ("dp-", "kl_", "accordion", "tabs", "panel", "callout", "enhanceable_content", "ic-", "carousel")
 # Page-level template wrappers that hold the whole page (descended into even though they match a component hint).
 PAGE_WRAPPER_HINTS = ("dp-wrapper", "kl_wrapper", "content-wrapper", "page-wrapper")
+# Emnedesign's front page: a banner and a body inside the design's root – the content is in the body.
+DESIGN_BANNER, DESIGN_BODY = "ek-design-banner", "ek-design-body"
+
+# What makes two neighbouring blocks one unit (never split by an illustration). Norwegian and English course text.
+LEAD_IN_END = re.compile(r"(:|\b(følgende|nedenfor|these|following|below)[.:]?)$", re.IGNORECASE)
+EXAMPLE_START = re.compile(r"^(eksempel|et eksempel|for eksempel|eksempelvis|example|for example|case|tenk deg|"
+                           r"se for deg|imagine)\b", re.IGNORECASE)
+EXPLAINS_PREVIOUS = re.compile(r"^(her ser|her viser|i dette eksempelet|i eksempelet|eksempelet viser|som vi ser|"
+                               r"som eksempelet viser|legg merke til|dette viser|this example|here we see|notice)\b",
+                               re.IGNORECASE)
+SUMS_UP_LIST = re.compile(r"^(disse|de tre|de to|de fire|begge|alle disse|alle de|sammen|samlet|til sammen|these|"
+                          r"together|both|all of these)\b", re.IGNORECASE)
+CAPTION_START = re.compile(r"^(figur|fig\.|bilde|illustrasjon|foto|kilde|tabell|video|figure|table|source|photo)\b",
+                           re.IGNORECASE)
+WHOLE_EMPHASIS = re.compile(r"\s*<(em|i|small)\b[^>]*>.*</\1>\s*", re.IGNORECASE | re.DOTALL)
+UNIT_REASONS = {
+    "heading": "Overskrift og første avsnitt",
+    "lead_in": "Innledende setning og listen eller tabellen etter den",
+    "summary": "Listen og avsnittet som oppsummerer den",
+    "example": "Eksempel og forklaringen som hører til",
+    "caption": "Bilde og bildetekst",
+}
 
 
 @dataclass
@@ -76,6 +102,15 @@ class Section:
 
 
 @dataclass
+class Unit:
+    """Blocks ``first``..``last`` belong together; ``reasons`` says why (empty for a single block)."""
+
+    first: int
+    last: int
+    reasons: list[str] = field(default_factory=list)
+
+
+@dataclass
 class PageStructure:
     html: str
     scan: ScanResult
@@ -83,6 +118,13 @@ class PageStructure:
     blocks: list[Block]
     sections: list[Section]
     wrapper_depth: int
+    units: list[Unit] = field(default_factory=list)
+
+    def unit_of(self, block_index: int) -> Unit | None:
+        return next((u for u in self.units if u.first <= block_index <= u.last), None)
+
+    def unit_text(self, unit: Unit) -> str:
+        return " ".join(self.blocks[i].text for i in range(unit.first, unit.last + 1) if self.blocks[i].text)
 
     @property
     def reliable(self) -> bool:
@@ -211,6 +253,18 @@ def _container(root: Span, html: str) -> tuple[Span, int]:
         if only.attr("role") in ("tablist", "tabpanel", "region", "dialog"):
             return node, depth
         node, depth = only, depth + 1
+        node, depth = _design_body(node, depth)
+
+
+def _design_body(node: Span, depth: int) -> tuple[Span, int]:
+    """Emnedesign's front page: the root holds a banner and a body; the content (and every insertion point) is in
+    the body."""
+    elements = list(node.children)
+    bodies = [e for e in elements if DESIGN_BODY in e.attr("class").split()]
+    others = [e for e in elements if e not in bodies]
+    if len(bodies) == 1 and all(DESIGN_BANNER in e.attr("class").split() for e in others):
+        return bodies[0], depth + 1
+    return node, depth
 
 
 def parse_page(html: str | None) -> PageStructure:
@@ -245,8 +299,54 @@ def parse_page(html: str | None) -> PageStructure:
             sections[-1].block_indices.append(block.index)
     if not sections[0].block_indices and len(sections) > 1:
         sections = sections[1:]
-    return PageStructure(html=html, scan=result, container=container, blocks=blocks, sections=sections,
-                         wrapper_depth=depth)
+    structure = PageStructure(html=html, scan=result, container=container, blocks=blocks, sections=sections,
+                              wrapper_depth=depth)
+    structure.units = _units(structure)
+    return structure
+
+
+def _caption_like(structure: PageStructure, block: Block) -> bool:
+    """A short paragraph that reads as a caption: «Figur 2: …», «Kilde: …», or text that is all in italics/small."""
+    if block.kind != "paragraph" or not block.text or len(block.text) > 300:
+        return False
+    inner = structure.html[block.span.start_end:block.span.inner_end]
+    return bool(CAPTION_START.match(block.text) or WHOLE_EMPHASIS.fullmatch(inner)
+                or "caption" in block.span.attr("class").lower())
+
+
+def glue(structure: PageStructure, a: Block, b: Block) -> str | None:
+    """Why ``a`` and the block right after it, ``b``, must stay together – or None when an illustration may go
+    between them."""
+    if a.kind == "heading":
+        return "heading"
+    if b.kind == "heading":
+        return None
+    if a.kind == "paragraph" and LEAD_IN_END.search(a.text.rstrip()):
+        return "lead_in"
+    if a.kind in ("list", "table") and b.kind == "paragraph" and SUMS_UP_LIST.match(b.text):
+        return "summary"
+    if a.kind == "paragraph" and EXAMPLE_START.match(a.text):
+        return "example"
+    if b.kind == "paragraph" and EXPLAINS_PREVIOUS.match(b.text):
+        return "example"
+    if a.kind in ("image", "figure", "media") and not a.emneklar_marker and _caption_like(structure, b):
+        return "caption"
+    if _caption_like(structure, a) and CAPTION_START.match(a.text) and b.kind in ("table", "image", "figure", "media"):
+        return "caption"
+    return None
+
+
+def _units(structure: PageStructure) -> list[Unit]:
+    units: list[Unit] = []
+    for block in structure.blocks:
+        reason = glue(structure, structure.blocks[block.index - 1], block) if units else None
+        if reason:
+            units[-1].last = block.index
+            if reason not in units[-1].reasons:
+                units[-1].reasons.append(reason)
+        else:
+            units.append(Unit(first=block.index, last=block.index))
+    return units
 
 
 def looks_like_task(text: str) -> bool:

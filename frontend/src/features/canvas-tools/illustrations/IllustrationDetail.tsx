@@ -1,7 +1,7 @@
 // Detail view of one illustration: large preview with the page context, the pedagogical plan, the review, and
 // everything the teacher can change (alt text, caption, placement, prompt, style, version, decision).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Palette, RefreshCw, SkipForward, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Palette, RefreshCw, SkipForward, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { AiBadge } from "../../../core/ai";
@@ -50,6 +50,49 @@ export function PagePreview({ illustrationId }: { illustrationId: number }) {
   );
 }
 
+/** The spot in text form – the end of what comes before and the start of what follows – when there is no image yet
+ * (or the page cannot be fetched). */
+function TextContext({ anchor }: { anchor: Anchor }) {
+  const before = anchor.before_text || (anchor.block_index >= 0 ? anchor.block_text : "");
+  return (
+    <div className="ek-placement-context">
+      {anchor.block_index < 0 ? <p className="ek-placement-context__edge">Toppen av siden</p>
+        : before ? <p className="ek-placement-context__text">{before}</p> : null}
+      <p className="ek-placement-context__slot">Bildet settes inn her</p>
+      {anchor.after_text ? <p className="ek-placement-context__text">{anchor.after_text}</p> : null}
+    </div>
+  );
+}
+
+/** The image where it would go, with the text right before and after it – the page's own formatting, from Canvas. */
+export function PlacementPreview({ item }: { item: Illustration }) {
+  const excerpt = useQuery({
+    queryKey: ["illustrations", "page-preview", item.id, "around", item.anchor.block_index, item.anchor.block_hash,
+      item.asset_id, item.alt_text, item.caption, item.caption_enabled, item.decorative, item.credit],
+    queryFn: () => api.get<{ html: string; title: string; skipped: string[]; page_changed: boolean }>(`/api/illustrations/${item.id}/page-preview?around=true`),
+    enabled: Boolean(item.asset_id),
+  });
+  if (!item.asset_id) return <TextContext anchor={item.anchor} />;
+  if (excerpt.isPending) return <Spinner label="Henter teksten rundt bildet fra Canvas …" />;
+  if (excerpt.error || !excerpt.data) {
+    return (
+      <div className="ek-stack" data-gap="2">
+        <Alert tone="warning">Kunne ikke hente siden fra Canvas. Under ser du teksten fra analysen.</Alert>
+        <TextContext anchor={item.anchor} />
+      </div>
+    );
+  }
+  if (!excerpt.data.html) {
+    return <Alert tone="warning">Bildet kan ikke stå her lenger: siden er endret i Canvas. Velg en ny plassering.</Alert>;
+  }
+  return (
+    <div className="ek-stack" data-gap="2">
+      {excerpt.data.page_changed ? <Alert tone="info">Siden er endret i Canvas etter analysen. Utdraget viser siden slik den er nå.</Alert> : null}
+      <HtmlPreview html={excerpt.data.html} title={`Bildet i teksten på «${excerpt.data.title}»`} device="desktop" minHeight={620} />
+    </div>
+  );
+}
+
 export function PagePreviewDialog({ illustrationId, onClose }: { illustrationId: number; onClose: () => void }) {
   return (
     <Dialog open onClose={onClose} title="Forhåndsvisning av siden" size="xl"
@@ -83,6 +126,7 @@ export function IllustrationDetail({ item, catalog, onClose, onJob }: {
   const [aspect, setAspect] = useState<string>(item.aspect_ratio);
   const [credit, setCredit] = useState(item.credit);
   const [anchorKey, setAnchorKey] = useState<string>("");
+  const [moveNote, setMoveNote] = useState("");
   const [showPrompt, setShowPrompt] = useState(false);
   useEffect(() => {
     setAlt(item.alt_text);
@@ -125,6 +169,14 @@ export function IllustrationDetail({ item, catalog, onClose, onJob }: {
       onClose();
     },
   });
+  const move = useMutation({
+    mutationFn: (anchor: Anchor) => api.patch<Illustration>(`/api/illustrations/${item.id}`, { anchor }),
+    onSuccess: async (updated) => {
+      setAnchorKey("");
+      setMoveNote(`Bildet er flyttet: ${updated.placement_label}.`);
+      await refresh();
+    },
+  });
   const reference = useMutation({
     mutationFn: () => api.post(`/api/illustrations/${item.id}/reference`),
     onSuccess: async () => {
@@ -133,14 +185,21 @@ export function IllustrationDetail({ item, catalog, onClose, onJob }: {
     },
   });
 
-  const anchorOptions = (anchors.data?.anchors ?? []).map((a) => ({
-    value: `${a.placement}|${a.block_index}`,
-    label: `${a.placement_label}${a.section_title ? ` – «${a.section_title}»` : ""}${a.block_text ? `: «${a.block_text.slice(0, 60)}…»` : ""}`,
+  const points = anchors.data?.anchors ?? [];
+  const anchorOptions = points.map((a) => ({
+    value: String(a.block_index),
+    label: `${a.placement_label}${a.section_title && a.block_index >= 0 ? ` (i «${a.section_title}»)` : ""}`,
   }));
-  const chosenAnchor = anchors.data?.anchors.find((a) => `${a.placement}|${a.block_index}` === anchorKey);
+  const chosenAnchor = points.find((a) => String(a.block_index) === anchorKey);
+  // Where the image is now among the page's insertion points (none when the page has changed since).
+  const here = points.findIndex((a) => a.block_index === item.anchor.block_index
+    && (a.block_index < 0 || !item.anchor.block_hash || a.block_hash === item.anchor.block_hash));
+  const suggested = item.plan.suggested_placement;
+  const moved = Boolean(suggested) && (suggested!.block_index !== item.anchor.block_index
+    || (suggested!.block_hash ?? null) !== (item.anchor.block_hash ?? null));
   const textChanged = alt !== item.alt_text || decorative !== item.decorative || caption !== item.caption
     || captionOn !== item.caption_enabled || credit !== item.credit;
-  const error = patch.error ?? regenerate.error ?? reference.error;
+  const error = patch.error ?? regenerate.error ?? reference.error ?? move.error;
   const plan = item.plan;
   const review = item.review;
 
@@ -193,31 +252,61 @@ export function IllustrationDetail({ item, catalog, onClose, onJob }: {
               </div>
             ) : null}
           </div>
-          <div className="ek-stack" data-gap="3">
-            <h3>Fra siden</h3>
-            <p className="ek-small ek-muted">{item.placement_label}{item.section.title ? ` i «${item.section.title}»` : ""}</p>
-            {item.section.before?.title ? <p className="ek-small ek-muted">Før: {item.section.before.title}</p> : null}
-            <blockquote className="ek-quote">{item.section.text || "(ingen tekst)"}</blockquote>
-            {item.section.after?.title ? <p className="ek-small ek-muted">Etter: {item.section.after.title}</p> : null}
+          <section className="ek-stack" data-gap="3" aria-labelledby={`plassering-${item.id}`}>
+            <h3 id={`plassering-${item.id}`}>Plassering i teksten</h3>
+            <p className="ek-strong">{item.placement_label}{item.anchor.section_title && item.anchor.block_index >= 0 ? ` (i «${item.anchor.section_title}»)` : ""}</p>
+            {moved ? (
+              <p className="ek-small">
+                <span className="ek-strong">Du har flyttet bildet.</span> KI foreslo: {suggested!.label}
+                {plan.placement_reason ? ` – ${plan.placement_reason}` : ""}
+              </p>
+            ) : plan.placement_reason ? <p className="ek-small"><span className="ek-strong">Hvorfor her:</span> {plan.placement_reason}</p> : null}
+            {item.anchor.warning ? <p className="ek-small">{item.anchor.warning}</p> : null}
             {anchors.data?.page_changed ? <Alert tone="info">Siden er endret i Canvas etter analysen. Kontroller plasseringen før publisering.</Alert> : null}
-          </div>
+            <div className="ek-cluster" data-gap="2">
+              <Button size="sm" icon={<ArrowUp aria-hidden="true" />} disabled={locked || here <= 0 || move.isPending}
+                onClick={() => move.mutate(points[here - 1])}>Flytt opp</Button>
+              <Button size="sm" icon={<ArrowDown aria-hidden="true" />} disabled={locked || here < 0 || here >= points.length - 1 || move.isPending}
+                onClick={() => move.mutate(points[here + 1])}>Flytt ned</Button>
+            </div>
+            <p className="ek-xs ek-muted">Bildet flyttes bare mellom tekst som kan deles – aldri mellom en innledende setning og listen etter den, en overskrift og første avsnitt, et eksempel og forklaringen, eller et bilde og bildeteksten.</p>
+            {anchors.isPending ? <p className="ek-small ek-muted">Henter siden …</p> : (
+              <SelectField label="Velg et annet sted" value={anchorKey} onChange={(e) => setAnchorKey(e.target.value)} placeholder="Velg et sted på siden"
+                options={anchorOptions} disabled={locked} />
+            )}
+            {chosenAnchor?.warning ? <p className="ek-small">{chosenAnchor.warning}</p> : null}
+            <div>
+              <Button size="sm" disabled={!chosenAnchor || locked || move.isPending} loading={move.isPending && Boolean(chosenAnchor)}
+                onClick={() => chosenAnchor && move.mutate(chosenAnchor)}>Bruk plasseringen</Button>
+            </div>
+            <p className="ek-visually-hidden" role="status">{moveNote}</p>
+          </section>
         </div>
-        {item.image_url ? (
-          <Disclosure summary="Vis bildet på siden" defaultOpen>
-            <PagePreview illustrationId={item.id} />
-          </Disclosure>
-        ) : null}
+        <section className="ek-stack" data-gap="3" aria-labelledby={`i-teksten-${item.id}`}>
+          <h3 id={`i-teksten-${item.id}`}>Bildet i teksten</h3>
+          <p className="ek-small ek-muted">Utdrag av siden: teksten rett før og etter bildet. Ingenting er endret i Canvas ennå.</p>
+          <PlacementPreview item={item} />
+          {item.image_url ? (
+            <Disclosure summary="Vis hele siden">
+              <PagePreview illustrationId={item.id} />
+            </Disclosure>
+          ) : null}
+        </section>
         <KeyValue items={[
-          ["Pedagogisk formål", plan.pedagogical_purpose ?? ""],
+          ["Faglig poeng", plan.pedagogical_purpose ?? ""],
+          ["Bildet viser", `${plan.motif ?? ""}${plan.composition ? ` – ${plan.composition}` : ""}`],
+          ...(plan.scenes?.length ? [["Scener", plan.scenes.map((s, i) => `${i + 1}: ${s}`).join(" · ")] as [string, string]] : []),
+          ...(plan.people ? [["Personer", plan.people] as [string, string]] : []),
           ["Begrep bildet skal forklare", plan.concept ?? ""],
           ["Læringsmål", plan.learning_goal ?? ""],
-          ["Motiv og komposisjon", `${plan.motif ?? ""}${plan.composition ? ` – ${plan.composition}` : ""}`],
           ["Må vise", (plan.must_show ?? []).join("; ")],
           ["Må ikke fremstilles", (plan.must_not_show ?? []).join("; ")],
           ["Risiko for faglige feil", `${RISK[plan.accuracy_risk ?? "low"] ?? plan.accuracy_risk}${plan.accuracy_notes ? ` – ${plan.accuracy_notes}` : ""}`],
           ["Hva bildet tilfører", plan.adds_value ?? ""],
-          ["Hvorfor her", plan.placement_reason ?? ""],
         ]} />
+        <Disclosure summary={`Seksjonen bildet hører til${item.section.title ? `: «${item.section.title}»` : ""}`}>
+          <blockquote className="ek-quote">{item.section.text || "(ingen tekst)"}</blockquote>
+        </Disclosure>
         {review.verdict ? (
           <Disclosure summary="Kvalitetskontroll">
             <div className="ek-stack" data-gap="2">
@@ -247,17 +336,6 @@ export function IllustrationDetail({ item, catalog, onClose, onJob }: {
           <div>
             <Button size="sm" disabled={!textChanged || locked} loading={patch.isPending}
               onClick={() => patch.mutate({ alt_text: alt, decorative, caption, caption_enabled: captionOn, credit })}>Lagre tekstene</Button>
-          </div>
-        </div>
-        <div className="ek-stack" data-gap="3">
-          <h3>Plassering</h3>
-          {anchors.isPending ? <p className="ek-small ek-muted">Henter siden …</p> : (
-            <SelectField label="Endre plassering" value={anchorKey} onChange={(e) => setAnchorKey(e.target.value)} placeholder={`Nå: ${item.placement_label}`}
-              options={anchorOptions} disabled={locked} />
-          )}
-          {chosenAnchor?.warning ? <p className="ek-small">{chosenAnchor.warning}</p> : null}
-          <div>
-            <Button size="sm" disabled={!chosenAnchor || locked} onClick={() => chosenAnchor && patch.mutate({ anchor: chosenAnchor })}>Bruk plasseringen</Button>
           </div>
         </div>
         <div className="ek-stack" data-gap="3">

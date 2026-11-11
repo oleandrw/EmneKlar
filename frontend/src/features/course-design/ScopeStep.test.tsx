@@ -231,23 +231,13 @@ describe("Emnedesign – omfang", () => {
     expect(screen.getByRole("button", { name: "Neste: velg design" })).toHaveAccessibleDescription("Det er ikke noe som kan få design i omfanget.");
   });
 
-  it("shows a small example from the top of a page and a larger one in a dialog that returns focus", async () => {
+  it("shows no design example in the scope step – the designs are shown when one is chosen", async () => {
     stub(full);
-    const user = userEvent.setup();
     render(wrap(<CourseDesign />));
-    const example = await screen.findByRole("complementary", { name: "Eksempel på design" });
-    expect(within(example).getByText(/Eksempelinnhold i designet «Akademisk» – ikke ditt emne og ikke et valg/)).toBeInTheDocument();
-    const small = example.querySelector("iframe")!;
-    expect(small).toHaveAttribute("aria-hidden", "true");
-    expect(small).toHaveAttribute("tabindex", "-1");
-    expect(small.getAttribute("srcdoc")).toContain("Uke 3: Tilbakemelding");
-    expect(small.getAttribute("srcdoc")).toContain("overflow: hidden");
-    const open = within(example).getByRole("button", { name: "Se større eksempel" });
-    await user.click(open);
-    const dialog = screen.getByRole("dialog", { name: "Eksempel på design" });
-    expect(within(dialog).getByTitle("Eksempel på design: Akademisk (eksempelinnhold)").getAttribute("srcdoc")).toContain("Hele eksemplet");
-    await user.keyboard("{Escape}");
-    await waitFor(() => expect(open).toHaveFocus());
+    expect(await screen.findByRole("heading", { name: "Velg omfang" })).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Eksempel på design" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Se større eksempel" })).toBeNull();
+    expect(document.querySelector("iframe"), "no sample page next to the choice").toBeNull();
   });
 
   it("starts again from the scope when another course is chosen", async () => {

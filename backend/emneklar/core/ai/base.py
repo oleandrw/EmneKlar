@@ -184,7 +184,7 @@ class AIProvider(ABC):
             models = await self.list_models()
         except AIError as exc:
             return HealthStatus(ok=False, message=exc.message, detail=exc.detail)
-        return HealthStatus(ok=True, message=f"Tilkoblet. {len(models)} modeller tilgjengelig.")
+        return HealthStatus(ok=True, message="Tilkoblet.", detail=f"{len(models)} modeller i modellisten")
 
     async def aclose(self) -> None:
         return None
