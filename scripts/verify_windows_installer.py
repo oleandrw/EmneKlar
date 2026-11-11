@@ -59,6 +59,9 @@ def check(condition: bool, text: str) -> None:
 
 
 def uninstall_entry(test_build: bool) -> dict[str, str] | None:
+    """The uninstall entry the installer registered for the current user, or None."""
+    if sys.platform != "win32":  # the registry exists on Windows only – and the type checker elsewhere knows it
+        return None
     import winreg
 
     try:

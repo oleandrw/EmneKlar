@@ -4,18 +4,18 @@ EmneKlar har én kodebase. Det som skiller plattformene, ligger i et tynt lag (`
 oppstarts- og oppdateringsskriptene og pakkingen). **Windows er den eneste plattformen som bygges, testes og gis ut.**
 Dette dokumentet sier hva som faktisk er gjort – ikke hva som burde virke.
 
-Status per 11. november 2026.
+Status per 11. november 2026. «I GitHub Actions» betyr at jobben har kjørt og bestått der – ikke bare at den finnes.
 
 ## Oversikt
 
 | Plattform | Pakke | Bygget | Testet | Signert | Trygt å publisere som stabil |
 |---|---|---|---|---|---|
-| Windows 10/11, x64 | Installasjonsprogram med innebygd kjøretid (`EmneKlar-<versjon>-setup.exe`) | Ja, lokalt på Windows 11 | Ja, lokalt: installasjon, start uten konsollvindu, avslutting, reinstallasjon mens programmet kjører, vern mot nedgradering, avinstallering, oppdatering med og uten bytte av kjøretid, tilbakerulling. CI-jobbene som gjør det samme, er skrevet, men har ikke kjørt (ikke pushet) | Nei – Authenticode-sertifikat mangler. Python-filene i kjøretiden er signert av Python Software Foundation | Ja, når CI har kjørt grønt én gang. Kjent ulempe: SmartScreen advarer om ukjent utgiver |
-| Windows 10/11, x64 | Zip-pakke med egen Python (`setup.bat`) – reserveløsning | Ja | Delvis: `setup.bat`, start og stopp testes i CI-jobben «Windows install from source» (sist grønn på `main` 5.11.2026, før endringene i denne runden); oppdateringen er dekket av enhetstester | – | Ja, som reserveløsning for dem som har Python |
+| Windows 10/11, x64 | Installasjonsprogram med innebygd kjøretid (`EmneKlar-<versjon>-setup.exe`) | Ja – lokalt på Windows 11 og på en ren Windows-kjører i GitHub Actions | Ja. Lokalt og i GitHub Actions (jobben `windows-package`, 11.11.2026): installasjon, start uten konsollvindu, avslutting, reinstallasjon mens programmet kjører, avinstallering, oppdatering med bytte av kjøretid og tilbakerulling. Bare lokalt: vernet mot nedgradering og oppdatering med samme kjøretid | Nei – Authenticode-sertifikat mangler. Python-filene i kjøretiden er signert av Python Software Foundation | Ja. Kjent ulempe: SmartScreen advarer om ukjent utgiver. Selve utgivelsesjobben (`release.yml`) har ikke kjørt – den går første gang en tag pushes |
+| Windows 10/11, x64 | Zip-pakke med egen Python (`setup.bat`) – reserveløsning | Ja | Ja: `setup.bat`, start og stopp lokalt og i CI-jobben `windows-install` (11.11.2026); oppdateringen er dekket av enhetstester | – | Ja, som reserveløsning for dem som har Python |
 | Windows på ARM | Ingen egen pakke. x64-pakken kan trolig kjøre under emulering | Nei | Nei | – | Nei – ikke prøvd |
-| macOS, Apple Silicon (arm64) | Ingen | Nei | Nei – ingen Mac tilgjengelig. En CI-jobb som starter programmet fra kildekoden, er skrevet, men har ikke kjørt | Nei – krever Apple Developer ID | Nei |
-| macOS, Intel (x86_64) | Ingen | Nei | Nei – som over | Nei | Nei |
-| Linux, x86_64 | Ingen | Nei | Bare backend-testene (CI på Ubuntu, sist grønn på `main` 5.11.2026). En CI-jobb som starter programmet, er skrevet, men har ikke kjørt | – | Nei |
+| macOS, Apple Silicon (arm64) | Ingen | Nei | Bare én ting: programmet starter fra kildekoden og svarer på `/api/health` i GitHub Actions (`macos-latest`, 11.11.2026). Ingen pakke, installasjon, nøkkelring eller oppdatering er prøvd | Nei – krever Apple Developer ID | Nei |
+| macOS, Intel (x86_64) | Ingen | Nei | Som over, på `macos-15-intel` (11.11.2026) | Nei | Nei |
+| Linux, x86_64 | Ingen | Nei | At programmet starter fra kildekoden og svarer på `/api/health` (GitHub Actions, 11.11.2026). Backend-testene på Ubuntu var sist grønne på `main` 5.11.2026; i kjøringen 11.11.2026 stoppet typesjekken dem før de startet (rettet, men ikke kjørt på nytt). Ingen pakke, installasjon, nøkkelring eller oppdatering er prøvd | – | Nei |
 | Linux, ARM (aarch64) | Ingen | Nei | Nei | – | Nei |
 
 ## Windows
@@ -37,15 +37,16 @@ Det som gjenstår på Windows:
 
 * **Kodesignering** av installasjonsprogrammet (sertifikat mangler).
 * **Signerte utgivelser** (Ed25519) – verktøy og arbeidsflyt er klare, nøkkelparet er ikke laget.
-* **Første kjøring i GitHub Actions** av jobbene `windows-package` (CI) og `windows` (utgivelse). De gjør det samme
-  som er gjort lokalt, men selve arbeidsflytfilene er ikke kjørt.
+* **Første kjøring av utgivelsesjobben** (`release.yml`, jobben `windows`). Den bygger og kontrollerer pakken med de
+  samme stegene som CI-jobben `windows-package`, som har kjørt, men selve publiseringen er ikke prøvd.
 * **Windows på ARM** er ikke prøvd.
 * **Styrte maskiner:** der IT har sperret kjøring av programmer fra brukerens egen profil (AppLocker/WDAC), kan en
   installasjon per bruker ikke kjøre. Det kan EmneKlar ikke omgå.
 
 ## macOS
 
-**Ingen Mac-pakke finnes, og ingenting er testet på macOS.** Det er derfor ikke en støttet plattform.
+**Ingen Mac-pakke finnes.** Det eneste som er prøvd på macOS, er at programmet starter fra kildekoden og svarer i
+GitHub Actions (Apple Silicon og Intel). Det er derfor ikke en støttet plattform.
 
 Undersøkt:
 
@@ -91,9 +92,9 @@ Linux-kompatibilitet.
 
 Det som er kjent:
 
-* **Backend-testene** kjører på Ubuntu i CI (Python 3.11–3.13, og 3.14 fra denne runden) og var grønne på `main`
-  5.11.2026, før endringene i denne runden. Det viser at programkoden kan lastes og testes der – ikke at EmneKlar kan installeres, startes av en lærer
-  eller oppdateres.
+* **Backend-testene** er satt opp på Ubuntu i CI (Python 3.11–3.14; sist grønne på `main` 5.11.2026 – se tabellen),
+  og en startprøve har vist at programmet starter fra kildekoden og svarer (11.11.2026). Det viser at programkoden
+  kan lastes, testes og startes der – ikke at EmneKlar kan installeres, startes av en lærer eller oppdateres.
 * **Avhengighetene:** alle 42 pakkene har ferdigbygde filer for CPython 3.14 på Linux x86_64 og aarch64
   (manylinux/musllinux), kontrollert mot PyPI 11.11.2026.
 * **Datamappen:** `$XDG_DATA_HOME/emneklar`, ellers `~/.local/share/emneklar` (enhetstestet).
@@ -129,5 +130,5 @@ Gjenstår før en Linux-pakke kan gis ut:
 | `platform-smoke` (Ubuntu, macOS arm64, macOS Intel) | `main` og manuelt, `continue-on-error` | starter programmet fra kildekoden og sjekker `/api/health`. Ikke en støtteerklæring | Nei |
 | `release` → `windows` | når en tag `v*` pushes | bygger og **verifiserer** Windows-pakken, og publiserer først da | Ja – bare Windows |
 
-Ingen av jobbene som er nye eller endret i denne runden (`windows-package`, `platform-smoke`, `release`), har kjørt
-ennå. De må kjøres én gang (Actions → CI → Run workflow) før den første utgivelsen.
+Jobbene `windows-package`, `windows-install` og `platform-smoke` kjørte første gang 11.11.2026 og besto.
+Utgivelsesjobben har ikke kjørt: den starter først når en tag `v*` pushes.

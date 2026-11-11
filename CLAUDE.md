@@ -59,6 +59,9 @@ Internal identifiers: English. See `docs/ARCHITECTURE.md` for the full picture.
 - Work on feature branches; never push or merge to `main` without explicit permission.
 - Update tests when behaviour changes. Backend: `cd backend && .venv\Scripts\python -m pytest`.
   Frontend: `cd frontend && npm test && npm run typecheck && npm run lint`. E2E + axe: `npm run e2e`.
+- CI type-checks on Linux as well as Windows. Before pushing, run mypy as both:
+  `.venv\Scripts\mypy emneklar ..\scripts` and `.venv\Scripts\mypy --platform linux emneklar ..\scripts`
+  (Windows-only modules such as `winreg` need a `sys.platform` guard, or the Linux jobs stop before the tests).
 - Do not redesign or rewrite working modules unless required.
 - Keep `VERSION`, `backend/pyproject.toml` and `CHANGELOG.md` in sync (`scripts/bump_version.py`).
 - One release pipeline, Windows first: `scripts/build_runtime.py` (bundled Python runtime, hash-locked in
