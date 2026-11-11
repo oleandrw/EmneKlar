@@ -55,7 +55,7 @@ function StepContent<T extends string>({ step, index, current }: { step: StepIte
 /** Step navigation; steps can be revisited, and a disabled step cannot be skipped to.
  *  `orientation="horizontal"`: one row above the content («1 Omfang → 2 Design → …»); on narrow screens it becomes
  *  one line, «Steg 1 av 4 – Omfang» (the wizard then needs its own back buttons). Without `onSelect` it only shows
- *  progress (no buttons) – for flows where a step must not be skipped to, such as the setup. */
+ *  progress (no buttons); with it, a step that cannot be shown yet is `disabled`. */
 export function Stepper<T extends string>({
   steps,
   current,

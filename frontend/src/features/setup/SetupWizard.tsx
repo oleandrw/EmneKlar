@@ -7,7 +7,7 @@
 // external AI stays off.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, CircleHelp, CircleMinus, TriangleAlert } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 
 import { ApiError, api } from "../../core/api/client";
@@ -20,6 +20,7 @@ import { useSession } from "../../core/session";
 import {
   Alert,
   Button,
+  Combobox,
   Disclosure,
   ExternalLink,
   PasswordField,
@@ -40,10 +41,8 @@ import {
   initialStep,
   readCanvasUrl,
   STEPS,
-  teachingCourses,
   type Access,
   type AccessLevel,
-  type CourseBrief,
   type StepId,
   type TestResult,
 } from "./model";
@@ -91,11 +90,6 @@ const PROFILE_SCOPE: Record<string, string> = {
   best_practice: "WCAG 2.2 er ikke en del av det norske regelverket i dag.",
 };
 
-/** More courses than this: a search field above the list. */
-const SEARCH_FROM = 8;
-/** At most this many courses in the list at a time (the search finds the rest). */
-const SHOW_AT_MOST = 30;
-
 const LEVEL_ICON: Record<AccessLevel, ReactNode> = {
   all: <CircleCheck aria-hidden="true" />,
   some: <TriangleAlert aria-hidden="true" />,
@@ -125,7 +119,9 @@ export function SetupWizard() {
   const [fieldErrors, setFieldErrors] = useState<{ baseUrl?: string; token?: string }>({});
   const [courseId, setCourseId] = useState<string>(session.general.default_course_id ?? "");
   const [profile, setProfile] = useState<string>(session.regulatory_profile || DEFAULT_PROFILE);
-  const [query, setQuery] = useState("");
+  // The connection in the credential store is the one on this page: saved now, or found when an interrupted setup was
+  // resumed. Typing a new address or token makes it «not saved» again until it is confirmed.
+  const [connectionSaved, setConnectionSaved] = useState(() => initialStep(session) === "start");
   const [finished, setFinished] = useState<{ course: Course | null; profile: Profile | null } | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const urlRef = useRef<HTMLInputElement>(null);
@@ -170,6 +166,7 @@ export function SetupWizard() {
     }),
     onSuccess: async () => {
       setToken("");
+      setConnectionSaved(true);
       await client.invalidateQueries({ queryKey: ["session"] });
       setStep("start");
     },
@@ -229,13 +226,47 @@ export function SetupWizard() {
   const edit = (setter: (value: string) => void, field: "baseUrl" | "token") => (value: string) => {
     setter(value);
     setTested(null);
+    setConnectionSaved(false);
     save.reset();
     setFieldErrors((errors) => ({ ...errors, [field]: undefined }));
   };
 
+  /** «Bekreft og fortsett»: saves a new connection; one that is already saved is not sent again. */
+  const confirm = () => (connectionSaved ? setStep("start") : save.mutate());
+
+  // Every step that can be shown with what is known is one click away in the list of steps at the top.
+  const reachable: Record<StepId, boolean> = {
+    connect: true,
+    confirm: tested !== null || connectionSaved,
+    start: connectionSaved,
+    done: connectionSaved && finished !== null,
+  };
+  const completed: Record<StepId, boolean> = {
+    connect: tested !== null || connectionSaved,
+    confirm: connectionSaved,
+    start: finished !== null,
+    done: false,
+  };
+  const goTo = (id: StepId) => {
+    if (id === step || !reachable[id]) return;
+    if (id === "confirm" && !tested) {
+      // A saved connection whose check is no longer in memory (the setup was resumed): check it again – only reading –
+      // from «Tilkobling», which shows the progress and any error, and lands on «Bekreftelse» as «Koble til» does.
+      setStep("connect");
+      if (validUrl && !test.isPending) test.mutate(validUrl);
+      return;
+    }
+    if (id === "done" && step === "start") cancelEdit(); // back to the summary with the choices that were saved
+    else setStep(id);
+  };
+  /** «Tilbake» on each card: the step before. */
+  const back = () => goTo(STEPS[Math.max(0, index - 1)].id);
+
   const savedHost = hostOf(session.canvas.base_url);
   const nameOf = courseNames(tested?.courses);
-  const steps = STEPS.map((s, i) => ({ id: s.id, label: s.label, done: i < index }));
+  const steps = STEPS.map((s) => ({
+    id: s.id, label: s.label, done: completed[s.id] && s.id !== step, disabled: !reachable[s.id],
+  }));
 
   return (
     <div className="ek-setup">
@@ -245,7 +276,7 @@ export function SetupWizard() {
           <span>EmneKlar</span>
           <span className="ek-setup__brand-sub">Oppsett</span>
         </div>
-        <Stepper label="Steg i oppsettet" steps={steps} current={step} orientation="horizontal" />
+        <Stepper label="Steg i oppsettet" steps={steps} current={step} onSelect={goTo} orientation="horizontal" />
         <section className="ek-setup__panel" aria-labelledby="oppsett-tittel">
           <h1 id="oppsett-tittel" ref={headingRef} tabIndex={-1} className="ek-setup__title">
             <span className="ek-visually-hidden">Steg {index + 1} av {STEPS.length}:</span>{" "}
@@ -329,14 +360,12 @@ export function SetupWizard() {
 
           {step === "confirm" && tested ? (
             <div className="ek-stack" data-gap="4">
-              <Alert {...connectionStatus(tested.access)}>Kontroller at dette er riktig bruker.</Alert>
+              <Alert {...connectionStatus(tested.access)} />
               <dl className="ek-setup__summary">
                 <dt>Tilkoblet som</dt>
                 <dd className="ek-setup__key">{tested.identity.name || "(uten navn)"}</dd>
                 <dt>Canvas-adresse</dt>
                 <dd className="ek-setup__key">{hostOf(tested.base_url)}</dd>
-                <dt>Emner</dt>
-                <dd><CourseNameList courses={tested.courses} count={tested.teaching_courses} name={nameOf} /></dd>
               </dl>
               <section className="ek-stack" data-gap="2" aria-labelledby="oppsett-tilganger">
                 <h2 id="oppsett-tilganger" className="ek-setup__h2">Tilganger</h2>
@@ -344,7 +373,12 @@ export function SetupWizard() {
                   {accessSummary(tested.access).map((line) => (
                     <li key={line.key} data-level={line.level}>
                       {LEVEL_ICON[line.level]}
-                      <span><strong>{line.title}:</strong> {line.text}</span>
+                      {line.text ? (
+                        <span><strong>{line.title}:</strong> {line.text}</span>
+                      ) : (
+                        // Granted everywhere: the check mark says it; the status is still read out.
+                        <span><strong>{line.title}</strong><span className="ek-visually-hidden">: innvilget</span></span>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -387,14 +421,14 @@ export function SetupWizard() {
                 <Alert tone="danger" role="alert" title="Tilkoblingen ble ikke lagret">
                   {errorText(save.error)}{" "}
                   {errorCode(save.error) === "canvas_identity_changed"
-                    ? "Velg «Endre tilkobling» og koble til på nytt."
+                    ? "Velg «Tilbake» og koble til på nytt."
                     : "En tidligere lagret tilkobling er ikke endret."}
                 </Alert>
               ) : null}
               <p className="ek-small ek-muted">Tilkoblingen lagres når du bekrefter.</p>
               <div className="ek-setup__actions">
-                <Button onClick={() => setStep("connect")}>Endre tilkobling</Button>
-                <Button variant="primary" onClick={() => save.mutate()} loading={save.isPending}
+                <Button onClick={back}>Tilbake</Button>
+                <Button variant="primary" onClick={confirm} loading={save.isPending}
                   disabled={errorCode(save.error) === "canvas_identity_changed" && save.isError}>
                   Bekreft og fortsett
                 </Button>
@@ -405,7 +439,7 @@ export function SetupWizard() {
           {step === "start" ? (
             <div className="ek-stack" data-gap="5">
               <CoursePicker courses={courses.data?.courses} loading={courses.isPending} error={courses.error}
-                retry={() => void courses.refetch()} value={courseId} onChange={setCourseId} query={query} setQuery={setQuery} />
+                retry={() => void courses.refetch()} value={courseId} onChange={setCourseId} />
               <section className="ek-stack" data-gap="2" aria-labelledby="oppsett-profil">
                 <h2 id="oppsett-profil" className="ek-setup__h2">Krav som skal kontrolleres</h2>
                 {profiles.isPending ? <Spinner label="Henter regelverksprofilene …" /> : null}
@@ -437,14 +471,13 @@ export function SetupWizard() {
                 </Alert>
               ) : null}
               <div className="ek-setup__actions">
-                {finished ? (
-                  // Came here with «Endre valg»: go back to the summary with the saved choices, nothing changed.
-                  <Button onClick={cancelEdit}>Avbryt endringen</Button>
-                ) : (
-                  <Button onClick={() => setStep(tested ? "confirm" : "connect")}>
-                    {tested ? "Tilbake" : "Endre tilkobling"}
-                  </Button>
-                )}
+                <span className="ek-cluster">
+                  <Button onClick={back}>Tilbake</Button>
+                  {finished ? (
+                    // Came back from the summary: return to it with the saved choices, nothing changed.
+                    <Button onClick={cancelEdit}>Avbryt endringen</Button>
+                  ) : null}
+                </span>
                 <Button variant="primary" onClick={() => complete.mutate()} loading={complete.isPending}
                   disabled={!chosenProfile || profiles.isPending}>
                   Fullfør oppsett
@@ -474,8 +507,8 @@ export function SetupWizard() {
                 analyser og godkjenner endringer.
               </p>
               <div className="ek-setup__actions">
-                <Button onClick={() => setStep("start")}>
-                  Endre valg<span className="ek-visually-hidden">: startemne og regelverksprofil</span>
+                <Button onClick={back}>
+                  Tilbake<span className="ek-visually-hidden">: endre startemne og regelverksprofil</span>
                 </Button>
                 <Button variant="primary" onClick={() => navigate(finished?.course ? "/oversikt" : "/oversikt?velg-emne=1")}>
                   {finished?.course ? "Åpne emneoversikten" : "Velg emne"}
@@ -486,25 +519,6 @@ export function SetupWizard() {
         </section>
       </main>
     </div>
-  );
-}
-
-/** More teaching courses than this: the first few, and the rest behind «Vis alle N emner». */
-const NAMES_SHOWN = 5;
-
-/** «Emner» on «Bekreftelse»: the teaching courses by name, one per line (the code only where names are alike). */
-function CourseNameList({ courses, count, name }: { courses: CourseBrief[] | undefined; count: number; name: (id: string) => string }) {
-  if (!courses?.length) return <>{teachingCourses(count)}</>;
-  const names = courses.map((c) => ({ id: c.id, label: name(c.id) }));
-  const list = (items: typeof names) => (
-    <ul className="ek-setup__names">{items.map((c) => <li key={c.id}>{c.label}</li>)}</ul>
-  );
-  if (names.length <= NAMES_SHOWN) return list(names);
-  return (
-    <>
-      {list(names.slice(0, NAMES_SHOWN - 1))}
-      <Disclosure summary={`Vis alle ${names.length} emner`}>{list(names.slice(NAMES_SHOWN - 1))}</Disclosure>
-    </>
   );
 }
 
@@ -534,23 +548,24 @@ function CourseName({ course }: { course: Course }) {
   );
 }
 
-/** «Hvilket emne vil du starte med?» – a search field when the list is long (the same search as the course selector). */
-function CoursePicker({ courses, loading, error, retry, value, onChange, query, setQuery }: {
+/** «Hvilket emne vil du starte med?» – one field: click it to see the courses, or type a name, code or term. All
+ * courses are searched (the same search as the course selector); empty means «choose later». */
+function CoursePicker({ courses, loading, error, retry, value, onChange }: {
   courses: Course[] | undefined;
   loading: boolean;
   error: unknown;
   retry: () => void;
   value: string;
   onChange: (id: string) => void;
-  query: string;
-  setQuery: (q: string) => void;
 }) {
   const all = useMemo(() => courses ?? [], [courses]);
-  const hits = useMemo(() => matchCourses(all, query), [all, query]);
-  const shown = hits.slice(0, SHOW_AT_MOST);
-  const chosen = all.find((c) => c.id === value);
-  if (chosen && !shown.includes(chosen)) shown.unshift(chosen); // the choice never disappears from view
-  const searchable = all.length > SEARCH_FROM;
+  const options = useMemo(() => all.map((c) => ({
+    value: c.id, label: c.name || c.course_code || c.id, meta: courseMeta(c) || undefined,
+  })), [all]);
+  const search = useCallback((query: string) => {
+    const byId = new Map(options.map((o) => [o.value, o]));
+    return matchCourses(all, query).map((c) => byId.get(c.id)!);
+  }, [all, options]);
   return (
     <section className="ek-stack" data-gap="2" aria-labelledby="oppsett-emne">
       <h2 id="oppsett-emne" className="ek-setup__h2">Hvilket emne vil du starte med?</h2>
@@ -566,30 +581,18 @@ function CoursePicker({ courses, loading, error, retry, value, onChange, query, 
           Fant ingen emner der du er lærer, assistent eller designer. Velg emne senere, når du har fått tilgang i Canvas.
         </p>
       ) : null}
-      {searchable ? (
-        <div className="ek-stack" data-gap="1">
-          <TextField label="Søk etter emne" type="search" value={query} onChange={(e) => setQuery(e.target.value)}
-            placeholder="Emnenavn, emnekode eller semester" />
-          <p className="ek-xs ek-muted" role="status">
-            {query.trim()
-              ? `${hits.length} av ${all.length} emner passer${hits.length > SHOW_AT_MOST ? ` – viser de ${SHOW_AT_MOST} første` : ""}.`
-              : all.length > SHOW_AT_MOST ? `Viser ${SHOW_AT_MOST} av ${all.length} emner. Søk for å finne resten.` : `${all.length} emner.`}
-          </p>
-        </div>
-      ) : null}
-      {!loading ? (
-        <RadioGroup
-          legend="Startemne"
-          hideLegend
-          truncateLabels
-          hint="Du kan bytte emne når som helst øverst i EmneKlar."
-          name="start-course"
+      {!loading && all.length > 0 ? (
+        <Combobox
+          label="Startemne"
+          hideLabel
+          hint="Søk etter emnenavn, emnekode eller semester. La feltet stå tomt for å velge senere – du kan bytte emne når som helst øverst i EmneKlar."
+          placeholder="Velg eller søk etter emne"
+          options={options}
+          search={search}
           value={value}
           onChange={onChange}
-          options={[
-            { value: "", label: "Velg senere" },
-            ...shown.map((c) => ({ value: c.id, label: c.name, hint: courseMeta(c) || undefined })),
-          ]}
+          clearLabel="Fjern valgt emne"
+          noResults="Fant ingen emner som passer"
         />
       ) : null}
     </section>

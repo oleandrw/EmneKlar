@@ -24,6 +24,14 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   oppgavelinjen. Vinduet lages av Google Chrome når det er standardnettleseren, ellers av Microsoft Edge, som følger
   med Windows. Lenker til Canvas og andre nettsteder åpnes i nettleseren. Uten Edge og Chrome – og utenfor Windows –
   åpnes EmneKlar i en vanlig fane som før (`core/system.py`).
+- **Oppsettet:** startemnet velges i ett felt – «Velg eller søk etter emne» – som viser fem–seks emner om gangen og
+  søker i alle på navn, emnekode eller semester (piltaster, Enter og Esc virker; treffet markeres). Det valgte emnet
+  vises i feltet, også et langt navn (det brytes over flere linjer), og × tømmer valget. Hvert kort etter det første
+  har «Tilbake», og trinnene øverst er knapper: du kan gå rett til et steg du allerede har nådd. Bekreftelseskortet
+  viser hvem og hvor, ikke lenger emnelisten, og tilganger som er innvilget overalt, står uten forklarende tekst.
+  Siden flytter seg ikke lenger sidelengs når «Slik finner du tilgangstokenet» foldes ut.
+- **Ikonet i vinduet og på oppgavelinjen** hentes nå med et filnavn som endres med logoen, så en nettleser som husker
+  et eldre ikon for EmneKlar-adressen, viser det nye med en gang.
 - **Lukk vinduet for å avslutte:** når det siste EmneKlar-vinduet er lukket, avsluttes programmet etter 15 sekunder
   (en omlasting av siden rekker å komme tilbake før det). Jobber som kjører, gjøres ferdige først. Hvert vindu holder
   én forbindelse åpen til `/api/system/presence` (`core/presence.py`). Gjelder bare når EmneKlar har åpnet vinduet

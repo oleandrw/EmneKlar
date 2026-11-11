@@ -1,6 +1,6 @@
 r"""Draw packaging/windows/EmneKlar.ico: the EmneKlar logo – an open book with a check mark, the same drawing as
-``BrandMark`` in frontend/src/core/layout/AppShell.tsx and frontend/public/favicon.svg – in the sizes Windows uses for
-shortcuts, the taskbar and the installer.
+``BrandMark`` in frontend/src/core/layout/AppShell.tsx and frontend/src/assets/emneklar-logo.svg – in the sizes Windows
+uses for shortcuts and the installer.
 
     backend\.venv\Scripts\python packaging\windows\make_icon.py
 

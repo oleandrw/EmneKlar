@@ -291,8 +291,13 @@ def drawing(text: str) -> list[list[tuple[str, str, str]]]:
 def test_the_window_the_shortcuts_and_the_installer_show_the_emneklar_logo() -> None:
     shell = (REPO_DIR / "frontend" / "src" / "core" / "layout" / "AppShell.tsx").read_text(encoding="utf-8")
     logo = shell[shell.index("export function BrandMark"):shell.index("</svg>", shell.index("export function BrandMark"))]
-    favicon = (REPO_DIR / "frontend" / "public" / "favicon.svg").read_text(encoding="utf-8")
-    assert len(drawing(logo)) == 4 and drawing(favicon) == drawing(logo), "favicon.svg is the logo of the program"
+    assert len(drawing(logo)) == 4
+    for icon_file in ("src/assets/emneklar-logo.svg", "public/favicon.svg"):  # the program's pages; pages made by the server
+        text = (REPO_DIR / "frontend" / icon_file).read_text(encoding="utf-8")
+        assert drawing(text) == drawing(logo), f"{icon_file} is the logo of the program"
+    page = (REPO_DIR / "frontend" / "index.html").read_text(encoding="utf-8")
+    assert 'rel="icon" type="image/svg+xml" href="/src/assets/emneklar-logo.svg"' in page, \
+        "through the build: a new logo gets a new address, so no browser keeps showing an older icon"
 
     from PIL import Image
 

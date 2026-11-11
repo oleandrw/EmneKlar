@@ -128,6 +128,16 @@ async function connect(user: ReturnType<typeof userEvent.setup>, url = "hiof.ins
 }
 
 const sectionText = (name: string) => screen.getByRole("heading", { name }).closest("section")!.textContent;
+/** What each option in the open list is called: the name, then code and term. */
+const optionNames = () => screen.queryAllByRole("option").map((o) => o.getAttribute("aria-label") ?? o.textContent);
+
+/** «Startemne» the way a teacher uses it: click the field, type, and pick from the list. */
+async function chooseCourse(user: ReturnType<typeof userEvent.setup>, text: string, option: string) {
+  const field = await screen.findByRole("combobox", { name: "Startemne" });
+  await user.click(field);
+  if (text) await user.type(field, text);
+  await user.click(screen.getByRole("option", { name: option }));
+}
 const items = (list: HTMLElement) => within(list).getAllByRole("listitem").map((li) => li.textContent);
 
 describe("Oppsett i fire steg", () => {
@@ -151,15 +161,18 @@ describe("Oppsett i fire steg", () => {
     expect(within(progress).getAllByRole("listitem")[0]).toHaveTextContent("Tilkobling (fullført)");
     const status = screen.getByText("Tilkoblingen virker, men noen tilganger mangler.").closest(".ek-alert")!;
     expect(status, "a soft warning – not a failed connection").toHaveAttribute("data-tone", "warning");
-    expect(status).toHaveTextContent("Kontroller at dette er riktig bruker.");
+    expect(status, "the title says it all").toHaveTextContent(/^Tilkoblingen virker, men noen tilganger mangler\.$/);
     expect(screen.getByRole("button", { name: "Bekreft og fortsett" }), "missing write access blocks nothing").toBeEnabled();
     const who = screen.getByText("Tilkoblet som").closest("dl")!;
-    expect(items(within(who).getByRole("list")), "the courses by name, one per line").toEqual([
-      "Digital kompetanse for lærere", "Mal for digitale emner"]);
-    expect(sectionText("Tilganger"), "every course checked: no «kontrollerte»").toContain(
-      "Lese og analysere: full lesetilgang i begge emnene.");
-    expect(sectionText("Tilganger")).toContain("Redigere sider: i 1 av 2 emner. Du kan fortsatt analysere der det mangler.");
-    expect(sectionText("Tilganger")).not.toContain("kontrollerte");
+    expect(who, "who and where – the courses are not listed here").toHaveTextContent(
+      "Tilkoblet somKari LærerCanvas-adressehiof.instructure.com");
+    expect(screen.queryByText("Emner")).toBeNull();
+    expect(sectionText("Tilganger"), "granted everywhere: the check mark says it, the status is still read out").toContain(
+      "Lese og analysere: innvilget");
+    expect(screen.getByText("Lese og analysere").parentElement).toHaveTextContent(/^Lese og analysere: innvilget$/);
+    expect(sectionText("Tilganger"), "only where something is missing").toContain(
+      "Redigere sider: i 1 av 2 emner. Du kan fortsatt analysere der det mangler.");
+    expect(sectionText("Tilganger")).not.toMatch(/full lesetilgang|kontrollerte/);
     const all = screen.getByRole("button", { name: "Se alle tilganger (3)" });
     expect(all, "the number is the access points in the list").toHaveAttribute("aria-expanded", "false");
     await user.click(all);
@@ -182,12 +195,31 @@ describe("Oppsett i fire steg", () => {
     await user.click(screen.getByRole("button", { name: "Bekreft og fortsett" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Steg 3 av 4: Velg emne og regelverk" })).toHaveFocus();
     expect(screen.queryByText(/Tilkoblet som/), "the identity is not repeated in step 3").toBeNull();
-    const startemne = await screen.findByRole("radio", { name: "Digital kompetanse for lærere" });
-    expect(startemne).toHaveAccessibleDescription("LA101IKT14-1 26H · Høst 2026");
-    const long = screen.getByRole("radio", { name: LONG });
-    expect(long, "the full name is the accessible name, also when the visible text is shortened").toHaveAccessibleDescription("PDK2-26H · Høst 2026");
-    expect(document.getElementById(long.getAttribute("aria-labelledby")!)).toHaveClass("ek-choice__label--truncate");
-    await user.click(startemne);
+    const field = await screen.findByRole("combobox", { name: "Startemne" });
+    expect(field, "one field, closed until it is clicked").toHaveAttribute("aria-expanded", "false");
+    expect(field).toHaveAttribute("placeholder", "Velg eller søk etter emne");
+    await user.click(field);
+    expect(field).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("listbox", { name: "Startemne" })).toBeInTheDocument();
+    expect(optionNames(), "the name, then code and term on a smaller line").toEqual([
+      "Digital kompetanse for lærere, LA101IKT14-1 26H · Høst 2026", "Mal for digitale emner, MAL-DIGITAL · Høst 2026",
+      `${LONG}, PDK2-26H · Høst 2026`]);
+    expect(await axeViolations(container), "step 3 with the list open").toEqual([]);
+    await user.type(field, "pdk2");
+    expect(optionNames(), "searched by code").toEqual([`${LONG}, PDK2-26H · Høst 2026`]);
+    expect(screen.getByRole("option").querySelector("mark"), "the match is marked").toHaveTextContent("PDK2");
+    await user.keyboard("{Enter}");
+    expect(field, "chosen: the list closes").toHaveAttribute("aria-expanded", "false");
+    expect(field).toHaveValue(LONG);
+    expect(screen.getByText(LONG, { selector: ".ek-combobox__value .ek-combobox__label" }),
+      "the whole long name is shown in the field (it wraps; nothing is cut)").toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Fjern valgt emne" }));
+    expect(field, "× empties the choice").toHaveValue("");
+    expect(field).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(field, "↓ opens the list").toHaveAttribute("aria-expanded", "true");
+    await user.keyboard("{ArrowDown}{ArrowUp}{Enter}");
+    expect(field, "↑/↓ move, Enter chooses").toHaveValue("Digital kompetanse for lærere");
     const offentlig = await screen.findByRole("radio", { name: "Norge – lovkrav, offentlig sektor" });
     expect(offentlig).toBeChecked();
     expect(offentlig, "one text – no separate recommendation line").toHaveAccessibleDescription(
@@ -195,7 +227,6 @@ describe("Oppsett i fire steg", () => {
     await user.click(screen.getByRole("button", { name: "Vis detaljer om Norge – lovkrav, privat sektor" }));
     expect(offentlig, "«Vis detaljer» does not choose another profile").toBeChecked();
     expect(screen.getByRole("group", { name: "Regelverksprofil" })).toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "Startemne" })).toBeInTheDocument();
     expect(await axeViolations(container), "step 3").toEqual([]);
     await user.click(screen.getByRole("button", { name: "Fullfør oppsett" }));
 
@@ -206,8 +237,8 @@ describe("Oppsett i fire steg", () => {
     expect(summary).toHaveTextContent("Valgt regelverksprofilNorge – lovkrav, offentlig sektor");
     expect(screen.getByText(/^Du er klar til å åpne emneoversikten\./)).not.toHaveTextContent(/Innstillinger/);
     const actions = screen.getByRole("button", { name: "Åpne emneoversikten" }).parentElement!;
-    expect(within(actions).getAllByRole("button").map((b) => b.textContent), "«Endre valg» beside the main button")
-      .toEqual(["Endre valg: startemne og regelverksprofil", "Åpne emneoversikten"]);
+    expect(within(actions).getAllByRole("button").map((b) => b.textContent), "«Tilbake» beside the main button")
+      .toEqual(["Tilbake: endre startemne og regelverksprofil", "Åpne emneoversikten"]);
     expect(document.body.textContent, "the token is never shown").not.toContain(TOKEN);
     expect(JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage })).not.toContain(TOKEN);
     expect(calls.some((c) => /analysis|\/ai\//.test(c.url)), "no analysis or AI is started").toBe(false);
@@ -228,13 +259,13 @@ describe("Oppsett i fire steg", () => {
     serve({ complete: [{ body: { ok: true } }, error(500, "internal_error", "Noe gikk galt."), { body: { ok: true } }] });
     const user = userEvent.setup();
     show();
-    await user.click(await screen.findByRole("radio", { name: "Digital kompetanse for lærere" }));
+    await chooseCourse(user, "", "Digital kompetanse for lærere, LA101IKT14-1 26H · Høst 2026");
     await user.click(await screen.findByRole("button", { name: "Fullfør oppsett" }));
     await screen.findByRole("heading", { name: /Klar til bruk/ });
 
-    await user.click(screen.getByRole("button", { name: "Endre valg: startemne og regelverksprofil" }));
+    await user.click(screen.getByRole("button", { name: "Tilbake: endre startemne og regelverksprofil" }));
     expect(await screen.findByRole("heading", { level: 1, name: /Velg emne og regelverk/ })).toHaveFocus();
-    expect(screen.getByRole("radio", { name: "Digital kompetanse for lærere" }), "the choices are kept").toBeChecked();
+    expect(screen.getByRole("combobox", { name: "Startemne" }), "the choices are kept").toHaveValue("Digital kompetanse for lærere");
     expect(screen.getByRole("radio", { name: "Norge – lovkrav, offentlig sektor" })).toBeChecked();
     await user.click(screen.getByRole("radio", { name: "WCAG 2.2 AA – anbefalt beste praksis" }));
     await user.click(screen.getByRole("button", { name: "Fullfør oppsett" }));
@@ -245,9 +276,9 @@ describe("Oppsett i fire steg", () => {
     const summary = (await screen.findByText("Startemne")).closest("dl")!;
     expect(summary, "the summary shows what was actually saved").toHaveTextContent("Norge – lovkrav, offentlig sektor");
 
-    await user.click(screen.getByRole("button", { name: "Endre valg: startemne og regelverksprofil" }));
+    await user.click(screen.getByRole("button", { name: "Tilbake: endre startemne og regelverksprofil" }));
     expect(screen.getByRole("radio", { name: "Norge – lovkrav, offentlig sektor" }), "cancelling restored the saved choice").toBeChecked();
-    await user.click(screen.getByRole("radio", { name: "Velg senere" }));
+    await user.click(screen.getByRole("button", { name: "Fjern valgt emne" })); // choose later
     await user.click(screen.getByRole("radio", { name: "WCAG 2.2 AA – anbefalt beste praksis" }));
     await user.click(screen.getByRole("button", { name: "Fullfør oppsett" }));
     const saved = (await screen.findByText("Startemne")).closest("dl")!;
@@ -276,14 +307,9 @@ describe("Oppsett i fire steg", () => {
     const user = userEvent.setup();
     show();
     await connect(user);
-    const who = (await screen.findByText("Tilkoblet som")).closest("dl")!;
-    expect(items(within(who).getByRole("list")), "the code only where two names are alike").toEqual([
-      "Kjemi 1 (KJ1-H)", "Kjemi 1 (KJ1-V)", "Fysikk", "Biologi"]);
-    const more = within(who).getByRole("button", { name: "Vis alle 7 emner" });
-    await user.click(more);
-    expect(more).toHaveAttribute("aria-expanded", "true");
-    expect(within(who).getByText("Matematikk")).toBeVisible();
-    expect(sectionText("Tilganger")).toContain("Redigere sider: i alle 4 kontrollerte emner.");
+    await screen.findByText("Tilkoblet som");
+    expect(sectionText("Tilganger")).toContain("Lese og analysere: innvilget");
+    expect(sectionText("Tilganger")).toContain("Redigere sider: innvilget");
     await user.click(screen.getByRole("button", { name: "Se alle tilganger (5)" }));
     expect(screen.getByText("2 av 5 tilganger er innvilget i alle 4 kontrollerte emner."),
       "many courses: a short sentence, the names on request").toBeInTheDocument();
@@ -317,16 +343,14 @@ describe("Oppsett i fire steg", () => {
     expect(items(screen.getAllByRole("list").at(-1)!).every((t) => t?.endsWith(": innvilget"))).toBe(true);
   });
 
-  it("names the one course when there is one", async () => {
+  it("names the one course in the access details when there is one", async () => {
     const one = { ...TESTED, teaching_courses: 1, courses: [TESTED.courses[0]], access: { teaching_courses: 1, checked_courses: 1,
       checked_in: ["101"], failed_in: [], capabilities: [cap("read", "Lese", 1, 1), cap("pages", "Redigere sider", 1, 1)] } };
     serve({ test: [{ body: one }] });
     const user = userEvent.setup();
     show();
     await connect(user);
-    const who = (await screen.findByText("Tilkoblet som")).closest("dl")!;
-    expect(items(within(who).getByRole("list"))).toEqual(["Digital kompetanse for lærere"]);
-    await user.click(screen.getByRole("button", { name: "Se alle tilganger (2)" }));
+    await user.click(await screen.findByRole("button", { name: "Se alle tilganger (2)" }));
     expect(screen.getByText("Alle kontrollerte tilganger er innvilget i Digital kompetanse for lærere.")).toBeInTheDocument();
   });
 
@@ -396,7 +420,7 @@ describe("Oppsett i fire steg", () => {
     show();
     await connect(user);
     await screen.findByRole("heading", { name: /Bekreft tilkoblingen/ });
-    await user.click(screen.getByRole("button", { name: "Endre tilkobling" }));
+    await user.click(screen.getByRole("button", { name: "Tilbake" }));
     expect(screen.getByLabelText("Canvas-adresse"), "the address is kept").toHaveValue("https://hiof.instructure.com");
     await user.type(screen.getByLabelText("Tilgangstoken", { exact: true }), "2");
     await user.click(screen.getByRole("button", { name: "Koble til" }));
@@ -405,11 +429,12 @@ describe("Oppsett i fire steg", () => {
 
     await user.click(screen.getByRole("button", { name: "Bekreft og fortsett" }));
     await user.click(await screen.findByRole("radio", { name: "WCAG 2.2 AA – anbefalt beste praksis" }));
-    await user.click(screen.getByRole("radio", { name: "Mal for digitale emner" }));
+    await chooseCourse(user, "mal", "Mal for digitale emner, MAL-DIGITAL · Høst 2026");
     await user.click(screen.getByRole("button", { name: "Tilbake" }));
     await user.click(await screen.findByRole("button", { name: "Bekreft og fortsett" }));
     expect(await screen.findByRole("radio", { name: "WCAG 2.2 AA – anbefalt beste praksis" }), "not reset to the default").toBeChecked();
-    expect(screen.getByRole("radio", { name: "Mal for digitale emner" })).toBeChecked();
+    expect(screen.getByRole("combobox", { name: "Startemne" })).toHaveValue("Mal for digitale emner");
+    expect(calls.filter((c) => c.url === "/api/canvas/connection"), "a saved connection is not sent again").toHaveLength(1);
   });
 
   it("saves nothing when the token now belongs to someone else, and keeps an earlier connection when saving fails", async () => {
@@ -418,7 +443,7 @@ describe("Oppsett i fire steg", () => {
     const first = show();
     await connect(user);
     await user.click(await screen.findByRole("button", { name: "Bekreft og fortsett" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(/annen Canvas-bruker.*Velg «Endre tilkobling» og koble til på nytt\./);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/annen Canvas-bruker.*Velg «Tilbake» og koble til på nytt\./);
     expect(screen.getByRole("button", { name: "Bekreft og fortsett" })).toBeDisabled();
     first.unmount();
 
@@ -449,8 +474,24 @@ describe("Oppsett i fire steg", () => {
     show();
     expect(screen.getByRole("heading", { level: 1, name: "Steg 3 av 4: Velg emne og regelverk" })).toBeInTheDocument();
     expect(await screen.findByText(/Fant ingen emner der du er lærer/)).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "Velg senere" })).toBeChecked();
+    expect(screen.queryByRole("combobox"), "nothing to choose from: no field").toBeNull();
     expect(await screen.findByRole("radio", { name: "Norge – lovkrav, privat sektor" }), "an existing choice is kept").toBeChecked();
+  });
+
+  it("can go back to «Bekreftelse» in a resumed setup: the saved connection is checked again, nothing is saved", async () => {
+    session.current = { ...fresh(), canvas: connected };
+    serve();
+    const user = userEvent.setup();
+    show();
+    await screen.findByRole("heading", { level: 1, name: /Velg emne og regelverk/ });
+    const progress = screen.getByRole("navigation", { name: "Steg i oppsettet" });
+    await user.click(within(progress).getByRole("button", { name: /^Bekreftelse/ }));
+    expect(await screen.findByRole("heading", { level: 1, name: /Bekreft tilkoblingen/ })).toHaveFocus();
+    expect(calls.filter((c) => c.url === "/api/canvas/test").map((c) => c.body), "the stored token, only a check").toEqual([
+      { base_url: "https://hiof.instructure.com", token: null, capabilities: true }]);
+    await user.click(screen.getByRole("button", { name: "Bekreft og fortsett" }));
+    await screen.findByRole("heading", { level: 1, name: /Velg emne og regelverk/ });
+    expect(calls.filter((c) => c.url === "/api/canvas/connection"), "already saved: not sent again").toHaveLength(0);
   });
 
   it("preselects the public-sector profile when nothing usable is stored", async () => {
@@ -460,18 +501,65 @@ describe("Oppsett i fire steg", () => {
     expect(await screen.findByRole("radio", { name: "Norge – lovkrav, offentlig sektor" })).toBeChecked();
   });
 
-  it("offers a search when there are many courses", async () => {
+  it("searches all the courses in one field – by name, code or term – and says when nothing matches", async () => {
     session.current = { ...fresh(), canvas: connected };
-    const many = Array.from({ length: 40 }, (_, i) => course(String(200 + i), i === 7 ? "Kjemi for lærere" : `Emne ${i}`, `E${i}`));
+    const many = Array.from({ length: 76 }, (_, i) => course(String(200 + i), i === 70 ? "Kjemi for lærere" : `Emne ${i}`,
+      i === 3 ? "Emne 3" : `E${i}`, i === 50 ? "Vår 2027" : "Høst 2026"));
     serve({ courses: many });
     const user = userEvent.setup();
     show();
-    const search = await screen.findByLabelText("Søk etter emne");
-    expect(screen.getByText("Viser 30 av 40 emner. Søk for å finne resten.")).toBeInTheDocument();
-    await user.type(search, "kjemi");
-    expect(screen.getByText("1 av 40 emner passer.")).toBeInTheDocument();
-    const group = screen.getByRole("group", { name: "Startemne" });
-    expect(within(group).getAllByRole("radio").map((r) => r.closest("label")?.textContent)).toEqual(["Velg senere", "Kjemi for lærereE7 · Høst 2026"]);
+    const field = await screen.findByRole("combobox", { name: "Startemne" });
+    await user.click(field);
+    expect(optionNames(), "every course is in the list; it scrolls").toHaveLength(76);
+    expect(optionNames(), "a code that only repeats the name is left out").toContain("Emne 3, Høst 2026");
+    await user.type(field, "kjemi");
+    expect(optionNames()).toEqual(["Kjemi for lærere, E70 · Høst 2026"]);
+    expect(screen.getByText("1 treff.")).toHaveAttribute("role", "status");
+    await user.clear(field);
+    await user.type(field, "vår 2027");
+    expect(optionNames(), "by term").toEqual(["Emne 50, E50 · Vår 2027"]);
+    await user.clear(field);
+    await user.type(field, "fysikk");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.getAllByText("Fant ingen emner som passer").length, "said in the list and read out").toBe(2);
+    await user.keyboard("{Escape}");
+    expect(field, "Esc closes").toHaveAttribute("aria-expanded", "false");
+    expect(field).toHaveValue("");
+  });
+
+  it("has «Tilbake» on every card after the first, and goes to any step already reached from the steps at the top", async () => {
+    serve();
+    const user = userEvent.setup();
+    show();
+    const progress = screen.getByRole("navigation", { name: "Steg i oppsettet" });
+    const stepButton = (name: RegExp) => within(progress).getByRole("button", { name });
+    expect(stepButton(/^Bekreftelse/), "not before there is something to confirm").toBeDisabled();
+    expect(stepButton(/^Emne og regelverk/)).toBeDisabled();
+    await connect(user);
+    await screen.findByRole("heading", { level: 1, name: /Bekreft tilkoblingen/ });
+    expect(stepButton(/^Emne og regelverk/), "not before the connection is confirmed").toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Bekreft og fortsett" }));
+    await screen.findByRole("heading", { level: 1, name: /Velg emne og regelverk/ });
+    await chooseCourse(user, "mal", "Mal for digitale emner, MAL-DIGITAL · Høst 2026");
+    await user.click(screen.getByRole("button", { name: "Fullfør oppsett" }));
+    await screen.findByRole("heading", { level: 1, name: /Klar til bruk/ });
+
+    await user.click(stepButton(/^Tilkobling/));
+    expect(await screen.findByRole("heading", { level: 1, name: /Koble til Canvas/ }), "straight back to the start").toHaveFocus();
+    expect(screen.getByLabelText("Canvas-adresse")).toHaveValue("https://hiof.instructure.com");
+    await user.click(stepButton(/^Ferdig/));
+    expect(await screen.findByRole("heading", { level: 1, name: /Klar til bruk/ })).toHaveFocus();
+
+    await user.click(screen.getByRole("button", { name: /^Tilbake/ }));
+    await screen.findByRole("heading", { level: 1, name: /Velg emne og regelverk/ });
+    expect(screen.getByRole("combobox", { name: "Startemne" })).toHaveValue("Mal for digitale emner");
+    await user.click(screen.getByRole("button", { name: "Tilbake" }));
+    await screen.findByRole("heading", { level: 1, name: /Bekreft tilkoblingen/ });
+    await user.click(screen.getByRole("button", { name: "Tilbake" }));
+    await screen.findByRole("heading", { level: 1, name: /Koble til Canvas/ });
+    expect(screen.queryByRole("button", { name: "Tilbake" }), "nothing before the first step").toBeNull();
+    expect(calls.filter((c) => c.url === "/api/canvas/connection"), "going back saves nothing again").toHaveLength(1);
+    expect(calls.filter((c) => c.url === "/api/setup/complete")).toHaveLength(1);
   });
 });
 
@@ -547,5 +635,10 @@ describe("oppsettets regler", () => {
       "i ingen av de 3 emnene. Du kan fortsatt analysere der det mangler.");
     expect(accessSummary({ teaching_courses: 0, checked_courses: 0, capabilities: [] })[0].text).toMatch(/ingen emner å kontrollere/);
     expect(courseMeta({ course_code: "LA101", term_name: null })).toBe("LA101");
+    expect(courseMeta({ name: "Mal for emner", course_code: "mal for emner ", term_name: "Høst 2026" }),
+      "the name is not repeated on the smaller line").toBe("Høst 2026");
+    expect(accessSummary({ teaching_courses: 2, checked_courses: 2, capabilities: [
+      { key: "read", label: "Lese", granted: 2, checked: 2 }, { key: "pages", label: "Sider", granted: 2, checked: 2 }] })
+      .map((l) => l.text), "granted everywhere: nothing to add").toEqual(["", ""]);
   });
 });

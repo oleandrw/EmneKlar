@@ -23,6 +23,7 @@ from emneklar.core.security.web import session_cookie_from_scope, session_cookie
 router = APIRouter()
 
 EXPIRED_PAGE = """<!doctype html><html lang="nb"><head><meta charset="utf-8"><title>Lenken er utløpt – EmneKlar</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <meta name="viewport" content="width=device-width, initial-scale=1"></head>
 <body style="font-family:system-ui,sans-serif;max-width:40rem;margin:4rem auto;padding:0 1rem;line-height:1.5">
 <h1>Lenken er utløpt</h1>

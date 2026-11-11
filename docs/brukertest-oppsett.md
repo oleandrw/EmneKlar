@@ -32,13 +32,13 @@ Gi én oppgave om gangen, skriftlig.
    *Lykkes når:* læreren forstår at «Koble til» bare kontrollerer, og at tilkoblingen lagres ved «Bekreft og
    fortsett».
 3. **Velg hvilket emne du vil starte med – eller la det vente.**
-   *Lykkes når:* læreren velger et emne eller «Velg senere» med vilje.
+   *Lykkes når:* læreren finner emnet i feltet «Velg eller søk etter emne» (eller lar det stå tomt) med vilje.
 4. **Velg hvilke krav emnene skal kontrolleres mot.** Etterpå: «Hvorfor valgte du denne? Hvor finner du mer om den?»
    *Lykkes når:* læreren tar et bevisst valg og finner «Vis detaljer» – uten å velge en annen profil ved et uhell.
 5. **Du ombestemmer deg: bytt startemne.**
-   *Lykkes når:* læreren finner «Endre valg» på oppsummeringen, endrer og fullfører igjen.
+   *Lykkes når:* læreren går tilbake (med «Tilbake» eller trinnene øverst), endrer og fullfører igjen.
 6. **Åpne oversikten for emnet ditt.**
-   *Lykkes når:* emneoversikten for riktig emne åpnes (eller emnevalget, hvis «Velg senere» ble valgt).
+   *Lykkes når:* emneoversikten for riktig emne åpnes (eller emnevalget, hvis feltet ble stående tomt).
 
 ## Hva du bør se etter
 
@@ -67,7 +67,7 @@ For hver oppgave: noter tid, og om læreren klarte den **alene**, **med nøling*
 | 2 Bekrefte og lagre | | | |
 | 3 Startemne | | | |
 | 4 Regelverk og detaljer | | | |
-| 5 Endre valg | | | |
+| 5 Bytt startemne | | | |
 | 6 Åpne emneoversikten | | | |
 
 Én test gir ikke et sikkert bilde. Er det mulig, gjenta med 3–5 lærere og se etter det som går igjen.

@@ -233,8 +233,11 @@ export function teachingCourses(n: number): string {
 }
 
 /** The second line under a course name: course code and term («LA101IKT14-1 26H · Høst 2026»), or "". */
-export function courseMeta(course: { course_code: string | null; term_name: string | null }): string {
-  return [course.course_code, course.term_name].filter(Boolean).join(" · ");
+/** Code and term for the smaller line under a course name. The code is left out where it only repeats the name. */
+export function courseMeta(course: { name?: string | null; course_code: string | null; term_name: string | null }): string {
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  const code = course.course_code && !(course.name && same(course.course_code, course.name)) ? course.course_code : null;
+  return [code, course.term_name].filter(Boolean).join(" · ");
 }
 
 export function levelOf(cap: Capability | undefined): AccessLevel {
@@ -245,7 +248,8 @@ export function levelOf(cap: Capability | undefined): AccessLevel {
 
 /** The short summary on «Bekreftelse», read from the permissions that were actually checked: reading (analysis) and
  * editing pages – page editing is never presented as write access to every kind of content (that is under «Se
- * tilganger»), and missing write access never blocks what can be done with read access. */
+ * tilganger»), and missing write access never blocks what can be done with read access. Granted everywhere: no text
+ * (the check mark says it); otherwise where it is missing, and what that means. */
 export function accessSummary(access: Access | undefined): { key: string; level: AccessLevel; title: string; text: string }[] {
   if (!access || access.checked_courses === 0) {
     return [{
@@ -263,13 +267,13 @@ export function accessSummary(access: Access | undefined): { key: string; level:
   return [
     {
       key: "analyse", level: readLevel, title: "Lese og analysere",
-      text: readLevel === "unknown" ? "ikke kontrollert." : `full lesetilgang ${grantedIn(read!, access.teaching_courses)}.`
-        + (readLevel === "all" ? "" : " Uten den kan upublisert innhold mangle i analysen."),
+      text: readLevel === "all" ? "" : readLevel === "unknown" ? "ikke kontrollert."
+        : `full lesetilgang ${grantedIn(read!, access.teaching_courses)}. Uten den kan upublisert innhold mangle i analysen.`,
     },
     {
       key: "pages", level: writeLevel, title: "Redigere sider",
-      text: writeLevel === "unknown" ? "ikke kontrollert." : `${grantedIn(pages!, access.teaching_courses)}.`
-        + (writeLevel === "all" ? "" : " Du kan fortsatt analysere der det mangler."),
+      text: writeLevel === "all" ? "" : writeLevel === "unknown" ? "ikke kontrollert."
+        : `${grantedIn(pages!, access.teaching_courses)}. Du kan fortsatt analysere der det mangler.`,
     },
   ];
 }

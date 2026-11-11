@@ -18,8 +18,8 @@ import { JobStatus } from "./JobStatus";
 import { PRIMARY_NAV, SECONDARY_NAV, type NavItem } from "./nav";
 
 /** The EmneKlar logo: an open book with a check mark – the course, made clear. Also used on the setup page, and drawn
- * the same way in frontend/public/favicon.svg (the window and the tab) and packaging/windows/EmneKlar.ico (shortcuts and
- * the installer); a test keeps them alike. */
+ * the same way in src/assets/emneklar-logo.svg (the window, the taskbar and the tab), public/favicon.svg (pages made by
+ * the server) and packaging/windows/EmneKlar.ico (shortcuts and the installer); a test keeps them alike. */
 export function BrandMark() {
   return (
     <svg className="ek-brand__mark" viewBox="0 0 36 36" aria-hidden="true">
