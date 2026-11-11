@@ -322,11 +322,16 @@ plattformen som bygges og gis ut ([PLATFORMS.md](PLATFORMS.md)).
 * **Kjøretiden** (`runtime\`) er python.org sin «embeddable package» med avhengighetene ferdig installert, bygget av
   `scripts/build_runtime.py` fra hash-låste filer. `python314._pth` isolerer den fra miljøvariabler, registeret og
   brukerens egne pakker.
-* **Start:** snarveien kjører `runtime\pythonw.exe -m emneklar` – uten konsollvindu. Nettleseren er
-  brukergrensesnittet. Kjører EmneKlar allerede, åpnes bare en ny fane. Feil ved oppstart vises i en meldingsboks
+* **Start:** snarveien kjører `runtime\pythonw.exe -m emneklar` – uten konsollvindu. Brukergrensesnittet vises i et
+  eget vindu: Edge eller Chrome i app-modus (`--app=<adresse>`), uten adresselinje og faner
+  (`core/system.open_user_interface`; standardnettleseren hvis den er Chrome eller Edge, ellers Edge). Uten noen av
+  dem åpnes en vanlig fane. Nettleseren startes i sin egen mappe, så den holder aldri programmappen i bruk.
+  Kjører EmneKlar allerede, åpnes bare et nytt vindu. Feil ved oppstart vises i en meldingsboks
   (`core/system.py`). `start.bat` starter det samme programmet i et konsollvindu.
-* **Avslutting:** «Avslutt EmneKlar» i programmet (`POST /api/system/shutdown`, med økt og CSRF) eller snarveien i
-  Start-menyen (`manage stop` over den lokale kontrollkanalen).
+* **Avslutting:** lukk det siste vinduet – hvert vindu holder én forbindelse åpen til `GET /api/system/presence`, og
+  når den siste er borte i 15 sekunder og ingen jobber kjører, stopper EmneKlar (`core/presence.py`; bare når
+  programmet har åpnet vinduet selv). Med en gang: «Avslutt EmneKlar» i programmet (`POST /api/system/shutdown`, med
+  økt og CSRF) eller snarveien i Start-menyen (`manage stop` over den lokale kontrollkanalen).
 * **Oppdatering:** `update.bat` → `scripts/update.py` følger sekvensen: oppdag kjørende app → valider installasjon →
   sikkerhetskopi av data → sjekk versjon → hent oppdatering (og ny kjøretid når id-en er endret) → oppdater
   avhengigheter (bare installasjoner med eget Python-miljø) → migrer → bygg grensesnitt (bare Git) → helsesjekk →

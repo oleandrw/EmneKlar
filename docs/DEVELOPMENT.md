@@ -69,7 +69,7 @@ Nyttige miljøvariabler når du starter EmneKlar selv:
 |---|---|
 | `EMNEKLAR_DATA_DIR` | datamappen (standard: `%LOCALAPPDATA%\EmneKlar`). Sett den alltid når du tester, så de vanlige dataene ikke røres. Med den satt kopieres heller ingenting fra den gamle mappen `EmneKlar-Claude` |
 | `EMNEKLAR_PORT` | porten (standard 8770) |
-| `EMNEKLAR_NO_BROWSER=1` | ikke åpne nettleseren (som `--no-browser`) |
+| `EMNEKLAR_NO_BROWSER=1` | ikke åpne noe vindu (som `--no-browser`); EmneKlar avslutter seg da heller ikke når vinduer lukkes |
 | `EMNEKLAR_SECRET_BACKEND=memory` | hemmeligheter bare i minnet – ingenting skrives til Legitimasjonsbehandling |
 
 En installasjon kan også ha egne standardverdier i filen `emneklar.local.json` i programmappen

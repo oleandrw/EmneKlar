@@ -31,11 +31,11 @@ describe("Hjelp → Feilsøking", () => {
     const user = userEvent.setup();
     const { container } = renderHelp("feilsoking");
     for (const question of ["«Økten er ikke gyldig»", "Hvordan avslutter jeg EmneKlar?",
-      "EmneKlar starter ikke, eller nettleseren åpnes ikke"]) {
+      "EmneKlar starter ikke, eller vinduet åpnes ikke"]) {
       await user.click(screen.getByText(question));  // the answers are folded until they are asked for
     }
-    expect(container).toHaveTextContent("Velg «Avslutt EmneKlar» i kontomenyen");
-    expect(container).toHaveTextContent("programmet kjører videre selv om du lukker nettleserfanen");
+    expect(container).toHaveTextContent("Når det siste EmneKlar-vinduet er lukket, avsluttes programmet etter noen sekunder");
+    expect(container).toHaveTextContent("velger du «Avslutt EmneKlar» i kontomenyen");
     expect(container).toHaveTextContent("Start EmneKlar på nytt fra Start-menyen eller skrivebordet");
     expect(container).toHaveTextContent("kjører du installasjonsprogrammet på nytt – dataene og innstillingene dine beholdes");
     expect(container.textContent).not.toMatch(/start\.bat|setup\.bat|EmneKlar-Claude|vinduet til EmneKlar/);

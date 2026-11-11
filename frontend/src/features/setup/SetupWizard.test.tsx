@@ -216,19 +216,11 @@ describe("Oppsett i fire steg", () => {
     expect(await screen.findByText("Åpnet /oversikt")).toBeInTheDocument();
   });
 
-  it("can be left: «Avslutt EmneKlar» is offered before the setup is finished, and asks first", async () => {
+  it("has no «Avslutt EmneKlar» of its own: the setup is a window that can simply be closed", async () => {
     serve();
-    const user = userEvent.setup();
-    const { container } = show();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Avslutt EmneKlar" }));
-    const dialog = screen.getByRole("dialog", { name: "Avslutte EmneKlar?" });
-    expect(dialog).toHaveTextContent("Du starter programmet igjen fra Start-menyen eller skrivebordet");
-    expect(calls.some((call) => call.url === "/api/system/shutdown"), "nothing is stopped before the confirmation").toBe(false);
-    expect(await axeViolations(container)).toEqual([]);
-    await user.click(within(dialog).getByRole("button", { name: "Avbryt" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Canvas-adresse"), "the setup is still there").toBeInTheDocument();
+    show();
+    expect(await screen.findByLabelText("Canvas-adresse")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Avslutt EmneKlar" })).not.toBeInTheDocument();
   });
 
   it("lets the teacher change the choices from the summary, saves them again, and never shows a failed save as saved", async () => {

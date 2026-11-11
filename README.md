@@ -36,16 +36,20 @@ Python eller andre verktøy – alt EmneKlar trenger, følger med.
      Har du lastet ned filen fra lenken over, velger du **Mer informasjon → Kjør likevel**. Vil du kontrollere filen
      først, sammenligner du SHA-256 med `EmneKlar-<versjon>-setup.exe.sha256` i utgivelsen (i PowerShell:
      `Get-FileHash EmneKlar-<versjon>-setup.exe`).
-3. Start **EmneKlar** fra Start-menyen eller skrivebordet. Nettleseren åpnes med EmneKlar. Programmet har ikke noe
-   eget vindu – nettleseren er brukergrensesnittet.
+3. Start **EmneKlar** fra Start-menyen eller skrivebordet. EmneKlar åpnes i et eget vindu uten adresselinje og faner.
+   Vinduet lages av Microsoft Edge, som følger med Windows – eller av Google Chrome hvis det er standardnettleseren
+   din. Selve programmet kjører i bakgrunnen på maskinen din. Finnes verken Edge eller Chrome, åpnes EmneKlar i en
+   vanlig fane i standardnettleseren.
 4. Følg oppsettet i fire steg: **Tilkobling** (Canvas-adresse og tilgangstoken – «Koble til» kontrollerer dem),
    **Bekreftelse** (hvem du er tilkoblet som, Canvas-adresse og tilganger – først her lagres tilkoblingen), **Emne og
    regelverk** (startemne og hvilke krav som skal kontrolleres) og **Ferdig**. Tokenet lager du i Canvas under
    **Konto → Innstillinger → Godkjente integrasjoner**.
 
-**Avslutte EmneKlar:** velg **Avslutt EmneKlar** i kontomenyen nederst til venstre i programmet, under
-**Innstillinger → Sikkerhet og personvern**, øverst i oppsettsveiviseren eller i Start-menyen. EmneKlar kjører videre selv om du lukker
-nettleserfanen; åpner du snarveien igjen, får du en ny fane i det samme programmet.
+**Avslutte EmneKlar:** lukk vinduet. Når det siste EmneKlar-vinduet er lukket, avsluttes programmet etter noen
+sekunder; en jobb som kjører (for eksempel en analyse eller en publisering til Canvas), gjøres ferdig først. Vil du
+avslutte med en gang, velger du **Avslutt EmneKlar** i kontomenyen nederst til venstre i programmet, under
+**Innstillinger → Sikkerhet og personvern** eller i Start-menyen. Åpner du snarveien mens EmneKlar kjører, får du et
+nytt vindu i det samme programmet.
 
 **Tips når du prøver EmneKlar for første gang:** analyser, åpne funn og godkjenn så mye du vil – ingenting sendes til
 Canvas før du trykker **Publiser til Canvas** i endringskøen og bekrefter. Vil du prøve publiseringen uten et ekte

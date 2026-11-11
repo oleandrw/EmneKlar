@@ -40,6 +40,35 @@ const jobsRunning = () => new Response(JSON.stringify({ error: { code: "jobs_run
 
 afterEach(() => vi.unstubAllGlobals());
 
+/** Stands in for the browser's EventSource: records which connections the page opens and closes. */
+class FakeEventSource {
+  static made: FakeEventSource[] = [];
+  closed = false;
+  constructor(readonly url: string) {
+    FakeEventSource.made.push(this);
+  }
+  close() {
+    this.closed = true;
+  }
+}
+
+describe("Lukke vinduet", () => {
+  it("keeps one connection open while the window shows EmneKlar, so that closing the last window stops it", async () => {
+    FakeEventSource.made = [];
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const user = userEvent.setup();
+    mockApi([ok()]);
+    render(wrap(<SessionProvider><QuitDialog open onClose={() => {}} /></SessionProvider>));
+    await waitFor(() => expect(FakeEventSource.made.map((s) => s.url)).toEqual(["/api/system/presence"]));
+    expect(FakeEventSource.made[0].closed).toBe(false);
+
+    await user.click(await screen.findByRole("button", { name: "Avslutt EmneKlar" }));
+    expect(await screen.findByRole("heading", { name: "EmneKlar er avsluttet" })).toBeInTheDocument();
+    expect(FakeEventSource.made[0].closed, "stopped: the page lets go and does not try again").toBe(true);
+    expect(FakeEventSource.made).toHaveLength(1);
+  });
+});
+
 describe("Avslutt EmneKlar", () => {
   it("asks first, stops the program and says that it has stopped", async () => {
     const user = userEvent.setup();
@@ -53,7 +82,7 @@ describe("Avslutt EmneKlar", () => {
 
     await user.click(screen.getByRole("button", { name: "Avslutt EmneKlar" }));
     expect(await screen.findByRole("heading", { name: "EmneKlar er avsluttet" })).toBeInTheDocument();
-    expect(screen.getByText(/du kan lukke denne fanen/)).toBeInTheDocument();
+    expect(screen.getByText(/du kan lukke vinduet/)).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(bodies).toEqual([{ force: false }]);
     // The page that replaces the app does not send the user to a file they may never have seen.

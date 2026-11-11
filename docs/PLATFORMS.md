@@ -28,8 +28,10 @@ Løsningen er beskrevet i [UPDATING.md](UPDATING.md) og [DEVELOPMENT.md](DEVELOP
   gjør at kjøretiden ser bort fra miljøvariabler, registeret og pakker i brukerens profil. Læreren kjører aldri pip,
   og det som er testet, er det som installeres.
 * **Installasjon:** Inno Setup, per bruker, i `%LOCALAPPDATA%\Programs\EmneKlar`, uten administratorrettigheter.
-* **Start og stopp:** snarveiene starter `runtime\pythonw.exe -m emneklar` (ingen konsoll). Programmet stoppes med
-  «Avslutt EmneKlar» i programmet eller i Start-menyen.
+* **Start og stopp:** snarveiene starter `runtime\pythonw.exe -m emneklar` (ingen konsoll). EmneKlar vises i et eget
+  vindu (Edge eller Chrome i app-modus), eller i en vanlig fane når ingen av dem finnes. Programmet stoppes med
+  «Avslutt EmneKlar» i programmet eller i Start-menyen. På macOS og Linux åpnes alltid en vanlig fane. Appvinduet er
+  prøvd lokalt på Windows 11 med Chrome og Edge, startet fra kildekoden (11.11.2026) – ikke ennå fra en installasjon.
 * **Oppdatering:** `update.bat` → `scripts/update.py`. Programfilene byttes fil for fil med sikkerhetskopi;
   kjøretiden byttes som en hel mappe og settes tilbake som en hel mappe hvis noe feiler.
 

@@ -15,7 +15,6 @@ import type { Course } from "../../core/api/types";
 import { matchCourses } from "../../core/course";
 import { formatDate } from "../../core/format";
 import { BrandMark } from "../../core/layout/AppShell";
-import { QuitDialog } from "../../core/quit";
 import { usePageTitle } from "../../core/usePageTitle";
 import { useSession } from "../../core/session";
 import {
@@ -120,7 +119,6 @@ export function SetupWizard() {
   const navigate = useNavigate();
   const client = useQueryClient();
   const [step, setStep] = useState<StepId>(() => initialStep(session));
-  const [quitting, setQuitting] = useState(false);
   const [baseUrl, setBaseUrl] = useState(session.canvas.base_url ?? "");
   const [token, setToken] = useState("");
   const [tested, setTested] = useState<TestResult | null>(null);
@@ -246,13 +244,7 @@ export function SetupWizard() {
           <BrandMark />
           <span>EmneKlar</span>
           <span className="ek-setup__brand-sub">Oppsett</span>
-          {/* EmneKlar has no window of its own, and the settings are not open yet: this is where the program can be
-              stopped before the setup is finished. */}
-          <span className="ek-setup__quit">
-            <Button size="sm" variant="ghost" onClick={() => setQuitting(true)}>Avslutt EmneKlar</Button>
-          </span>
         </div>
-        <QuitDialog open={quitting} onClose={() => setQuitting(false)} />
         <Stepper label="Steg i oppsettet" steps={steps} current={step} orientation="horizontal" />
         <section className="ek-setup__panel" aria-labelledby="oppsett-tittel">
           <h1 id="oppsett-tittel" ref={headingRef} tabIndex={-1} className="ek-setup__title">

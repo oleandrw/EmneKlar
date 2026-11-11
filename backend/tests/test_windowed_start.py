@@ -70,12 +70,12 @@ def test_the_browser_is_opened_only_when_emneklar_answers(monkeypatch: pytest.Mo
                                                          no_console: list[tuple[str, str, bool]]) -> None:
     opened: list[str] = []
     monkeypatch.setattr(launcher.time, "sleep", lambda _seconds: None)
-    monkeypatch.setattr(launcher.webbrowser, "open", lambda url: opened.append(url) or True)
+    monkeypatch.setattr(launcher, "open_user_interface", lambda url: opened.append(url) or True)
     url = "http://127.0.0.1:8791/auth/launch?token=engangs"
 
     monkeypatch.setattr(launcher, "fetch_health", lambda origin, timeout=1: None)
     launcher._wait_and_open(url, "http://127.0.0.1:8791", True)
-    assert opened == [] and no_console == [], "nothing answers: no browser tab on a dead address"
+    assert opened == [] and no_console == [], "nothing answers: no window on a dead address"
 
     monkeypatch.setattr(launcher, "fetch_health", lambda origin, timeout=1: {"app": "EmneKlar"})
     launcher._wait_and_open(url, "http://127.0.0.1:8791", True)
@@ -83,8 +83,8 @@ def test_the_browser_is_opened_only_when_emneklar_answers(monkeypatch: pytest.Mo
     launcher._wait_and_open(url, "http://127.0.0.1:8791", False)  # --no-browser
     assert opened == [url]
 
-    # The browser cannot be opened and there is no console to print the link in: the user gets it in a box.
-    monkeypatch.setattr(launcher.webbrowser, "open", lambda url: False)
+    # No browser can be opened and there is no console to print the link in: the user gets it in a box.
+    monkeypatch.setattr(launcher, "open_user_interface", lambda url: False)
     launcher._wait_and_open(url, "http://127.0.0.1:8791", True)
     assert len(no_console) == 1 and url in no_console[0][1] and not no_console[0][2]
 
@@ -94,12 +94,12 @@ def test_no_browser_can_be_chosen_with_the_environment(tmp_path: Path, monkeypat
     """The shortcut and the updater start EmneKlar without arguments: EMNEKLAR_NO_BROWSER=1 is --no-browser."""
     opened: list[str] = []
     url = "http://127.0.0.1:8791/auth/launch?token=engangs"
-    monkeypatch.setattr(launcher.webbrowser, "open", lambda address: opened.append(address) or True)
+    monkeypatch.setattr(launcher, "open_user_interface", lambda address: opened.append(address) or True)
     monkeypatch.setattr(launcher, "running_instance", lambda run_dir: {"origin": "http://127.0.0.1:8791"})
     monkeypatch.setattr(launcher, "request_launch_url", lambda info: url)
     for name in ("EMNEKLAR_PORT", "EMNEKLAR_HOST", "EMNEKLAR_DEV", "EMNEKLAR_NO_BROWSER"):
         monkeypatch.delenv(name, raising=False)
-    assert launcher.main([]) == 0 and opened == [url], "already running: a new tab with a fresh login link"
+    assert launcher.main([]) == 0 and opened == [url], "already running: a new window with a fresh login link"
     monkeypatch.setenv("EMNEKLAR_NO_BROWSER", "1")
     assert launcher.main([]) == 0 and opened == [url]
     monkeypatch.delenv("EMNEKLAR_NO_BROWSER")
@@ -110,7 +110,7 @@ def test_no_browser_can_be_chosen_with_the_environment(tmp_path: Path, monkeypat
 def test_the_login_link_is_printed_only_in_a_console(monkeypatch: pytest.MonkeyPatch,
                                                      capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setattr(system, "_console_missing", False)
-    monkeypatch.setattr(launcher.webbrowser, "open", lambda url: True)
+    monkeypatch.setattr(launcher, "open_user_interface", lambda url: True)
     launcher._announce("http://127.0.0.1:8791/auth/launch?token=engangs", True)
     out = capsys.readouterr().out
     assert "token=engangs" in out and "Lukk dette vinduet for å avslutte EmneKlar" in out

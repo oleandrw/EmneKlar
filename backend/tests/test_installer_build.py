@@ -279,3 +279,36 @@ def test_user_data_is_never_removed_by_install_or_uninstall() -> None:
 def test_the_icon_is_a_real_ico_file() -> None:
     icon = (REPO_DIR / "packaging" / "windows" / "EmneKlar.ico").read_bytes()
     assert icon[:4] == b"\x00\x00\x01\x00" and int.from_bytes(icon[4:6], "little") >= 5, "several sizes"
+
+
+def drawing(text: str) -> list[list[tuple[str, str, str]]]:
+    """Path data, colours and stroke widths of an SVG drawing, in order (JSX or plain SVG attribute names)."""
+    paths = re.findall(r"<path\b(.*?)/>", text, re.DOTALL)
+    return [re.findall(r'\bd="([^"]+)"|(?:fill|stroke)="(#[0-9a-f]{6})"|stroke-?[wW]idth="([\d.]+)"', path)
+            for path in paths]
+
+
+def test_the_window_the_shortcuts_and_the_installer_show_the_emneklar_logo() -> None:
+    shell = (REPO_DIR / "frontend" / "src" / "core" / "layout" / "AppShell.tsx").read_text(encoding="utf-8")
+    logo = shell[shell.index("export function BrandMark"):shell.index("</svg>", shell.index("export function BrandMark"))]
+    favicon = (REPO_DIR / "frontend" / "public" / "favicon.svg").read_text(encoding="utf-8")
+    assert len(drawing(logo)) == 4 and drawing(favicon) == drawing(logo), "favicon.svg is the logo of the program"
+
+    from PIL import Image
+
+    with Image.open(REPO_DIR / "packaging" / "windows" / "EmneKlar.ico") as icon:
+        assert {(16, 16), (32, 32), (48, 48), (256, 256)} <= set(icon.info["sizes"])
+        icon.size = (256, 256)
+        image = icon.convert("RGBA")
+    # Points in the logo's own units (the 36 x 36 box of BrandMark); the icon shows the square from (2, 1.75), 32 wide.
+    def colour(x: float, y: float) -> tuple[int, ...]:
+        return image.getpixel((round((x - 2) * 8), round((y - 1.75) * 8)))
+
+    def near(found: tuple[int, ...], hex_colour: str) -> bool:
+        wanted = tuple(int(hex_colour[i:i + 2], 16) for i in (1, 3, 5))
+        return found[3] > 200 and all(abs(a - b) <= 24 for a, b in zip(found[:3], wanted, strict=True))
+
+    assert near(colour(10, 25), "#34d399"), "the green left page"
+    assert near(colour(26, 25), "#60a5fa"), "the blue right page"
+    assert near(colour(24, 22.3), "#0f2342"), "the check mark"
+    assert colour(2.5, 2.5)[3] == 0 and colour(33.5, 33)[3] == 0, "no background: the corners are transparent"

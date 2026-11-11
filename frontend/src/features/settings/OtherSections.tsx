@@ -188,8 +188,9 @@ export function PrivacySettings({ settings }: { settings: AppSettings }) {
             <Button icon={<Power aria-hidden="true" />} onClick={() => setQuitting(true)}>Avslutt EmneKlar</Button>
           </div>
           <p className="ek-xs ek-muted">
-            Utlogging gjelder bare denne fanen: EmneKlar kjører videre, og du åpner det igjen fra Start-menyen.
-            «Avslutt EmneKlar» stopper programmet på denne maskinen. Å lukke nettleserfanen stopper det ikke.
+            Utlogging gjelder bare dette vinduet; du åpner EmneKlar igjen fra Start-menyen. «Avslutt EmneKlar» stopper
+            programmet med en gang. Lukker du det siste vinduet, avsluttes EmneKlar av seg selv etter noen sekunder,
+            når jobbene som kjører, er ferdige.
           </p>
           <QuitDialog open={quitting} onClose={() => setQuitting(false)} />
         </div>

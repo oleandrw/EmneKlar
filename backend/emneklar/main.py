@@ -26,6 +26,7 @@ from emneklar.api.router import api_routers
 from emneklar.config import RuntimeConfig
 from emneklar.core.container import AppContainer
 from emneklar.core.errors import MESSAGES, AppError
+from emneklar.core.presence import WindowPresence
 from emneklar.core.security.web import SecurityMiddleware
 
 log = logging.getLogger(__name__)
@@ -62,6 +63,8 @@ def create_app(container: AppContainer | None = None, *, config: RuntimeConfig |
         openapi_url="/api/openapi.json" if config.dev_mode else None,
     )
     app.state.container = container
+    # Counts the open windows; the launcher arms it (core/presence.py), everything else leaves it unarmed.
+    app.state.presence = WindowPresence(running_jobs=lambda: len(container.jobs.list(active_only=True)))
 
     @app.exception_handler(AppError)
     async def app_error(_: Request, exc: AppError) -> JSONResponse:

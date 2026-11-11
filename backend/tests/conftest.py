@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from emneklar.config import DEFAULT_PORT, RuntimeConfig
+from emneklar.core import system
 from emneklar.core.auth.secrets import MemorySecretStore
 from emneklar.core.container import AppContainer
 from emneklar.main import create_app
@@ -26,6 +27,17 @@ def _never_the_real_data_folder(tmp_path_factory: pytest.TempPathFactory, monkey
     """No test may read or write the user's own data folder – or start the one-time copy from the old folder name.
     Anything that resolves the data folder from the environment gets a throw-away folder."""
     monkeypatch.setenv("EMNEKLAR_DATA_DIR", str(tmp_path_factory.mktemp("datamappe")))
+
+
+@pytest.fixture(autouse=True)
+def _never_a_real_browser(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may open a window or a tab in the user's browser. A test that checks how EmneKlar is shown replaces
+    these two itself."""
+    def refuse(*args: object, **kwargs: object) -> bool:
+        raise AssertionError("a test tried to open the user's browser")
+
+    monkeypatch.setattr(system, "_start_detached", refuse)
+    monkeypatch.setattr(system.webbrowser, "open", refuse)
 
 
 @pytest.fixture

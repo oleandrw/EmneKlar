@@ -140,6 +140,7 @@ function Faq() {
   const items: [string, ReactNode][] = [
     ["Kan EmneKlar bekrefte at emnet er universelt utformet?", "Nei. Automatiske kontroller finner mange vanlige feil, men mange krav kan bare vurderes av et menneske. Funn merket «Manuell kontroll» og innhold i eksterne verktøy må du vurdere selv."],
     ["Endrer EmneKlar noe i Canvas uten at jeg vet det?", "Nei. Analyser leser bare. Endringer skjer først når du publiserer dem fra endringskøen, og alt logges."],
+    ["Hvorfor åpnes EmneKlar i Edge eller Chrome?", "EmneKlar kjører på denne maskinen og vises i et eget vindu uten adresselinje og faner. Vinduet lages av Google Chrome hvis det er standardnettleseren din, ellers av Microsoft Edge, som følger med Windows. Lenker til Canvas og andre nettsteder åpnes i nettleseren. Finnes verken Edge eller Chrome, åpnes EmneKlar i en vanlig fane i standardnettleseren."],
     ["Hvor lagres Canvas-tokenet?", "I Windows Legitimasjonsbehandling. Det lagres aldri i filer, i databasen, i nettleseren eller i logger."],
     ["Sender EmneKlar innhold til KI?", "Bare hvis du har satt opp en KI-leverandør og slått på «Tillat sending av emneinnhold til ekstern KI». Du ser hva som sendes før det sendes. Studentenes innleveringer, karakterer og meldinger sendes aldri."],
     ["Hvorfor er en lenke merket «Krever innlogging» eller «Tidsavbrudd»?", "Noen nettsteder krever innlogging, avviser automatiske besøk eller svarer tregt. Det betyr ikke at lenken er død. Kontroller den i nettleseren."],
@@ -198,9 +199,9 @@ function Tips() {
 
 function Troubleshooting() {
   const items: [string, ReactNode][] = [
-    ["«Økten er ikke gyldig»", "Start EmneKlar på nytt fra Start-menyen eller skrivebordet. Nettleseren åpnes da med en ny innlogging. Data og innstillinger påvirkes ikke."],
-    ["Hvordan avslutter jeg EmneKlar?", "Velg «Avslutt EmneKlar» i kontomenyen nederst til venstre, under Innstillinger → Sikkerhet og personvern, eller i Start-menyen. EmneKlar har ikke noe eget vindu, så programmet kjører videre selv om du lukker nettleserfanen."],
-    ["EmneKlar starter ikke, eller nettleseren åpnes ikke", "Prøv snarveien i Start-menyen en gang til. Hjelper ikke det, kjører du installasjonsprogrammet på nytt – dataene og innstillingene dine beholdes. Loggen ligger i %LOCALAPPDATA%\\EmneKlar\\logs."],
+    ["«Økten er ikke gyldig»", "Start EmneKlar på nytt fra Start-menyen eller skrivebordet. EmneKlar åpnes da med en ny innlogging. Data og innstillinger påvirkes ikke."],
+    ["Hvordan avslutter jeg EmneKlar?", "Lukk vinduet. Når det siste EmneKlar-vinduet er lukket, avsluttes programmet etter noen sekunder – kjører en jobb, gjøres den ferdig først. Vil du avslutte med en gang, velger du «Avslutt EmneKlar» i kontomenyen nederst til venstre, under Innstillinger → Sikkerhet og personvern, eller i Start-menyen."],
+    ["EmneKlar starter ikke, eller vinduet åpnes ikke", "Prøv snarveien i Start-menyen en gang til. Hjelper ikke det, kjører du installasjonsprogrammet på nytt – dataene og innstillingene dine beholdes. Loggen ligger i %LOCALAPPDATA%\\EmneKlar\\logs."],
     ["«Canvas avviste tokenet»", <>Tokenet kan være utløpt eller slettet. Lag et nytt i Canvas og legg det inn under <Link to="/innstillinger/canvas-tilkobling">Canvas-tilkobling</Link>.</>],
     ["«Canvas ber EmneKlar vente»", "Canvas begrenser antall forespørsler. EmneKlar venter og prøver igjen automatisk. Du kan senke «Samtidige forespørsler til Canvas» under Innstillinger → Analyse."],
     ["«Fant ingen sikker nøkkelring»", "EmneKlar trenger Windows Legitimasjonsbehandling for å lagre token. Kontakt IT-støtte hvis den er sperret på maskinen."],

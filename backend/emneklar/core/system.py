@@ -1,9 +1,9 @@
 """The thin layer between EmneKlar and the machine it runs on.
 
 Everything that differs between Windows, macOS and Linux is decided here: where one user's data is kept, how a
-folder is shown, how a message reaches the user when EmneKlar runs without a console window, and which bundled
-Python runtime belongs to the machine. The rest of the program asks this module instead of testing
-``sys.platform`` in many places.
+folder is shown, how a message reaches the user when EmneKlar runs without a console window, how the user interface
+is shown (a window of its own), and which bundled Python runtime belongs to the machine. The rest of the program
+asks this module instead of testing ``sys.platform`` in many places.
 
 Only the standard library is imported: ``scripts/setup.py`` and ``scripts/update.py`` use this module before the
 dependencies are installed. Windows is the platform EmneKlar is released and tested for; what is known to work on
@@ -14,9 +14,12 @@ from __future__ import annotations
 
 import os
 import platform
+import subprocess
 import sys
 import sysconfig
-from pathlib import Path
+import webbrowser
+from collections.abc import Callable, Sequence
+from pathlib import Path, PureWindowsPath
 
 
 class UnsupportedOnThisPlatform(RuntimeError):
@@ -113,3 +116,103 @@ def open_folder(path: Path) -> None:
     if sys.platform != "win32":
         raise UnsupportedOnThisPlatform("Å åpne mapper støttes bare på Windows.")
     os.startfile(path)  # noqa: S606 - callers pass fixed, known folders
+
+
+# -- showing the user interface -------------------------------------------------------------------------------------
+
+#: Browsers that can show a page in a window of its own, without address bar or tabs (Chromium's ``--app=<url>``).
+#: Microsoft Edge comes with Windows 10 and 11; Google Chrome is used when it is the default browser or Edge is missing.
+APP_WINDOW_BROWSERS = ("msedge.exe", "chrome.exe")
+_VENDOR_FOLDERS = {"msedge.exe": ("Microsoft", "Edge"), "chrome.exe": ("Google", "Chrome")}
+
+
+def executable_in_command(command: str | None) -> str | None:
+    """The program in a Windows open command, such as ``"C:\\…\\msedge.exe" --single-argument %1``."""
+    text = (command or "").strip()
+    if text.startswith('"'):
+        end = text.find('"', 1)
+        return text[1:end] if end > 1 else None
+    end = text.lower().find(".exe")
+    return text[:end + 4] if end > 0 else None
+
+
+def choose_app_window_browser(default_command: str | None, installed: Sequence[Path], *,
+                              exists: Callable[[Path], bool] = Path.is_file) -> Path | None:
+    """The browser that draws EmneKlar's window: the default browser when it can show an app window, otherwise the
+    first of ``installed`` (Edge before Chrome) that is on the machine. None: a normal browser tab is used."""
+    default = executable_in_command(default_command)
+    candidates = [Path(default)] if default and PureWindowsPath(default).name.lower() in APP_WINDOW_BROWSERS else []
+    candidates += [path for path in installed if PureWindowsPath(path).name.lower() in APP_WINDOW_BROWSERS]
+    return next((path for path in candidates if exists(path)), None)
+
+
+def _registry_text(hive: str, key: str, name: str = "") -> str | None:
+    """A text value from the registry of this user (``HKCU``), the machine (``HKLM``) or ``HKCR``; None if missing."""
+    if sys.platform != "win32":
+        return None
+    import winreg
+
+    roots = {"HKCU": winreg.HKEY_CURRENT_USER, "HKLM": winreg.HKEY_LOCAL_MACHINE, "HKCR": winreg.HKEY_CLASSES_ROOT}
+    try:
+        with winreg.OpenKey(roots[hive], key) as handle:
+            value, kind = winreg.QueryValueEx(handle, name)
+    except OSError:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return os.path.expandvars(value) if kind == winreg.REG_EXPAND_SZ else value
+
+
+def _default_browser_command() -> str | None:
+    """How Windows opens a web address for this user: the open command of the default browser."""
+    for scheme in ("https", "http"):
+        for choice in ("UserChoiceLatest", "UserChoice"):
+            associations = "Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations"
+            prog_id = _registry_text("HKCU", f"{associations}\\{scheme}\\{choice}", "ProgId")
+            if prog_id:
+                return _registry_text("HKCR", f"{prog_id}\\shell\\open\\command")
+    return None
+
+
+def _installed_app_window_browsers() -> list[Path]:
+    """Where Edge and Chrome are registered or usually installed, Edge first. Not checked for existence here."""
+    found: list[Path] = []
+    for exe in APP_WINDOW_BROWSERS:
+        for hive in ("HKCU", "HKLM"):
+            registered = _registry_text(hive, f"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{exe}")
+            if registered:
+                found.append(Path(registered.strip().strip('"')))
+        for base in ("PROGRAMFILES(X86)", "PROGRAMFILES", "LOCALAPPDATA"):
+            if os.environ.get(base):
+                found.append(Path(os.environ[base], *_VENDOR_FOLDERS[exe], "Application", exe))
+    return found
+
+
+def app_window_browser() -> Path | None:
+    """The browser that shows EmneKlar in a window of its own on this machine. None: a normal tab is used."""
+    if sys.platform != "win32":
+        return None  # only Windows is built and tested (docs/PLATFORMS.md); elsewhere EmneKlar opens in a tab
+    return choose_app_window_browser(_default_browser_command(), _installed_app_window_browsers())
+
+
+def _start_detached(command: list[str], cwd: Path) -> None:
+    """Start a program that lives on after EmneKlar has stopped – the user's browser."""
+    subprocess.Popen(command, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, close_fds=True)  # a browser found above, given our own address
+
+
+def open_user_interface(url: str) -> bool:
+    """Show EmneKlar's user interface at ``url`` (EmneKlar's own address on 127.0.0.1).
+
+    In a window of its own – Edge or Chrome in app mode: no address bar or tabs, a button of its own on the taskbar –
+    where the machine has one of them; otherwise in a tab of the default browser. False: neither could be opened.
+    The browser is started in its own folder, so it never keeps the program folder in use (updates, uninstalling).
+    """
+    browser = app_window_browser()
+    if browser is not None:
+        try:
+            _start_detached([str(browser), f"--app={url}"], cwd=browser.parent)
+            return True
+        except OSError:
+            pass  # e.g. removed since it was looked up: a normal tab still works
+    return webbrowser.open(url)

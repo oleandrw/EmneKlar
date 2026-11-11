@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 import re
+import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -82,11 +84,76 @@ def test_opening_a_folder_is_windows_only_and_says_so(monkeypatch: pytest.Monkey
     assert opened == [tmp_path]
 
 
+EDGE = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
+CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+
+
+def test_the_program_is_read_from_the_open_command_of_a_browser() -> None:
+    assert system.executable_in_command(f'"{EDGE}" --single-argument %1') == EDGE
+    assert system.executable_in_command(f"{CHROME} -- %1") == CHROME
+    for nothing in (None, "", '"', "rundll32 url.dll,FileProtocolHandler %1"):
+        assert system.executable_in_command(nothing) is None, nothing
+
+
+def test_the_window_is_drawn_by_the_default_browser_when_it_can_and_by_edge_or_chrome_otherwise() -> None:
+    installed = [Path(EDGE), Path(CHROME)]
+
+    def on_machine(*paths: str) -> Callable[[Path], bool]:
+        return lambda path: str(path) in paths
+
+    choose = system.choose_app_window_browser
+    assert str(choose(f'"{CHROME}" --single-argument %1', installed, exists=on_machine(EDGE, CHROME))) == CHROME
+    firefox = '"C:\\Program Files\\Mozilla Firefox\\firefox.exe" -osint -url "%1"'
+    assert str(choose(firefox, installed, exists=on_machine(EDGE, CHROME, "firefox"))) == EDGE, "no app window"
+    assert str(choose(None, installed, exists=on_machine(CHROME))) == CHROME, "Edge removed"
+    assert str(choose(f'"{CHROME}" %1', installed, exists=on_machine(EDGE))) == EDGE, "a stale default"
+    assert choose(firefox, installed, exists=on_machine("firefox")) is None, "then a normal tab"
+
+
+def test_emneklar_opens_in_a_window_of_its_own_and_in_a_tab_when_that_is_not_possible(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    url = "http://127.0.0.1:8770/auth/launch?token=engangs"
+    browser = tmp_path / "Edge" / "msedge.exe"
+    started: list[tuple[list[str], Path]] = []
+    tabs: list[str] = []
+    monkeypatch.setattr(system, "_start_detached", lambda command, cwd: started.append((command, cwd)))
+    monkeypatch.setattr(system.webbrowser, "open", lambda address: tabs.append(address) or True)
+
+    monkeypatch.setattr(system, "app_window_browser", lambda: browser)
+    assert system.open_user_interface(url)
+    assert started == [([str(browser), f"--app={url}"], browser.parent)] and tabs == [], \
+        "app mode, started in the browser's own folder – never in the program folder"
+
+    def gone(command: list[str], cwd: Path) -> None:
+        raise FileNotFoundError(command[0])
+
+    monkeypatch.setattr(system, "_start_detached", gone)
+    assert system.open_user_interface(url) and tabs == [url], "the browser could not be started: a tab"
+    monkeypatch.setattr(system, "app_window_browser", lambda: None)
+    assert system.open_user_interface(url) and tabs == [url, url], "no Edge or Chrome: a tab"
+    monkeypatch.setattr(system.webbrowser, "open", lambda address: False)
+    assert not system.open_user_interface(url), "nothing could be opened: the caller tells the user"
+
+
+def test_only_windows_looks_for_an_app_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("darwin", "linux"):
+        monkeypatch.setattr(system.sys, "platform", name)
+        assert system.app_window_browser() is None, "not built or tested there (docs/PLATFORMS.md): a tab"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Edge and Chrome are looked up in the Windows registry")
+def test_windows_has_a_browser_that_can_show_the_window() -> None:
+    """Microsoft Edge comes with Windows 10 and 11 (and the Windows runners in CI)."""
+    browser = system.app_window_browser()
+    assert browser is not None and browser.is_file() and browser.name.lower() in system.APP_WINDOW_BROWSERS
+
+
 def test_the_layer_uses_only_the_standard_library() -> None:
     """scripts/setup.py and scripts/update.py import it before any dependency is installed."""
     source = (REPO_DIR / "backend" / "emneklar" / "core" / "system.py").read_text(encoding="utf-8")
     imported = set(re.findall(r"^(?:import|from)\s+([a-zA-Z_][\w.]*)", source, re.MULTILINE))
-    assert imported <= {"__future__", "os", "platform", "sys", "sysconfig", "pathlib", "ctypes"}, imported
+    assert imported <= {"__future__", "os", "platform", "subprocess", "sys", "sysconfig", "webbrowser",
+                        "collections.abc", "pathlib", "ctypes", "winreg"}, imported
 
 
 def test_platform_checks_stay_in_the_thin_layer() -> None:

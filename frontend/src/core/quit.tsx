@@ -40,7 +40,7 @@ export function QuitDialog({ open, onClose }: { open: boolean; onClose: () => vo
       title="Avslutte EmneKlar?" confirmLabel={warning ? "Avslutt likevel" : "Avslutt EmneKlar"}
       danger={warning !== null} loading={quit.isPending}>
       <p>
-        EmneKlar stopper på denne maskinen, og denne fanen mister kontakten. Du starter programmet igjen fra
+        EmneKlar stopper på denne maskinen, og denne siden mister kontakten. Du starter programmet igjen fra
         Start-menyen eller skrivebordet. Data og innstillinger beholdes, og ingenting endres i Canvas.
       </p>
       {warning ? <Alert tone="warning" title="Jobber kjører">{warning}</Alert> : null}

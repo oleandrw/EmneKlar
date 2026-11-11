@@ -2885,12 +2885,6 @@ button.ek-metric-card[aria-pressed="true"] {
   font-weight: var(--weight-normal);
   color: var(--color-text-muted);
 }
-/* «Avslutt EmneKlar» at the far end of the brand row. */
-.ek-setup__quit {
-  margin-left: auto;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-normal);
-}
 .ek-setup__panel {
   display: flex;
   flex-direction: column;

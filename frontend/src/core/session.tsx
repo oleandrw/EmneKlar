@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { Alert, Spinner } from "../design-system";
 import { api, ApiError, onSessionExpired, setCsrfToken } from "./api/client";
 import type { SessionData } from "./api/types";
+import { announceWindow } from "./presence";
 import { onAppStopped } from "./quit";
 
 const SessionContext = createContext<SessionData | null>(null);
@@ -53,6 +54,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => onSessionExpired(() => setExpired(true)), []);
   useEffect(() => onAppStopped(() => setStopped(true)), []);
+  // While this window shows EmneKlar, it keeps EmneKlar running; when the last window is closed, EmneKlar stops.
+  const shown = Boolean(query.data) && !expired && !stopped;
+  useEffect(() => (shown ? announceWindow() : undefined), [shown]);
 
   useEffect(() => {
     if (query.data) {
@@ -68,7 +72,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       <main className="ek-shell__content ek-message-page">
         <h1>EmneKlar er avsluttet</h1>
         <p className="ek-mt-4">
-          Programmet kjører ikke lenger på denne maskinen, og du kan lukke denne fanen. Start EmneKlar igjen fra
+          Programmet kjører ikke lenger på denne maskinen, og du kan lukke vinduet. Start EmneKlar igjen fra
           Start-menyen eller skrivebordet. Data og innstillinger er beholdt.
         </p>
       </main>
@@ -79,7 +83,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       <main className="ek-shell__content ek-message-page">
         <h1>Økten er ikke gyldig</h1>
         <p className="ek-mt-4">
-          Start EmneKlar på nytt fra <strong>Start-menyen</strong> eller skrivebordet. Nettleseren åpnes da automatisk
+          Start EmneKlar på nytt fra <strong>Start-menyen</strong> eller skrivebordet. EmneKlar åpnes da automatisk
           med en ny innlogging. Lagrede data og innstillinger er ikke påvirket.
         </p>
       </main>

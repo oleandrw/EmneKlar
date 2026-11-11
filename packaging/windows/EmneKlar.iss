@@ -106,9 +106,9 @@ Source: "EmneKlar.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 ; pythonw.exe: no console window. The browser is EmneKlar's user interface.
-Name: "{group}\{#AppName}"; Filename: "{app}\runtime\pythonw.exe"; Parameters: "-m emneklar"; WorkingDir: "{app}"; IconFilename: "{app}\EmneKlar.ico"; Comment: "Start EmneKlar. Nettleseren åpnes automatisk."
+Name: "{group}\{#AppName}"; Filename: "{app}\runtime\pythonw.exe"; Parameters: "-m emneklar"; WorkingDir: "{app}"; IconFilename: "{app}\EmneKlar.ico"; Comment: "Start EmneKlar i et eget vindu."
 Name: "{group}\Avslutt {#AppName}"; Filename: "{app}\runtime\pythonw.exe"; Parameters: "-m emneklar.manage stop"; WorkingDir: "{app}"; IconFilename: "{app}\EmneKlar.ico"; Comment: "Stopp EmneKlar på denne maskinen."
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\runtime\pythonw.exe"; Parameters: "-m emneklar"; WorkingDir: "{app}"; IconFilename: "{app}\EmneKlar.ico"; Comment: "Start EmneKlar. Nettleseren åpnes automatisk."; Tasks: desktopicon
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\runtime\pythonw.exe"; Parameters: "-m emneklar"; WorkingDir: "{app}"; IconFilename: "{app}\EmneKlar.ico"; Comment: "Start EmneKlar i et eget vindu."; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\runtime\pythonw.exe"; Parameters: "-m emneklar"; WorkingDir: "{app}"; Description: "Start {#AppName} nå"; Flags: postinstall nowait skipifsilent

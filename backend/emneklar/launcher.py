@@ -1,19 +1,23 @@
-"""Start EmneKlar and open the browser with a one-time login link.
+"""Start EmneKlar and show it – in a window of its own – with a one-time login link.
 
     python -m emneklar.launcher [--port 8770] [--no-browser]
 
 ``EMNEKLAR_NO_BROWSER=1`` does the same as ``--no-browser`` (for tests and scripts that start EmneKlar the way
 the shortcut or the updater does, where no argument can be added).
 
+* EmneKlar is shown in a window of its own: Edge or Chrome in app mode, without
+  address bar or tabs (``core/system.open_user_interface``). Without either of
+  them it opens in a tab of the default browser.
 * If EmneKlar is already running for this Windows user, a new login link is
-  requested from the running instance (local control channel) and the
-  browser is opened – no second server is started.
+  requested from the running instance (local control channel) and a new window
+  is opened – no second server is started.
 * The server only ever listens on 127.0.0.1.
 * Started from the shortcut (``pythonw.exe``) there is no console window: the
-  browser is the whole user interface, a start-up problem is shown in a message
-  box, and EmneKlar is stopped with «Avslutt EmneKlar» in the program or in the
-  Start menu. Started with ``start.bat`` there is a console window: closing it
-  (or Ctrl+C) stops EmneKlar.
+  browser window is the whole user interface, and a start-up problem is shown in
+  a message box. EmneKlar stops when its last window has been closed
+  (``core/presence.py``), or at once with «Avslutt EmneKlar» in the program or in
+  the Start menu. Started with ``start.bat`` there is a console window as well:
+  closing it (or Ctrl+C) stops EmneKlar too.
 """
 
 from __future__ import annotations
@@ -26,7 +30,6 @@ import socket
 import sys
 import threading
 import time
-import webbrowser
 
 import uvicorn
 
@@ -36,7 +39,7 @@ from emneklar.core.container import AppContainer
 from emneklar.core.logging_setup import configure_logging
 from emneklar.core.storage.db import ForeignDatabaseError, database_owner
 from emneklar.core.storage.legacy import prepare_data_dir
-from emneklar.core.system import has_console, prepare_standard_streams, tell_user
+from emneklar.core.system import has_console, open_user_interface, prepare_standard_streams, tell_user
 from emneklar.main import create_app
 from emneklar.manage import fetch_health, request_launch_url, running_instance
 
@@ -63,12 +66,13 @@ def _announce(url: str, open_browser: bool) -> None:
     if has_console():
         print(
             f"\n  {APP_NAME} {__version__} kjører lokalt på denne maskinen.\n"
-            "  Åpne denne lenken hvis nettleseren ikke åpnes av seg selv (gyldig i 5 minutter, kan brukes én gang):\n"
+            "  Åpne denne lenken i nettleseren hvis EmneKlar ikke åpnes av seg selv (gyldig i 5 minutter, kan brukes "
+            "én gang):\n"
             f"  {url}\n"
             "  Lukk dette vinduet for å avslutte EmneKlar.\n",
             flush=True,
         )
-    if open_browser and not webbrowser.open(url) and not has_console():
+    if open_browser and not open_user_interface(url) and not has_console():
         tell_user(APP_NAME, f"{APP_NAME} kjører, men nettleseren lot seg ikke åpne. Åpne denne adressen i nettleseren "
                             f"selv (gyldig i 5 minutter, kan brukes én gang):\n\n{url}")
 
@@ -108,9 +112,9 @@ def main(argv: list[str] | None = None) -> int:
     if existing is not None:
         url = request_launch_url(existing)
         if url:
-            print(f"{APP_NAME} kjører allerede. Åpner nettleseren …", flush=True)
+            print(f"{APP_NAME} kjører allerede. Åpner et nytt vindu …", flush=True)
             if open_browser:
-                webbrowser.open(url)
+                open_user_interface(url)
             return 0
 
     configure_logging(config.logs_dir)
@@ -134,7 +138,15 @@ def main(argv: list[str] | None = None) -> int:
             app, host=config.host, port=config.port, log_config=None, access_log=False, proxy_headers=False,
             server_header=False, date_header=False, timeout_graceful_shutdown=5,
         ))
-        app.state.request_shutdown = lambda: setattr(server, "should_exit", True)
+        presence = app.state.presence
+
+        def request_shutdown() -> None:
+            presence.stopping.set()  # the windows' connections end at once instead of holding up the stop
+            server.should_exit = True
+
+        app.state.request_shutdown = request_shutdown
+        if open_browser:  # EmneKlar shows a window itself: closing the last one stops it, like any program
+            presence.stop = request_shutdown
         token = config.dev_launch_token or container.sessions.new_launch_token()
         url = f"{config.origin}/auth/launch?token={token}"
         threading.Thread(target=_wait_and_open, args=(url, config.origin, open_browser), daemon=True).start()

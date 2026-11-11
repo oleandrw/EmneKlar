@@ -14,11 +14,20 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   Installasjonsprogrammet stopper et EmneKlar som kjører, nekter å legge en eldre versjon over en nyere, og
   kontrollerer til slutt at programmet kan lastes. Det er **ikke kodesignert** ennå, så Windows SmartScreen advarer om
   ukjent utgiver. Zip-pakken med `setup.bat` og egen Python er beholdt som reserveløsning.
-- **Start uten konsollvindu og «Avslutt EmneKlar»:** snarveien starter EmneKlar uten konsollvindu – nettleseren er
-  brukergrensesnittet. Programmet avsluttes med «Avslutt EmneKlar» i kontomenyen, under Innstillinger → Sikkerhet og
-  personvern, øverst i oppsettsveiviseren eller i Start-menyen; det advarer først hvis jobber kjører. Å lukke nettleserfanen stopper ikke
-  programmet. Feil ved oppstart vises i en meldingsboks, og nettleseren åpnes bare når EmneKlar faktisk svarer.
-  `EMNEKLAR_NO_BROWSER=1` gjør det samme som `--no-browser`.
+- **Start uten konsollvindu og «Avslutt EmneKlar»:** snarveien starter EmneKlar uten konsollvindu. «Avslutt EmneKlar»
+  i kontomenyen, under Innstillinger → Sikkerhet og personvern eller i Start-menyen stopper programmet med en gang;
+  det advarer først hvis jobber kjører. Feil ved oppstart vises i en meldingsboks, og vinduet åpnes bare når
+  EmneKlar faktisk svarer. `EMNEKLAR_NO_BROWSER=1` gjør det samme som `--no-browser`.
+- **Ikonet er EmneKlar-logoen:** vinduet, nettleserfanen, snarveiene og installasjonsprogrammet viser den åpne boken
+  med hake som står i programmet – ikke lenger en hake på en mørkeblå firkant.
+- **EmneKlar i et eget vindu:** programmet åpnes i et eget vindu uten adresselinje og faner, med egen knapp på
+  oppgavelinjen. Vinduet lages av Google Chrome når det er standardnettleseren, ellers av Microsoft Edge, som følger
+  med Windows. Lenker til Canvas og andre nettsteder åpnes i nettleseren. Uten Edge og Chrome – og utenfor Windows –
+  åpnes EmneKlar i en vanlig fane som før (`core/system.py`).
+- **Lukk vinduet for å avslutte:** når det siste EmneKlar-vinduet er lukket, avsluttes programmet etter 15 sekunder
+  (en omlasting av siden rekker å komme tilbake før det). Jobber som kjører, gjøres ferdige først. Hvert vindu holder
+  én forbindelse åpen til `/api/system/presence` (`core/presence.py`). Gjelder bare når EmneKlar har åpnet vinduet
+  selv – ikke med `--no-browser`/`EMNEKLAR_NO_BROWSER=1`, i testene eller i CI.
 - **Oppdatering av en installasjon med innebygd kjøretid:** `update.bat` og «Oppdater nå» virker på en installert
   utgivelse uten Python på maskinen. Trenger den nye versjonen en annen kjøretid, hentes den fra samme utgivelse,
   kontrolleres mot SHA-256 i programpakkens `install.json` og byttes som en hel mappe; er kjøretiden den samme, hentes
