@@ -53,7 +53,8 @@ def current(root: Path) -> str:
 
 
 def next_minor(version: str) -> str:
-    major, minor, _patch = (int(p) for p in version.split("."))
+    """The next minor version – also after a pre-release such as 0.2.0-alpha.1 (then 0.3.0)."""
+    major, minor, _patch = (int(p) for p in version.split("-", 1)[0].split("."))
     return f"{major}.{minor + 1}.0"
 
 

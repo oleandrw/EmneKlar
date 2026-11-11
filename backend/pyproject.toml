@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "emneklar"
 # Must match ../VERSION (checked by tests/test_version.py; bump with scripts/bump_version.py).
-version = "0.1.0"
+version = "0.2.0-alpha.1"
 description = "EmneKlar – lokal analyse, kvalitetssikring og forbedring av Canvas-emner."
 requires-python = ">=3.11"
 dependencies = [
