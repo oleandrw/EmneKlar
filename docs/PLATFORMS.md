@@ -10,7 +10,7 @@ Status per 11. november 2026. «I GitHub Actions» betyr at jobben har kjørt og
 
 | Plattform | Pakke | Bygget | Testet | Signert | Trygt å publisere som stabil |
 |---|---|---|---|---|---|
-| Windows 10/11, x64 | Installasjonsprogram med innebygd kjøretid (`EmneKlar-<versjon>-setup.exe`) | Ja – lokalt på Windows 11 og på en ren Windows-kjører i GitHub Actions | Ja. Lokalt og i GitHub Actions (jobben `windows-package`, 11.11.2026): installasjon, start uten konsollvindu, avslutting, reinstallasjon mens programmet kjører, avinstallering, oppdatering med bytte av kjøretid og tilbakerulling. Bare lokalt: vernet mot nedgradering og oppdatering med samme kjøretid | Nei – Authenticode-sertifikat mangler. Python-filene i kjøretiden er signert av Python Software Foundation | Ja. Kjent ulempe: SmartScreen advarer om ukjent utgiver. Selve utgivelsesjobben (`release.yml`) har ikke kjørt – den går første gang en tag pushes |
+| Windows 10/11, x64 | Installasjonsprogram med innebygd kjøretid (`EmneKlar-<versjon>-setup.exe`) | Ja – lokalt på Windows 11 og på en ren Windows-kjører i GitHub Actions | Ja. Lokalt og i GitHub Actions (jobben `windows-package`, 11.11.2026): installasjon, start uten konsollvindu, avslutting, reinstallasjon mens programmet kjører, avinstallering, oppdatering med bytte av kjøretid og tilbakerulling. Bare lokalt: vernet mot nedgradering og oppdatering med samme kjøretid | Nei – Authenticode-sertifikat mangler. Python-filene i kjøretiden er signert av Python Software Foundation | Ja. Utgivelsesjobben (`release.yml`) har publisert forhåndsversjonen 0.2.0-alpha.1 (11.11.2026). Kjent ulempe uten signatur: SmartScreen advarer om ukjent utgiver, og Chrome kan blokkere nedlastingen |
 | Windows 10/11, x64 | Zip-pakke med egen Python (`setup.bat`) – reserveløsning | Ja | Ja: `setup.bat`, start og stopp lokalt og i CI-jobben `windows-install` (11.11.2026); oppdateringen er dekket av enhetstester | – | Ja, som reserveløsning for dem som har Python |
 | Windows på ARM | Ingen egen pakke. x64-pakken kan trolig kjøre under emulering | Nei | Nei | – | Nei – ikke prøvd |
 | macOS, Apple Silicon (arm64) | Ingen | Nei | Bare én ting: programmet starter fra kildekoden og svarer på `/api/health` i GitHub Actions (`macos-latest`, 11.11.2026). Ingen pakke, installasjon, nøkkelring eller oppdatering er prøvd | Nei – krever Apple Developer ID | Nei |
@@ -37,10 +37,12 @@ Løsningen er beskrevet i [UPDATING.md](UPDATING.md) og [DEVELOPMENT.md](DEVELOP
 
 Det som gjenstår på Windows:
 
-* **Kodesignering** av installasjonsprogrammet (sertifikat mangler).
+* **Kodesignering** av installasjonsprogrammet (sertifikat mangler). Uten den advarer SmartScreen, og Chrome kan stoppe
+  nedlastingen som «farlig» – det skjedde med installasjonsprogrammet fra CI 11.11.2026.
 * **Signerte utgivelser** (Ed25519) – verktøy og arbeidsflyt er klare, nøkkelparet er ikke laget.
-* **Første kjøring av utgivelsesjobben** (`release.yml`, jobben `windows`). Den bygger og kontrollerer pakken med de
-  samme stegene som CI-jobben `windows-package`, som har kjørt, men selve publiseringen er ikke prøvd.
+* **Oppdatering fra en ekte GitHub-utgivelse** på en installert maskin («Oppdater nå» til 0.2.0-alpha.1). Utgivelsesjobben
+  kjørte første gang 11.11.2026 for taggen `v0.2.0-alpha.1`, besto alle stegene og publiserte forhåndsversjonen; den
+  prøver oppdateringen med lokale filer før den publiserer, men en oppdatering som henter fra GitHub, er ikke prøvd ennå.
 * **Windows på ARM** er ikke prøvd.
 * **Styrte maskiner:** der IT har sperret kjøring av programmer fra brukerens egen profil (AppLocker/WDAC), kan en
   installasjon per bruker ikke kjøre. Det kan EmneKlar ikke omgå.
@@ -132,5 +134,5 @@ Gjenstår før en Linux-pakke kan gis ut:
 | `platform-smoke` (Ubuntu, macOS arm64, macOS Intel) | `main` og manuelt, `continue-on-error` | starter programmet fra kildekoden og sjekker `/api/health`. Ikke en støtteerklæring | Nei |
 | `release` → `windows` | når en tag `v*` pushes | bygger og **verifiserer** Windows-pakken, og publiserer først da | Ja – bare Windows |
 
-Jobbene `windows-package`, `windows-install` og `platform-smoke` kjørte første gang 11.11.2026 og besto.
-Utgivelsesjobben har ikke kjørt: den starter først når en tag `v*` pushes.
+Jobbene `windows-package`, `windows-install` og `platform-smoke` kjørte første gang 11.11.2026 og besto. Utgivelsesjobben
+kjørte første gang samme dag, for taggen `v0.2.0-alpha.1`: alle stegene besto, og forhåndsversjonen ble publisert.

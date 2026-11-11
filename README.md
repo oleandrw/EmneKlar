@@ -32,7 +32,8 @@ Python eller andre verktøy – alt EmneKlar trenger, følger med.
 1. Last ned **`EmneKlar-<versjon>-setup.exe`** fra [siste utgivelse](https://github.com/oleandrw/EmneKlar/releases/latest).
 2. Kjør filen og følg veiviseren. EmneKlar installeres bare for deg, i `%LOCALAPPDATA%\Programs\EmneKlar`, med snarvei
    i Start-menyen og – hvis du vil – på skrivebordet. Ingenting lastes ned under installasjonen.
-   * Installasjonsprogrammet er foreløpig **ikke signert**. Windows kan derfor vise «Windows beskyttet PC-en din».
+   * Installasjonsprogrammet er foreløpig **ikke signert**. Chrome kan derfor stoppe nedlastingen (åpne nedlastingene
+     med Ctrl+J og velg å beholde filen), og Windows kan vise «Windows beskyttet PC-en din».
      Har du lastet ned filen fra lenken over, velger du **Mer informasjon → Kjør likevel**. Vil du kontrollere filen
      først, sammenligner du SHA-256 med `EmneKlar-<versjon>-setup.exe.sha256` i utgivelsen (i PowerShell:
      `Get-FileHash EmneKlar-<versjon>-setup.exe`).

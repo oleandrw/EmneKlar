@@ -13,7 +13,8 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   følger med (`runtime\`), og verken installasjonen eller oppdateringen kjører pip eller laster ned pakker.
   Installasjonsprogrammet stopper et EmneKlar som kjører, nekter å legge en eldre versjon over en nyere, og
   kontrollerer til slutt at programmet kan lastes. Det er **ikke kodesignert** ennå, så Windows SmartScreen advarer om
-  ukjent utgiver. Zip-pakken med `setup.bat` og egen Python er beholdt som reserveløsning.
+  ukjent utgiver, og Chrome kan stoppe nedlastingen som «farlig». Zip-pakken med `setup.bat` og egen Python er beholdt
+  som reserveløsning.
 - **Start uten konsollvindu og «Avslutt EmneKlar»:** snarveien starter EmneKlar uten konsollvindu. «Avslutt EmneKlar»
   i kontomenyen, under Innstillinger → Sikkerhet og personvern eller i Start-menyen stopper programmet med en gang;
   det advarer først hvis jobber kjører. Feil ved oppstart vises i en meldingsboks, og vinduet åpnes bare når
@@ -226,7 +227,8 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   CI har fått samme kontroll på `main` (`windows-package`), Python 3.14 i testmatrisen (versjonen som følger med
   Windows-pakken), sårbarhetssjekk av de låste pakkene i kjøretiden, og en startprøve på Linux og macOS som aldri kan
   stoppe en utgivelse. Et installasjonsprogram som har bestått kontrollene i `windows-package`, lagres i 14 dager som
-  artefakt til prøving – ikke signert og ikke en utgivelse.
+  artefakt til prøving – ikke signert og ikke en utgivelse. Arbeidsflyten publiserte første gang forhåndsversjonen
+  0.2.0-alpha.1 (11.11.2026).
 - **Feilmeldinger og Hjelp forutsetter ikke lenger `start.bat`:** tekstene viser til Start-menyen og
   installasjonsprogrammet, og Hjelp → Feilsøking forklarer hvordan EmneKlar startes, avsluttes og repareres.
   `setup.bat` i en installasjon med innebygd kjøretid installerer ingenting – den kontrollerer installasjonen.
