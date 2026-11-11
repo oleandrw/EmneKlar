@@ -1,5 +1,5 @@
 {
-  "version": "2026.10.1",
+  "version": "2026.11.3",
   "verified_at": "2026-10-06",
   "comment": "EmneKlar accessibility rule registry. Classification and legal status are data: legal status is computed per finding from the selected regulatory profile. Change rules by adding a new ruleset version.",
   "rules": [
@@ -416,32 +416,83 @@
     {
       "id": "UU-MEDIA-CANVAS-CAPTIONS", "category": "media", "title": "Video i Canvas uten tekstspor",
       "wcag": ["1.2.2"], "testability": "heuristic", "severity": "serious", "classification": "likely_violation",
-      "explanation": "Canvas oppgir ingen teksting (tekstspor) for denne videoen eller lydfilen. Forhåndsinnspilt video med tale skal teksttes, også når bare én klasse har tilgang. (Er opptaket uten tale, gjelder ikke kravet.)",
+      "explanation": "Canvas oppgir ingen teksting (tekstspor) for videoen. Forhåndsinnspilt video med lyd skal ha teksting som følger lyden (WCAG 1.2.2): tale, hvem som snakker, og andre lyder som er viktige for å forstå innholdet – også når videoen bare er tilgjengelig for én klasse. Video uten tale kan derfor også trenge teksting, for eksempel når musikk eller lydeffekter bærer mening. En separat transkripsjon erstatter ikke teksting. Kravet gjelder ikke når videoen er et tydelig merket alternativ til tekst på siden. Har videoen ingen lyd i det hele tatt, gjelder 1.2.1 i stedet – angi da at det er video uten lyd.",
       "affected_users": "Døve og hørselshemmede, brukere med annet morsmål og alle som ser video uten lyd.",
-      "remediation": "Last opp eller lag teksting i Canvas (Studio/medieopplasting), og kontroller at automatisk teksting er korrekturlest.",
+      "remediation": "Last opp eller lag teksting i Canvas (Studio/medieopplasting), og korrekturles automatisk teksting. Er tekstingen brent inn i bildet, eller er videoen et tydelig merket alternativ til tekst på siden, kan du bekrefte det her.",
       "sources": [
         {"title": "Uutilsynet: Spørsmål og svar om video", "url": "https://www.uutilsynet.no/wcag-standarden/sporsmal-og-svar-om-video/895"},
-        {"title": "W3C: Understanding 1.2.2 Captions (Prerecorded)", "url": "https://www.w3.org/WAI/WCAG22/Understanding/captions-prerecorded.html"}
+        {"title": "W3C: Understanding 1.2.2 Captions (Prerecorded)", "url": "https://www.w3.org/WAI/WCAG21/Understanding/captions-prerecorded.html"}
       ],
-      "fix_policy": "manual"
+      "fix_policy": "manual",
+      "media_kind_choice": true,
+      "confirmations": [
+        {"id": "captions_present", "label": "Videoen har teksting likevel", "hint": "For eksempel teksting som er brent inn i bildet. Tekstingen skal følge lyden og ta med tale og andre lyder som er viktige for innholdet. En separat transkripsjon erstatter ikke teksting."},
+        {"id": "media_alternative", "label": "Videoen er et tydelig merket alternativ til tekst på siden", "hint": "Gjelder bare når siden sier tydelig at videoen gjengir teksten, og videoen ikke inneholder mer enn teksten."}
+      ]
     },
     {
       "id": "UU-MEDIA-EXTERNAL-CAPTIONS", "category": "media", "title": "Teksting kan ikke verifiseres automatisk",
       "wcag": ["1.2.2"], "testability": "manual", "severity": "moderate", "classification": "manual_check",
-      "explanation": "Videoen er innebygd fra en ekstern tjeneste (for eksempel YouTube eller Vimeo). Teksting kan ikke verifiseres automatisk. Video som er sentral i undervisningen, skal ha korrekt teksting.",
-      "affected_users": "Døve og hørselshemmede.",
-      "remediation": "Kontroller at videoen har riktig teksting (ikke bare ukorrigert automatisk teksting).",
-      "sources": [{"title": "Uutilsynet: Spørsmål og svar om video", "url": "https://www.uutilsynet.no/wcag-standarden/sporsmal-og-svar-om-video/895"}],
-      "fix_policy": "manual"
+      "explanation": "EmneKlar kunne ikke kontrollere tekstingen automatisk: videoen er innebygd fra en ekstern tjeneste (for eksempel Vimeo), YouTube svarte ikke, eller Canvas oppga ikke status. Forhåndsinnspilt video med lyd skal ha korrekt teksting som følger lyden (WCAG 1.2.2): tale, hvem som snakker, og andre lyder som er viktige for å forstå innholdet. En separat transkripsjon erstatter ikke teksting.",
+      "affected_users": "Døve og hørselshemmede, brukere med annet morsmål og alle som ser video uten lyd.",
+      "remediation": "Spill av videoen med teksting på og kontroller at tekstingen finnes og er korrekt (ikke bare ukorrigert automatisk teksting). Er opptaket bare lyd, eller video uten lyd, angi det – da gjelder et annet krav.",
+      "sources": [
+        {"title": "Uutilsynet: Spørsmål og svar om video", "url": "https://www.uutilsynet.no/wcag-standarden/sporsmal-og-svar-om-video/895"},
+        {"title": "W3C: Understanding 1.2.2 Captions (Prerecorded)", "url": "https://www.w3.org/WAI/WCAG21/Understanding/captions-prerecorded.html"}
+      ],
+      "fix_policy": "manual",
+      "media_kind_choice": true,
+      "confirmations": [
+        {"id": "captions_checked", "label": "Videoen har korrekt teksting", "hint": "Spill av videoen med teksting på. Tekstingen skal følge lyden og ta med tale og andre lyder som er viktige for innholdet. Ukorrigert automatisk teksting regnes vanligvis ikke som tilstrekkelig."},
+        {"id": "media_alternative", "label": "Videoen er et tydelig merket alternativ til tekst på siden", "hint": "Gjelder bare når siden sier tydelig at videoen gjengir teksten, og videoen ikke inneholder mer enn teksten."}
+      ]
+    },
+    {
+      "id": "UU-MEDIA-YOUTUBE-NO-CAPTIONS", "category": "media", "title": "YouTube-video uten teksting",
+      "wcag": ["1.2.2"], "testability": "heuristic", "severity": "serious", "classification": "likely_violation",
+      "explanation": "YouTube oppgir ingen teksting for videoen – verken fra den som lastet den opp eller automatisk. Forhåndsinnspilt video med lyd skal ha teksting som følger lyden (WCAG 1.2.2): tale, hvem som snakker, og andre lyder som er viktige for å forstå innholdet. En tekstversjon ved siden av videoen erstatter ikke teksting. Kontrollen bruker et uoffisielt grensesnitt hos YouTube og sender bare video-id-en.",
+      "affected_users": "Døve og hørselshemmede, brukere med annet morsmål og alle som ser video uten lyd.",
+      "remediation": "Be den som eier videoen om å legge inn teksting, eller bytt til en tekstet video. Er tekstingen brent inn i bildet, kan du bekrefte det her.",
+      "sources": [
+        {"title": "Uutilsynet: Spørsmål og svar om video", "url": "https://www.uutilsynet.no/wcag-standarden/sporsmal-og-svar-om-video/895"},
+        {"title": "W3C: Understanding 1.2.2 Captions (Prerecorded)", "url": "https://www.w3.org/WAI/WCAG21/Understanding/captions-prerecorded.html"}
+      ],
+      "fix_policy": "manual",
+      "media_kind_choice": true,
+      "confirmations": [
+        {"id": "captions_present", "label": "Videoen har teksting likevel", "hint": "For eksempel teksting som er brent inn i bildet. Tekstingen skal følge lyden og ta med tale og andre lyder som er viktige for innholdet. En separat transkripsjon erstatter ikke teksting."},
+        {"id": "media_alternative", "label": "Videoen er et tydelig merket alternativ til tekst på siden", "hint": "Gjelder bare når siden sier tydelig at videoen gjengir teksten, og videoen ikke inneholder mer enn teksten."}
+      ]
+    },
+    {
+      "id": "UU-MEDIA-YOUTUBE-AUTO-CAPTIONS", "category": "media", "title": "YouTube-video med bare automatisk teksting",
+      "wcag": ["1.2.2"], "testability": "heuristic", "severity": "moderate", "classification": "should_review",
+      "explanation": "Videoen har bare teksting som YouTube har laget automatisk. Automatisk teksting er ofte unøyaktig (navn, fagord, tegnsetting), og ukorrigert automatisk teksting regnes vanligvis ikke som tilstrekkelig. Kontrollen bruker et uoffisielt grensesnitt hos YouTube og sender bare video-id-en.",
+      "affected_users": "Døve og hørselshemmede, brukere med annet morsmål og alle som ser video uten lyd.",
+      "remediation": "Se gjennom tekstingen. Er den korrekt for innholdet, kan du bekrefte det her; ellers bør eieren av videoen legge inn korrigert teksting, eller videoen byttes.",
+      "sources": [
+        {"title": "Uutilsynet: Spørsmål og svar om video", "url": "https://www.uutilsynet.no/wcag-standarden/sporsmal-og-svar-om-video/895"},
+        {"title": "W3C: Understanding 1.2.2 Captions (Prerecorded)", "url": "https://www.w3.org/WAI/WCAG21/Understanding/captions-prerecorded.html"}
+      ],
+      "fix_policy": "manual",
+      "media_kind_choice": true,
+      "confirmations": [
+        {"id": "captions_reviewed", "label": "Den automatiske tekstingen er kontrollert og korrekt", "hint": "Bekreft bare når tekstingen gjengir tale og andre lyder som er viktige for innholdet, med riktige navn og fagord."}
+      ]
     },
     {
       "id": "UU-MEDIA-HTML5-TRACK", "category": "media", "title": "Video uten tekstspor (track)",
       "wcag": ["1.2.2"], "testability": "heuristic", "severity": "serious", "classification": "likely_violation",
-      "explanation": "Video-elementet har ikke noe tekstspor (track kind=\"captions\" eller \"subtitles\"). Hvis videoen har tale, mangler teksting.",
-      "affected_users": "Døve og hørselshemmede.",
-      "remediation": "Legg til teksting.",
-      "sources": [{"title": "W3C: Understanding 1.2.2", "url": "https://www.w3.org/WAI/WCAG22/Understanding/captions-prerecorded.html"}],
-      "fix_policy": "manual"
+      "explanation": "Videoelementet har ikke noe tekstspor (track kind=\"captions\" eller \"subtitles\"). Har videoen lyd med tale eller andre lyder som er viktige for innholdet, mangler teksting (WCAG 1.2.2) – med mindre tekstingen er brent inn i bildet. En separat transkripsjon erstatter ikke teksting.",
+      "affected_users": "Døve og hørselshemmede, brukere med annet morsmål og alle som ser video uten lyd.",
+      "remediation": "Legg til et tekstspor (WebVTT) i videoelementet, eller last opp videoen i Canvas med teksting.",
+      "sources": [{"title": "W3C: Understanding 1.2.2 Captions (Prerecorded)", "url": "https://www.w3.org/WAI/WCAG21/Understanding/captions-prerecorded.html"}],
+      "fix_policy": "manual",
+      "media_kind_choice": true,
+      "confirmations": [
+        {"id": "captions_present", "label": "Videoen har teksting likevel", "hint": "For eksempel teksting som er brent inn i bildet. Tekstingen skal følge lyden og ta med tale og andre lyder som er viktige for innholdet. En separat transkripsjon erstatter ikke teksting."},
+        {"id": "media_alternative", "label": "Videoen er et tydelig merket alternativ til tekst på siden", "hint": "Gjelder bare når siden sier tydelig at videoen gjengir teksten, og videoen ikke inneholder mer enn teksten."}
+      ]
     },
     {
       "id": "UU-MEDIA-AUTOPLAY", "category": "media", "title": "Video eller lyd starter automatisk",
@@ -453,13 +504,51 @@
       "fix_policy": "auto_suggest"
     },
     {
-      "id": "UU-MEDIA-AUDIO-ALT", "category": "media", "title": "Lydopptak uten tekstalternativ",
-      "wcag": ["1.2.1"], "testability": "heuristic", "severity": "moderate", "classification": "should_review",
-      "explanation": "Det er et lydopptak på siden, men ingen synlig lenke til transkripsjon i nærheten. Forhåndsinnspilt lyd skal ha et tekstalternativ.",
-      "affected_users": "Døve og hørselshemmede.",
-      "remediation": "Legg ved en transkripsjon av opptaket.",
-      "sources": [{"title": "W3C: Understanding 1.2.1", "url": "https://www.w3.org/WAI/WCAG22/Understanding/audio-only-and-video-only-prerecorded.html"}],
-      "fix_policy": "manual"
+      "id": "UU-MEDIA-AUDIO-ALT", "category": "media", "title": "Kontroller tekstalternativ til lydopptak",
+      "wcag": ["1.2.1"], "testability": "manual", "severity": "moderate", "classification": "manual_check",
+      "explanation": "Forhåndsinnspilte lydopptak skal ha et likeverdig tekstalternativ (WCAG 1.2.1): normalt en transkripsjon som gjengir tale – og hvem som snakker – og andre lyder som er nødvendige for å forstå innholdet, i samme rekkefølge som i opptaket. Teksten kan stå på siden eller være tilgjengelig via en tydelig lenke eller knapp ved opptaket. Synkronisert teksting eller tekstspor i avspilleren er ikke kravet for rene lydopptak, og et manglende tekstspor er derfor ikke i seg selv et avvik. Kravet gjelder ikke når opptaket er et tydelig merket alternativ til tekst på siden (for eksempel en innlesing av teksten). EmneKlar kan ikke avgjøre om en tekst eller lenke ved opptaket er et fullverdig alternativ.",
+      "affected_users": "Døve og hørselshemmede, og alle som ikke kan lytte til lyd der de er.",
+      "remediation": "Kontroller at lydopptaket har en transkripsjon på siden eller via en tydelig lenke. Teksten skal gjengi tale og andre lyder som er nødvendige for å forstå innholdet.",
+      "sources": [
+        {"title": "Uutilsynet: 1.2.1 Bare lyd og bare video (forhåndsinnspilt)", "url": "https://www.uutilsynet.no/veiledning/121-bare-lyd-og-bare-video-forhandsinnspilt/1232"},
+        {"title": "W3C: Understanding 1.2.1 Audio-only and Video-only (Prerecorded)", "url": "https://www.w3.org/WAI/WCAG21/Understanding/audio-only-and-video-only-prerecorded.html"}
+      ],
+      "fix_policy": "manual",
+      "media_kind_choice": true,
+      "confirmations": [
+        {"id": "transcript", "label": "Transkripsjonen finnes på siden eller via en tydelig lenke", "hint": "Bekreft bare når teksten gjengir tale – og hvem som snakker – og andre lyder som er nødvendige for å forstå innholdet. En kort beskrivelse eller et sammendrag er ikke nok."},
+        {"id": "media_alternative", "label": "Opptaket er et tydelig merket alternativ til tekst på siden", "hint": "Gjelder bare når siden sier tydelig at opptaket gjengir teksten (for eksempel «Innlest versjon av teksten over»), og opptaket ikke inneholder mer enn teksten."}
+      ]
+    },
+    {
+      "id": "UU-MEDIA-VIDEO-ONLY-ALT", "category": "media", "title": "Kontroller alternativ til video uten lyd",
+      "wcag": ["1.2.1"], "testability": "manual", "severity": "moderate", "classification": "manual_check",
+      "explanation": "Forhåndsinnspilt video uten lyd skal ha et alternativ som formidler den samme informasjonen (WCAG 1.2.1): en tekstbeskrivelse på siden eller via en tydelig lenke, eller et lydspor. Teksting etter 1.2.2 er ikke relevant når videoen ikke har lyd. Kravet gjelder ikke når videoen er et tydelig merket alternativ til tekst på siden.",
+      "affected_users": "Blinde og svaksynte, og skjermleserbrukere.",
+      "remediation": "Kontroller at det finnes en tekst eller et lydspor som formidler det videoen viser, i samme rekkefølge.",
+      "sources": [
+        {"title": "Uutilsynet: 1.2.1 Bare lyd og bare video (forhåndsinnspilt)", "url": "https://www.uutilsynet.no/veiledning/121-bare-lyd-og-bare-video-forhandsinnspilt/1232"},
+        {"title": "W3C: Understanding 1.2.1 Audio-only and Video-only (Prerecorded)", "url": "https://www.w3.org/WAI/WCAG21/Understanding/audio-only-and-video-only-prerecorded.html"}
+      ],
+      "fix_policy": "manual",
+      "media_kind_choice": true,
+      "confirmations": [
+        {"id": "alternative", "label": "Tekst- eller lydalternativet finnes", "hint": "Bekreft bare når alternativet formidler det samme som videoen viser, i samme rekkefølge."},
+        {"id": "media_alternative", "label": "Videoen er et tydelig merket alternativ til tekst på siden", "hint": "Gjelder bare når siden sier tydelig at videoen gjengir teksten, og videoen ikke inneholder mer enn teksten."}
+      ]
+    },
+    {
+      "id": "UU-MEDIA-TYPE-UNKNOWN", "category": "media", "title": "Kontroller medietype og alternativ",
+      "wcag": ["1.2.1", "1.2.2"], "testability": "manual", "severity": "moderate", "classification": "manual_check",
+      "explanation": "EmneKlar kunne ikke fastslå om opptaket er bare lyd, video med lyd eller video uten lyd. Canvas oppga ikke medietypen, og et videoelement i koden er ikke sikkert bevis på at opptaket har bilde – Canvas spiller også av lydopptak i en videoavspiller. Kravet avhenger av typen: et lydopptak skal ha et tekstalternativ (WCAG 1.2.1), en video med lyd skal ha teksting (WCAG 1.2.2), og en video uten lyd skal ha et tekst- eller lydalternativ (WCAG 1.2.1).",
+      "affected_users": "Døve og hørselshemmede, blinde og svaksynte.",
+      "remediation": "Spill av opptaket og angi hva det er. EmneKlar analyserer siden på nytt og viser riktig krav.",
+      "sources": [
+        {"title": "Uutilsynet: 1.2.1 Bare lyd og bare video (forhåndsinnspilt)", "url": "https://www.uutilsynet.no/veiledning/121-bare-lyd-og-bare-video-forhandsinnspilt/1232"},
+        {"title": "W3C: Understanding 1.2.2 Captions (Prerecorded)", "url": "https://www.w3.org/WAI/WCAG21/Understanding/captions-prerecorded.html"}
+      ],
+      "fix_policy": "manual",
+      "media_kind_choice": true
     },
     {
       "id": "UU-MOVING", "category": "media", "title": "Rullende eller blinkende innhold",
@@ -504,16 +593,22 @@
       "affected_users": "Skjermleserbrukere og brukere som forstørrer eller tilpasser tekst.",
       "remediation": "Eksporter dokumentet på nytt fra Word/PowerPoint med tilgjengelighetsvalg slått på, eller publiser innholdet som en Canvas-side.",
       "sources": [{"title": "Uutilsynet: Dokumenter", "url": "https://www.uutilsynet.no/veiledning/dokumenter/741"}],
-      "fix_policy": "manual"
+      "fix_policy": "manual",
+      "confirmations": [
+        {"id": "older_document_exemption", "label": "Unntaket for eldre dokumenter gjelder", "hint": "Dokumentet ble lastet opp før 1. februar 2022 og trengs ikke i en aktiv prosess – for eksempel en oppgave eller annen aktivitet studentene skal gjennomføre nå. Er du usikker, rett dokumentet i stedet.", "requires_evidence": "exemption_hint"}
+      ]
     },
     {
       "id": "UU-DOC-PDF-NO-TEXT", "category": "documents", "title": "PDF ser ut til å være skannet (ingen tekst)",
       "wcag": ["1.1.1", "1.4.5"], "testability": "heuristic", "severity": "critical", "classification": "likely_violation",
       "explanation": "Det finnes ingen lesbar tekst i PDF-en. Den er trolig et skannet bilde, som ikke kan leses opp eller søkes i.",
       "affected_users": "Skjermleserbrukere, brukere av opplesing og alle som vil søke i teksten.",
-      "remediation": "Bruk originaldokumentet, eller kjør tekstgjenkjenning (OCR) og kontroller resultatet.",
+      "remediation": "Trengs dokumentet fortsatt? Hvis ikke, fjern det fra emnet eller avpubliser det i Canvas. Ellers lager du en ny PDF med ekte tekst: lagre originalen (for eksempel Word-filen) som PDF på nytt, med tilgjengelighetsmerkingen slått på. Har du ikke originalen, kjør tekstgjenkjenning (OCR), for eksempel i Adobe Acrobat, og les gjennom teksten – OCR tar ofte feil av æ, ø og å. Last opp den nye filen under Filer i Canvas med samme filnavn og velg å erstatte den gamle, så virker lenkene til den fortsatt. Analyser emnet på nytt for å se at funnet er borte.",
       "sources": [{"title": "Uutilsynet: Til deg som underviser digitalt", "url": "https://www.uutilsynet.no/uubloggen/til-deg-som-underviser-digitalt/178"}],
-      "fix_policy": "manual"
+      "fix_policy": "manual",
+      "confirmations": [
+        {"id": "older_document_exemption", "label": "Unntaket for eldre dokumenter gjelder", "hint": "Dokumentet ble lastet opp før 1. februar 2022 og trengs ikke i en aktiv prosess – for eksempel en oppgave eller annen aktivitet studentene skal gjennomføre nå. Er du usikker, rett dokumentet i stedet.", "requires_evidence": "exemption_hint"}
+      ]
     },
     {
       "id": "UU-DOC-NO-TITLE", "category": "documents", "title": "Dokumentet mangler tittel i egenskapene",
@@ -522,7 +617,10 @@
       "affected_users": "Skjermleserbrukere.",
       "remediation": "Fyll inn tittel under Fil → Egenskaper før eksport.",
       "sources": [{"title": "W3C: Understanding 2.4.2 Page Titled", "url": "https://www.w3.org/WAI/WCAG22/Understanding/page-titled.html"}],
-      "fix_policy": "manual"
+      "fix_policy": "manual",
+      "confirmations": [
+        {"id": "older_document_exemption", "label": "Unntaket for eldre dokumenter gjelder", "hint": "Dokumentet ble lastet opp før 1. februar 2022 og trengs ikke i en aktiv prosess – for eksempel en oppgave eller annen aktivitet studentene skal gjennomføre nå. Er du usikker, rett dokumentet i stedet.", "requires_evidence": "exemption_hint"}
+      ]
     },
     {
       "id": "UU-DOC-NO-LANG", "category": "documents", "title": "Dokumentet mangler språk",
@@ -531,7 +629,10 @@
       "affected_users": "Skjermleserbrukere.",
       "remediation": "Angi dokumentspråk (for eksempel norsk bokmål) før eksport.",
       "sources": [{"title": "W3C: Understanding 3.1.1 Language of Page", "url": "https://www.w3.org/WAI/WCAG22/Understanding/language-of-page.html"}],
-      "fix_policy": "manual"
+      "fix_policy": "manual",
+      "confirmations": [
+        {"id": "older_document_exemption", "label": "Unntaket for eldre dokumenter gjelder", "hint": "Dokumentet ble lastet opp før 1. februar 2022 og trengs ikke i en aktiv prosess – for eksempel en oppgave eller annen aktivitet studentene skal gjennomføre nå. Er du usikker, rett dokumentet i stedet.", "requires_evidence": "exemption_hint"}
+      ]
     },
     {
       "id": "UU-DOC-IMG-ALT", "category": "documents", "title": "Bilder i dokumentet mangler alternativ tekst",
@@ -540,7 +641,10 @@
       "affected_users": "Skjermleserbrukere.",
       "remediation": "Legg inn alternativ tekst (høyreklikk på bildet → Rediger alternativ tekst) eller merk bildet som dekorativt.",
       "sources": [{"title": "Uutilsynet: Dokumenter", "url": "https://www.uutilsynet.no/veiledning/dokumenter/741"}],
-      "fix_policy": "manual"
+      "fix_policy": "manual",
+      "confirmations": [
+        {"id": "older_document_exemption", "label": "Unntaket for eldre dokumenter gjelder", "hint": "Dokumentet ble lastet opp før 1. februar 2022 og trengs ikke i en aktiv prosess – for eksempel en oppgave eller annen aktivitet studentene skal gjennomføre nå. Er du usikker, rett dokumentet i stedet.", "requires_evidence": "exemption_hint"}
+      ]
     },
     {
       "id": "UU-DOC-NO-HEADINGS", "category": "documents", "title": "Langt dokument uten overskriftsstiler",
@@ -549,7 +653,10 @@
       "affected_users": "Skjermleserbrukere.",
       "remediation": "Bruk stilene Overskrift 1, 2, 3 i Word.",
       "sources": [{"title": "Uutilsynet: Lærerens ansvar", "url": "https://www.uutilsynet.no/veiledning/laererens-ansvar-universell-utforming/2675"}],
-      "fix_policy": "manual"
+      "fix_policy": "manual",
+      "confirmations": [
+        {"id": "older_document_exemption", "label": "Unntaket for eldre dokumenter gjelder", "hint": "Dokumentet ble lastet opp før 1. februar 2022 og trengs ikke i en aktiv prosess – for eksempel en oppgave eller annen aktivitet studentene skal gjennomføre nå. Er du usikker, rett dokumentet i stedet.", "requires_evidence": "exemption_hint"}
+      ]
     },
     {
       "id": "UU-DOC-TABLE-HEADER", "category": "documents", "title": "Tabell i dokumentet uten overskriftsrad",
@@ -558,7 +665,10 @@
       "affected_users": "Skjermleserbrukere.",
       "remediation": "Marker første rad som overskriftsrad (Tabellegenskaper → Gjenta som overskriftsrad).",
       "sources": [{"title": "Uutilsynet: Dokumenter", "url": "https://www.uutilsynet.no/veiledning/dokumenter/741"}],
-      "fix_policy": "manual"
+      "fix_policy": "manual",
+      "confirmations": [
+        {"id": "older_document_exemption", "label": "Unntaket for eldre dokumenter gjelder", "hint": "Dokumentet ble lastet opp før 1. februar 2022 og trengs ikke i en aktiv prosess – for eksempel en oppgave eller annen aktivitet studentene skal gjennomføre nå. Er du usikker, rett dokumentet i stedet.", "requires_evidence": "exemption_hint"}
+      ]
     },
     {
       "id": "UU-DOC-SLIDE-TITLES", "category": "documents", "title": "Lysbilder uten tittel",
@@ -567,7 +677,10 @@
       "affected_users": "Skjermleserbrukere.",
       "remediation": "Gi hvert lysbilde en unik tittel (kan skjules visuelt om nødvendig).",
       "sources": [{"title": "Uutilsynet: Dokumenter", "url": "https://www.uutilsynet.no/veiledning/dokumenter/741"}],
-      "fix_policy": "manual"
+      "fix_policy": "manual",
+      "confirmations": [
+        {"id": "older_document_exemption", "label": "Unntaket for eldre dokumenter gjelder", "hint": "Dokumentet ble lastet opp før 1. februar 2022 og trengs ikke i en aktiv prosess – for eksempel en oppgave eller annen aktivitet studentene skal gjennomføre nå. Er du usikker, rett dokumentet i stedet.", "requires_evidence": "exemption_hint"}
+      ]
     },
     {
       "id": "UU-DOC-MANUAL", "category": "documents", "title": "Dokumentet krever manuell kontroll",
@@ -576,7 +689,10 @@
       "affected_users": "Alle brukere av hjelpemidler.",
       "remediation": "Kontroller dokumentet med tilgjengelighetskontrollen i Office/Acrobat og med skjermleser, eller publiser innholdet som Canvas-side.",
       "sources": [{"title": "W3C: Evaluation tools – limitations", "url": "https://www.w3.org/WAI/test-evaluate/tools/selecting/"}],
-      "fix_policy": "manual"
+      "fix_policy": "manual",
+      "confirmations": [
+        {"id": "older_document_exemption", "label": "Unntaket for eldre dokumenter gjelder", "hint": "Dokumentet ble lastet opp før 1. februar 2022 og trengs ikke i en aktiv prosess – for eksempel en oppgave eller annen aktivitet studentene skal gjennomføre nå. Er du usikker, rett dokumentet i stedet.", "requires_evidence": "exemption_hint"}
+      ]
     },
     {
       "id": "UU-DOC-UNREADABLE", "category": "documents", "title": "Dokumentet kunne ikke kontrolleres",
@@ -585,7 +701,10 @@
       "affected_users": "Alle brukere av hjelpemidler.",
       "remediation": "Kontroller dokumentet manuelt, eller lagre det i et moderne, tilgjengelig format.",
       "sources": [{"title": "Uutilsynet: Dokumenter", "url": "https://www.uutilsynet.no/veiledning/dokumenter/741"}],
-      "fix_policy": "manual"
+      "fix_policy": "manual",
+      "confirmations": [
+        {"id": "older_document_exemption", "label": "Unntaket for eldre dokumenter gjelder", "hint": "Dokumentet ble lastet opp før 1. februar 2022 og trengs ikke i en aktiv prosess – for eksempel en oppgave eller annen aktivitet studentene skal gjennomføre nå. Er du usikker, rett dokumentet i stedet.", "requires_evidence": "exemption_hint"}
+      ]
     }
   ]
 }

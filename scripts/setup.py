@@ -1,17 +1,25 @@
 """EmneKlar – oppsett. Started by setup.bat; safe to run again (it repairs whatever is missing or broken).
 
-Steps ("Steg N av 5 – …"):
+An installation made by the installer has its own Python runtime in ``runtime\\`` with every dependency already
+installed. There is nothing to install then: setup *checks* the installation in three steps (the runtime, the user
+interface, that EmneKlar can be loaded) and says how to repair it if something is wrong. No Python on the machine
+is used, and pip is never run.
 
-  1  check Python (3.11 or newer; for a new venv a tested version 3.11–3.14 is preferred if installed), then ask
-     once whether to install the optional local models for Emnets kunnskapsbase (only in a console; default no)
+Without ``runtime\\`` (the zip package with your own Python, or a copy of the source code) setup installs
+EmneKlar in five steps ("Steg N av 5 – …"):
+
+  1  check Python (3.11 or newer; for a new venv a tested version 3.11–3.14 is preferred if installed)
   2  create or repair the virtual environment backend\\.venv
   3  install the pinned dependencies: pip install -c backend/constraints.txt -e backend
   4  the user interface: release zips include frontend\\dist; otherwise it is built with npm (Node.js LTS)
   5  verify: import emneklar in the venv and check frontend\\dist\\index.html
 
 No administrator rights are needed and nothing outside this folder is changed, except the log file
-``<data folder>\\logs\\setup.log`` (normally ``%LOCALAPPDATA%\\EmneKlar-Claude\\logs\\setup.log``).
+``<data folder>\\logs\\setup.log`` (normally ``%LOCALAPPDATA%\\EmneKlar\\logs\\setup.log``).
 Exit codes: 0 = ready (next step: start.bat), 1 = setup failed (see the message and the log).
+
+Setup installs exactly the dependencies of backend/pyproject.toml. It never asks about, downloads or installs
+optional extras (the local models for Emnets kunnskapsbase are not part of an EmneKlar installation).
 """
 
 from __future__ import annotations
@@ -23,13 +31,13 @@ import shutil
 import subprocess
 import sys
 import traceback
-from collections.abc import Callable
 from pathlib import Path
 
 MIN_PYTHON = (3, 11)
 NEWEST_TESTED_PYTHON = (3, 14)  # backend/constraints.txt is verified for CPython 3.11-3.14
 MIN_NODE_MAJOR = 22  # Node.js LTS; see the "engines" fields in frontend/package-lock.json
 TOTAL_STEPS = 5
+BUNDLED_STEPS = 3
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
 FRONTEND = ROOT / "frontend"
@@ -41,6 +49,7 @@ if sys.version_info < MIN_PYTHON:  # setup.bat checks this too; keep this file i
     sys.exit(1)
 
 sys.path.insert(0, str(BACKEND))  # emneklar.* (only standard-library modules are imported before the venv exists)
+sys.path.insert(0, str(ROOT / "scripts"))  # update.py – the bundled runtime does not add the script's folder itself
 
 import update  # noqa: E402 - scripts/update.py: shared console, log, command and pip helpers
 
@@ -49,35 +58,6 @@ from emneklar.manage import data_dir_from_env, running_instance  # noqa: E402
 
 class SetupError(Exception):
     """Setup cannot continue; the message tells the user what to do."""
-
-
-LOCAL_MODELS_QUESTION = (
-    "Emnets kunnskapsbase kan bruke lokale modeller for bedre søk og for transkripsjon av video uten teksting,\n"
-    "uten KI-leverandør. De laster ned flere GB og gjør oppsettet mye lengre. Du kan installere dem senere ved\n"
-    "å kjøre setup.bat på nytt.\n"
-    "Installere lokale modeller nå? [j/N]: "
-)
-
-
-def wants_local_models(args: argparse.Namespace, *, ask: Callable[[str], str] = input,
-                       interactive: bool | None = None) -> bool:
-    """One setup for everything: the optional local models are a question, not a separate file.
-
-    Asked only when someone can answer (a console, not CI or the app's own runs); the answer defaults to no.
-    ``--rag`` chooses them without asking; a choice made before (backend\\.venv\\emneklar-extras.txt) is kept.
-    """
-    if args.rag:
-        return True
-    if args.no_rag or args.no_pause or "rag" in update.chosen_extras(ROOT):
-        return False
-    if not (sys.stdin.isatty() if interactive is None else interactive):
-        return False
-    print()
-    try:
-        answer = ask(LOCAL_MODELS_QUESTION)
-    except EOFError:
-        return False
-    return answer.strip().lower() in ("j", "ja", "y", "yes")
 
 
 def _venv_python_version(python: Path) -> tuple[int, int] | None:
@@ -195,8 +175,8 @@ def ensure_frontend(reporter: update.Reporter) -> None:
         raise SetupError("Byggingen av brukergrensesnittet ga ingen frontend\\dist\\index.html.")
 
 
-def verify(reporter: update.Reporter, python: Path) -> str:
-    reporter.step(5, "Kontrollerer installasjonen")
+def verify(reporter: update.Reporter, python: Path, *, step: int = 5, repair: str = "Kjør setup.bat på nytt.") -> str:
+    reporter.step(step, "Kontrollerer installasjonen")
     expected = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     done = update.run([python, "-c", "import emneklar, emneklar.main; print(emneklar.__version__)"], cwd=ROOT,
                       reporter=reporter, capture=True, check=False)
@@ -204,52 +184,71 @@ def verify(reporter: update.Reporter, python: Path) -> str:
     if done.returncode != 0 or found != expected:
         last = (done.stderr or done.stdout).strip().splitlines()[-3:]
         raise SetupError("EmneKlar kunne ikke lastes i Python-miljøet" + (f": {' / '.join(last)}" if last else ".")
-                         + " Kjør setup.bat på nytt.")
+                         + f" {repair}")
     if not (FRONTEND / "dist" / "index.html").is_file():
         raise SetupError("frontend\\dist\\index.html mangler.")
     reporter.info(f"EmneKlar {found} kan startes, og brukergrensesnittet er på plass.")
     return found
 
 
+REINSTALL = ("Installer EmneKlar på nytt med installasjonsprogrammet (EmneKlar-<versjon>-setup.exe fra GitHub). "
+             "Dataene og innstillingene dine beholdes.")
+
+
+def check_bundled_installation(reporter: update.Reporter) -> str:
+    """An installation with its own runtime: nothing is installed or changed here – everything is checked."""
+    python = update.bundled_python_path(ROOT)
+    reporter.step(1, "Kontrollerer den innebygde kjøretiden")
+    probe = "import sys; assert sys.flags.isolated, 'ikke isolert'; print(sys.version.split()[0])"
+    done = update.run([python, "-c", probe], cwd=ROOT, reporter=reporter, capture=True, check=False)
+    if done.returncode != 0:
+        raise SetupError(f"Den innebygde kjøretiden (runtime\\python.exe) lar seg ikke starte. {REINSTALL}")
+    reporter.info(f"Python {done.stdout.strip()} følger med installasjonen (kjøretid "
+                  f"{update.installed_runtime_id(ROOT) or 'ukjent'}). Ingen Python på maskinen brukes, og ingenting "
+                  "lastes ned.")
+    reporter.step(2, "Kontrollerer brukergrensesnittet (frontend\\dist)")
+    if not (FRONTEND / "dist" / "index.html").is_file():
+        raise SetupError(f"Brukergrensesnittet mangler (frontend\\dist\\index.html). {REINSTALL}")
+    reporter.info("Brukergrensesnittet er på plass.")
+    return verify(reporter, python, step=3, repair=REINSTALL)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Installerer eller reparerer EmneKlar i denne mappen.")
     parser.add_argument("--strict", action="store_true",
                         help="bruk bare de testede versjonene av avhengighetene (ingen reserve)")
-    parser.add_argument("--rag", action="store_true",
-                        help="installer også lokale modeller for emnets kunnskapsbase uten å spørre (PyTorch, "
-                             "sentence-transformers, faster-whisper – flere GB); update.bat beholder dem")
-    parser.add_argument("--no-rag", action="store_true",
-                        help="ikke spør om lokale modeller (de installeres ikke nå, men kan velges senere)")
     parser.add_argument("--no-pause", action="store_true", help=argparse.SUPPRESS)  # handled by setup.bat
     args = parser.parse_args(argv)
     if args.strict:
         os.environ["EMNEKLAR_STRICT_PINS"] = "1"
     update.configure_stdio()
-    reporter = update.Reporter(data_dir_from_env() / "logs" / "setup.log", total_steps=TOTAL_STEPS,
-                               title="EmneKlar-oppsett")
+    bundled = update.has_bundled_runtime(ROOT)
+    reporter = update.Reporter(data_dir_from_env() / "logs" / "setup.log",
+                               total_steps=BUNDLED_STEPS if bundled else TOTAL_STEPS, title="EmneKlar-oppsett")
     print("EmneKlar – oppsett")
     print(f"  Mappe: {ROOT}")
     try:
+        if bundled:
+            version = check_bundled_installation(reporter)
+            reporter.info()
+            reporter.info(f"Installasjonen er i orden – EmneKlar {version} er klar til bruk.")
+            reporter.info("Start EmneKlar fra Start-menyen (eller med start.bat i denne mappen).")
+            return 0
         base_python = check_python(reporter)
-        local_models = wants_local_models(args)
         python = ensure_venv(reporter, base_python)
-        if local_models:
-            update.remember_extra(ROOT, "rag")
         install_dependencies(reporter, python)
         ensure_frontend(reporter)
         version = verify(reporter, python)
         reporter.info()
         reporter.info(f"Oppsettet er ferdig – EmneKlar {version} er klar til bruk.")
-        if "rag" not in update.chosen_extras(ROOT):
-            reporter.info("Lokale modeller for emnets kunnskapsbase er ikke installert (valgfritt). Vil du ha dem senere, "
-                          "kjører du setup.bat på nytt og svarer «j».")
         reporter.info("Neste steg: Kjør start.bat")
         return 0
     except (SetupError, update.UpdateError) as exc:
         message = update.describe_error(exc) if isinstance(exc, update.UpdateError) else str(exc)
         reporter.error(message)
         reporter.info()
-        reporter.info("Oppsettet ble ikke fullført. Rett feilen og kjør setup.bat på nytt – det er trygt å kjøre den "
+        reporter.info("Kontrollen fant en feil – se meldingen over." if bundled else
+                      "Oppsettet ble ikke fullført. Rett feilen og kjør setup.bat på nytt – det er trygt å kjøre den "
                       "flere ganger.")
         reporter.info(f"Logg: {reporter.log_path}")
         return 1

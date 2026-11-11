@@ -26,5 +26,7 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     css: false,
     exclude: ["e2e/**", "node_modules/**"],
+    // Several tests run axe or wait for real polling; with every file in parallel the default 5 s is too tight.
+    testTimeout: 15_000,
   },
 });

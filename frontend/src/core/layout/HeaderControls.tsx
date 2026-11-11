@@ -1,33 +1,88 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, CircleQuestionMark, LoaderCircle, Play, Search } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
-import { Link } from "react-router";
+import { ChevronDown, ChevronRight, Search, Star } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 
-import { Alert, Badge, Button, Dialog, Spinner, Switch, TextField, useToast } from "../../design-system";
+import { Alert, Button, Dialog, Spinner, TextField } from "../../design-system";
+import { HeaderAnalysisButton } from "../../features/analysis/AnalysisStatus";
 import { api } from "../api/client";
-import type { Job } from "../api/types";
-import { courseLabel, useCourses, useCurrentCourse, useSelectCourse } from "../course";
-import { useRefreshSession, useSession } from "../session";
+import type { Course } from "../api/types";
+import {
+  courseLabel,
+  courseQuery,
+  matchCourses,
+  useCourses,
+  useCurrentCourse,
+  useFavoriteCourse,
+  useSelectCourse,
+  type CourseList,
+} from "../course";
+import { useSession } from "../session";
 import { useUi } from "../ui";
+
+/** One course in the selector: choose it, or mark it as a favourite (a toggle button beside it). */
+function CourseRow({ course: c, current, onSelect }: { course: Course; current: boolean; onSelect: () => void }) {
+  const favorite = useFavoriteCourse();
+  const name = c.course_code ?? c.name;
+  return (
+    <li className="ek-course-row">
+      <button type="button" className="ek-course-option" aria-current={current ? "true" : undefined} onClick={onSelect}>
+        <span className="ek-strong">{name}</span>
+        <span className="ek-xs ek-muted">
+          {c.name}
+          {` · ID ${c.id}`}
+          {c.term_name ? ` · ${c.term_name}` : ""}
+          {c.workflow_state === "unpublished" ? " · Ikke publisert" : ""}
+          {current ? " · Valgt" : ""}
+        </span>
+      </button>
+      <button type="button" className="ek-course-star" aria-pressed={Boolean(c.favorite)} aria-label={`Favoritt: ${name}`}
+        title={c.favorite ? "Fjern fra favoritter" : "Legg til i favoritter"}
+        onClick={() => favorite.mutate({ courseId: c.id, favorite: !c.favorite })}>
+        <Star aria-hidden="true" fill={c.favorite ? "currentColor" : "none"} />
+      </button>
+    </li>
+  );
+}
 
 export function CourseSelector() {
   const session = useSession();
   const { course, courseId } = useCurrentCourse();
   const courses = useCourses(session.canvas.token_configured);
   const select = useSelectCourse();
+  const client = useQueryClient();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+  const reload = useMutation({
+    mutationFn: () => api.get<CourseList>("/api/courses?refresh=true"),
+    onSuccess: (data) => client.setQueryData(["courses"], data),
+  });
 
-  const filtered = useMemo(() => {
-    const all = courses.data?.courses ?? [];
-    const q = query.trim().toLowerCase();
-    if (!q) return all;
-    return all.filter((c) => `${c.name} ${c.course_code ?? ""} ${c.term_name ?? ""}`.toLowerCase().includes(q));
-  }, [courses.data, query]);
+  // «Åpne EmneKlar» after the setup without a start course opens the course selector (…?velg-emne=1).
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    if (params.get("velg-emne") !== "1") return;
+    setOpen(true);
+    const rest = new URLSearchParams(params);
+    rest.delete("velg-emne");
+    setParams(rest, { replace: true });
+  }, [params, setParams]);
+
+  const filtered = useMemo(() => matchCourses(courses.data?.courses ?? [], query), [courses.data, query]);
+  const favorites = filtered.filter((c) => c.favorite);
+  const others = filtered.filter((c) => !c.favorite);
+  const searchedId = /^\d+$/.test(courseQuery(query)) ? courseQuery(query) : null;
 
   if (!session.canvas.token_configured) return null;
   const label = courseId && !course && courses.isPending ? "Laster emne …" : courseLabel(course);
+  const choose = (id: string) =>
+    select.mutate(id, {
+      onSuccess: () => {
+        setOpen(false);
+        setQuery("");
+      },
+    });
 
   return (
     <>
@@ -57,7 +112,7 @@ export function CourseSelector() {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Emnekode, navn eller semester"
+            placeholder="Emnekode, navn, semester eller emne-ID"
           />
           {courses.isPending ? <Spinner label="Henter emner fra Canvas …" /> : null}
           {courses.error ? (
@@ -73,192 +128,81 @@ export function CourseSelector() {
           <p className="ek-small ek-muted" aria-live="polite">
             {courses.data ? `${filtered.length} av ${courses.data.courses.length} emner` : null}
           </p>
-          <ul className="ek-course-list" aria-label="Emner">
-            {filtered.map((c) => (
-              <li key={c.id}>
-                <button
-                  type="button"
-                  className="ek-course-option"
-                  aria-current={c.id === courseId ? "true" : undefined}
-                  onClick={() =>
-                    select.mutate(c.id, {
-                      onSuccess: () => {
-                        setOpen(false);
-                        setQuery("");
-                      },
-                    })
-                  }
-                >
-                  <span className="ek-strong">{c.course_code ?? c.name}</span>
-                  <span className="ek-xs ek-muted">
-                    {c.name}
-                    {c.term_name ? ` · ${c.term_name}` : ""}
-                    {c.workflow_state === "unpublished" ? " · Ikke publisert" : ""}
-                    {c.id === courseId ? " · Valgt" : ""}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-          {courses.data && filtered.length === 0 ? (
-            <p className="ek-small ek-muted">
-              <Search aria-hidden="true" size={14} /> Ingen emner passer søket.
-            </p>
+          {favorites.length ? (
+            <section className="ek-stack" data-gap="2" aria-labelledby="emner-favoritter">
+              <h3 id="emner-favoritter" className="ek-course-group">Favoritter</h3>
+              <ul className="ek-course-list" aria-labelledby="emner-favoritter">
+                {favorites.map((c) => <CourseRow key={c.id} course={c} current={c.id === courseId} onSelect={() => choose(c.id)} />)}
+              </ul>
+            </section>
           ) : null}
+          {others.length ? (
+            <section className="ek-stack" data-gap="2" aria-labelledby="emner-alle">
+              <h3 id="emner-alle" className="ek-course-group">{favorites.length ? "Andre emner" : "Emner"}</h3>
+              <ul className="ek-course-list" aria-labelledby="emner-alle">
+                {others.map((c) => <CourseRow key={c.id} course={c} current={c.id === courseId} onSelect={() => choose(c.id)} />)}
+              </ul>
+            </section>
+          ) : null}
+          {courses.data && filtered.length === 0 ? (
+            <div className="ek-stack" data-gap="2">
+              <p className="ek-small ek-muted">
+                <Search aria-hidden="true" size={14} />{" "}
+                {searchedId ? `Fant ikke emne-ID ${searchedId} blant emnene dine.` : "Ingen emner passer søket."} Listen viser
+                emner der du er lærer, assistent eller designer, og som ikke er avsluttet.
+              </p>
+              <div>
+                <Button size="sm" loading={reload.isPending} onClick={() => reload.mutate()}>Hent emnelisten på nytt fra Canvas</Button>
+              </div>
+              {reload.error ? <Alert tone="danger" role="alert">{(reload.error as Error).message}</Alert> : null}
+            </div>
+          ) : null}
+          <p className="ek-xs ek-subtle">Favorittene lagres i EmneKlar og endrer ikke favorittene dine i Canvas.</p>
         </div>
       </Dialog>
     </>
   );
 }
 
-export function DryRunToggle() {
-  const session = useSession();
-  const refresh = useRefreshSession();
-  const toast = useToast();
-  const mutation = useMutation({
-    mutationFn: (enabled: boolean) => api.put<{ dry_run: boolean }>("/api/system/dry-run", { enabled }),
-    onSuccess: async (data) => {
-      await refresh();
-      toast.show({
-        tone: data.dry_run ? "info" : "success",
-        title: data.dry_run ? "Dry run er slått på" : "Dry run er slått av",
-        body: data.dry_run
-          ? "Ingen endringer sendes til Canvas. Analyse, forhåndsvisning og endringskø fungerer som vanlig."
-          : "Godkjente endringer kan nå sendes til Canvas.",
-      });
-    },
-  });
-  return (
-    <Switch
-      label="Dry run"
-      checked={session.dry_run}
-      disabled={mutation.isPending}
-      onChange={(checked) => mutation.mutate(checked)}
-    />
-  );
-}
-
 export interface ChangeSummary {
   pending: number;
+  approved: number;
+  problems: number;
+  courses: number;
   by_domain: Record<string, number>;
 }
 
-export function useChangeSummary(courseId: string | null) {
+/** The whole change queue (all courses): one queue, one «Publiser til Canvas». */
+export function useChangeSummary() {
   return useQuery({
-    queryKey: ["changes", "summary", courseId],
-    queryFn: () => api.get<ChangeSummary>(`/api/changes/summary${courseId ? `?course_id=${courseId}` : ""}`),
+    queryKey: ["changes", "summary"],
+    queryFn: () => api.get<ChangeSummary>("/api/changes/summary"),
     refetchInterval: 15_000,
   });
 }
 
-/** Pending changes: a green pill when something is ready to review, calm otherwise. */
+/** The change queue: green when approved changes are ready to publish, amber when something needs attention. */
 export function ChangeSetButton() {
-  const { courseId } = useCurrentCourse();
-  const summary = useChangeSummary(courseId);
+  const summary = useChangeSummary();
   const ui = useUi();
-  const count = summary.data?.pending ?? 0;
+  const pending = summary.data?.pending ?? 0;
+  const approved = summary.data?.approved ?? 0;
+  const problems = summary.data?.problems ?? 0;
+  const tone = problems > 0 ? "warning" : pending > 0 ? "success" : "neutral";
+  const label = approved > 0
+    ? `${approved} godkjent${approved === 1 ? "" : "e"} – klar til publisering`
+    : pending === 1 ? "1 endring i kø" : `${pending} endringer i kø`;
   return (
-    <button type="button" className="ek-changes-pill" data-tone={count > 0 ? "success" : "neutral"} onClick={ui.openChanges}>
+    <button type="button" className="ek-changes-pill" data-tone={tone} onClick={ui.openChanges}>
       <span className="ek-changes-pill__dot" aria-hidden="true" />
-      {count === 1 ? "1 endring klar" : `${count} endringer klare`}
+      {label}
+      {problems > 0 ? <span className="ek-visually-hidden">, {problems} må ses på</span> : null}
       <ChevronRight aria-hidden="true" />
     </button>
   );
 }
 
-export function HelpButton() {
-  return (
-    <Link to="/hjelp" className="ek-btn ek-btn--ghost ek-btn--icon" aria-label="Hjelp" title="Hjelp">
-      <CircleQuestionMark aria-hidden="true" />
-    </Link>
-  );
-}
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  const first = parts[0][0] ?? "";
-  const last = parts.length > 1 ? (parts[parts.length - 1][0] ?? "") : "";
-  return (first + last).toUpperCase();
-}
-
-/** The Canvas user EmneKlar is connected as; opens the Canvas connection settings. */
-export function UserChip() {
-  const session = useSession();
-  const identity = session.canvas.identity;
-  if (!identity) return null;
-  let host = "Canvas";
-  try {
-    if (session.canvas.base_url) host = new URL(session.canvas.base_url).host;
-  } catch {
-    // keep the generic label
-  }
-  return (
-    <Link to="/innstillinger/canvas-tilkobling" className="ek-user" title={`Innlogget i Canvas som ${identity.name}`}>
-      <span className="ek-user__avatar" aria-hidden="true">
-        {initials(identity.name)}
-      </span>
-      <span className="ek-user__text">
-        <span className="ek-user__name">{identity.name}</span>
-        <span className="ek-user__sub">
-          <span className="ek-visually-hidden">Canvas-tilkobling: </span>
-          {host}
-        </span>
-      </span>
-    </Link>
-  );
-}
-
+/** The one analysis button: its text and action follow the page (see HeaderAnalysisButton). */
 export function RunAnalysisButton() {
-  const ui = useUi();
-  const { courseId } = useCurrentCourse();
-  return (
-    <Button
-      variant="primary"
-      size="lg"
-      icon={<Play aria-hidden="true" />}
-      onClick={() => ui.openAnalysis()}
-      disabled={!courseId}
-      title={courseId ? undefined : "Velg et emne først"}
-    >
-      Kjør ny analyse
-    </Button>
-  );
-}
-
-export function useActiveJobs() {
-  return useQuery({
-    queryKey: ["jobs", "active"],
-    queryFn: () => api.get<{ jobs: Job[] }>("/api/jobs?active=true"),
-    refetchInterval: (query) => ((query.state.data?.jobs.length ?? 0) > 0 ? 2_000 : 10_000),
-  });
-}
-
-export function JobIndicator() {
-  const jobs = useActiveJobs();
-  const ui = useUi();
-  const client = useQueryClient();
-  const active = jobs.data?.jobs ?? [];
-  if (active.length === 0) return null;
-  const job = active[0];
-  const percent = job.progress.percent;
-  return (
-    <Button
-      size="sm"
-      variant="ghost"
-      onClick={() => {
-        ui.watchJob(job.id);
-        ui.openAnalysis();
-        void client.invalidateQueries({ queryKey: ["jobs", job.id] });
-      }}
-      icon={<LoaderCircle aria-hidden="true" className="ek-spinner-icon" />}
-    >
-      <span>
-        {job.title}
-        {percent !== null ? ` – ${percent} %` : " – starter"}
-        {job.status === "paused" ? " (pause)" : ""}
-      </span>
-      {active.length > 1 ? <Badge>{`+${active.length - 1}`}</Badge> : null}
-    </Button>
-  );
+  return <HeaderAnalysisButton />;
 }

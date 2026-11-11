@@ -11,7 +11,6 @@ import { FindingDetail } from "./FindingDetail";
 
 vi.mock("../../core/session", () => ({
   useSession: () => ({
-    dry_run: false,
     canvas: { token_configured: false, base_url: null, identity: null },
     current_course_id: null,
     ai: { providers_enabled: [], external_allowed: false, confirm_before_send: true },

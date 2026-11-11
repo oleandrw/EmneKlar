@@ -175,6 +175,7 @@ class QuizCreate(Applier):
     stores_created = True
     kind = "quiz.create"
     label = "Opprett klassisk quiz"
+    done_label = "Quiz opprettet"
     object_type = "quiz"
     undo_note = "Kan angres ved å slette quizen EmneKlar opprettet, så lenge den ikke er publisert."
 

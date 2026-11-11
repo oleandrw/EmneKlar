@@ -1,7 +1,25 @@
 name: Release
 
-# Push a tag vX.Y.Z (matching VERSION, see scripts/bump_version.py) to publish EmneKlar-X.Y.Z.zip and its
-# .sha256 as a GitHub release. update.bat downloads exactly these two files.
+# Push a tag vX.Y.Z – or vX.Y.Z-rc.N for a pre-release – that matches VERSION (scripts/bump_version.py).
+#
+# The Windows package is built on a clean Windows runner and then *used*: the installer is installed, started,
+# stopped, reinstalled and uninstalled, and an installed copy is updated (with a new runtime, and with a new version
+# that cannot start, which must be rolled back). Only when all of that has passed is the GitHub release created.
+# A version with a pre-release suffix is published as a pre-release: only installations on the channel «Også
+# forhåndsversjoner» are offered it.
+#
+# Published files – the same version number in every name, from VERSION:
+#   EmneKlar-X.Y.Z-setup.exe (+ .sha256)                 the Windows installer: the program and its Python runtime
+#   EmneKlar-X.Y.Z.zip (+ .sha256, and .sha256.sig)      the program package – what update.bat installs
+#   EmneKlar-runtime-win-amd64-<id>.zip (+ .sha256)      the runtime – fetched by update.bat when the id changes
+#
+# Windows is the only platform that is built and published. There is no macOS or Linux package (docs/PLATFORMS.md);
+# nothing here waits for one.
+#
+# Signing is optional and stays off until the secrets exist (docs/UPDATING.md, «Signering»):
+#   RELEASE_SIGNING_KEY    Ed25519 key for EmneKlar-X.Y.Z.zip.sha256.sig (scripts/sign_release.py)
+#   WINDOWS_SIGN_COMMAND   Authenticode command line for the installer ($f is the file to sign)
+# Secrets are passed through the environment of the one step that uses them and are never echoed.
 on:
   push:
     tags: ["v*"]
@@ -13,10 +31,18 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  PYTHONUTF8: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
 jobs:
-  release:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+  windows:
+    name: Windows (build, verify, publish)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
       - name: The tag must match VERSION
@@ -37,22 +63,80 @@ jobs:
         run: |
           npm ci
           npm run build
+      # The Python version of the bundled runtime (packaging/runtime.json): the runtime is built by the same version.
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.13"
+          python-version: "3.14"
+      - name: Build the bundled runtime (Python from python.org and the locked packages, all hash-checked)
+        run: python scripts/build_runtime.py build
       - name: Package (zip + sha256 + release notes from CHANGELOG.md)
+        run: |
+          runtime="$(ls dist-release/EmneKlar-runtime-win-amd64-*.zip)"
+          echo "RUNTIME=$runtime" >> "$GITHUB_ENV"
+          python scripts/package_release.py --repository "$GITHUB_REPOSITORY" --runtime "$runtime" \
+            --notes-out dist-release/RELEASE_NOTES.md
+      - name: Inno Setup (preinstalled on the runner image; installed if it is missing)
+        shell: pwsh
+        run: |
+          $found = (Get-Command iscc -ErrorAction SilentlyContinue) -or
+            (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")
+          if (-not $found) { choco install innosetup --no-progress -y; if ($LASTEXITCODE -ne 0) { exit 1 } }
+      - name: Build the installer
+        env:
+          WINDOWS_SIGN_COMMAND: ${{ secrets.WINDOWS_SIGN_COMMAND }}
+        run: |
+          if [ -n "$WINDOWS_SIGN_COMMAND" ]; then
+            python scripts/build_installer.py --package "dist-release/EmneKlar-$VERSION.zip" --runtime "$RUNTIME" \
+              --sign "$WINDOWS_SIGN_COMMAND"
+          else
+            echo "::notice::The installer is not code-signed (WINDOWS_SIGN_COMMAND is not set): SmartScreen will warn."
+            python scripts/build_installer.py --package "dist-release/EmneKlar-$VERSION.zip" --runtime "$RUNTIME"
+          fi
+
+      # -- nothing is published unless what was built can be installed, started, updated and removed --------------
+      - name: Verify the installer (install, start, stop, reinstall, uninstall)
         run: >
-          python scripts/package_release.py --repository "$GITHUB_REPOSITORY"
-          --notes-out dist-release/RELEASE_NOTES.md
+          python scripts/verify_windows_installer.py --installer "dist-release/EmneKlar-$VERSION-setup.exe"
+          --work "$RUNNER_TEMP/emneklar-installer"
+      - name: Verify the update of an installed copy (with a new runtime)
+        run: >
+          python scripts/local_update_test.py --package "dist-release/EmneKlar-$VERSION.zip" --runtime "$RUNTIME"
+          --work "$RUNNER_TEMP/emneklar-update"
+      - name: Verify the rollback (a new version that cannot start)
+        run: >
+          python scripts/local_update_test.py --package "dist-release/EmneKlar-$VERSION.zip" --runtime "$RUNTIME"
+          --work "$RUNNER_TEMP/emneklar-rollback" --break-new-version
+
+      - name: Sign the checksum file (Ed25519) when the key is configured
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          if [ -n "$RELEASE_SIGNING_KEY" ]; then
+            python scripts/sign_release.py sign --key-env RELEASE_SIGNING_KEY "dist-release/EmneKlar-$VERSION.zip.sha256"
+          else
+            echo "::notice::The release is not signed (RELEASE_SIGNING_KEY is not set): update.bat checks SHA-256 only."
+          fi
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           prerelease=""
           case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" \
-            "dist-release/EmneKlar-$VERSION.zip" \
-            "dist-release/EmneKlar-$VERSION.zip.sha256" \
-            --title "EmneKlar $VERSION" \
-            --notes-file dist-release/RELEASE_NOTES.md \
-            --verify-tag $prerelease
+          files=(
+            "dist-release/EmneKlar-$VERSION-setup.exe" "dist-release/EmneKlar-$VERSION-setup.exe.sha256"
+            "dist-release/EmneKlar-$VERSION.zip" "dist-release/EmneKlar-$VERSION.zip.sha256"
+            "$RUNTIME" "$RUNTIME.sha256"
+          )
+          if [ -f "dist-release/EmneKlar-$VERSION.zip.sha256.sig" ]; then
+            files+=("dist-release/EmneKlar-$VERSION.zip.sha256.sig")
+          fi
+          gh release create "$GITHUB_REF_NAME" "${files[@]}" --title "EmneKlar $VERSION" \
+            --notes-file dist-release/RELEASE_NOTES.md --verify-tag $prerelease
+      - name: Upload the logs if something failed
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-logs
+          path: |
+            ${{ runner.temp }}/emneklar-*/**/*.log
+          if-no-files-found: ignore

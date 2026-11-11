@@ -115,11 +115,15 @@
   color: var(--nav-text-muted);
 }
 .ek-nav__link:hover {
-  background: var(--nav-bg-elevated);
+  background: color-mix(in srgb, var(--nav-bg-elevated) 55%, transparent);
 }
 .ek-nav__link[aria-current="page"] {
   background: var(--nav-active-bg);
   font-weight: var(--weight-semibold);
+  box-shadow: inset 3px 0 0 var(--nav-text);
+}
+.ek-nav__link[aria-current="page"]:hover {
+  background: var(--nav-active-bg);
 }
 .ek-nav__link[aria-current="page"] svg {
   color: var(--nav-text);
@@ -154,8 +158,11 @@
     min-height: var(--header-height);
     row-gap: var(--space-2);
   }
+  /* A row of its own, right-aligned and never wrapping: the analysis button keeps its place when the status control
+     next to it changes width. */
   .ek-header__group {
-    flex-wrap: wrap;
+    flex-basis: 100%;
+    flex-wrap: nowrap;
     min-width: 0;
     max-width: 100%;
   }
@@ -174,6 +181,7 @@
   padding: 0;
   border: 0;
   flex-direction: column;
+  overflow-y: auto;
 }
 .ek-nav-drawer:not([open]) {
   display: none;
@@ -192,19 +200,24 @@
 .ek-header__group {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--space-3);
+  flex: none;
+  /* Right-aligned also when the header wraps: the analysis button keeps its place, the status control grows left. */
+  margin-inline-start: auto;
 }
-.ek-header__divider {
-  width: 1px;
-  height: 1.75rem;
-  background: var(--color-border);
+/* «Analyser emnet» is never cut off: the course name gives way first (it shortens with an ellipsis). */
+.ek-header__analyse {
+  flex: none;
+  white-space: nowrap;
 }
-@media (max-width: 60rem) {
-  .ek-header__divider {
-    display: none;
-  }
+.ek-shell__header > .ek-course-button {
+  flex: 0 1 auto;
+  min-width: min(8rem, 100%);
 }
-
+.ek-shell__header > .ek-changes-pill {
+  flex: none;
+}
 /* Pending changes in the header: green when something is ready, calm otherwise. */
 .ek-changes-pill {
   display: inline-flex;
@@ -236,63 +249,119 @@
   height: 1rem;
 }
 
-/* Signed-in Canvas user (links to the Canvas connection settings). */
-.ek-user {
-  display: inline-flex;
+/* Signed-in Canvas user at the bottom of the side panel: the name and a small arrow; the account menu opens upwards
+   (or in the flow below when there is no room above). The whole row is the button. */
+.ek-account {
+  position: relative;
+  margin: 0 var(--space-4) var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--nav-divider);
+}
+.ek-account__button {
+  display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1);
+  width: 100%;
+  min-height: 3rem;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
   border-radius: var(--radius);
-  color: var(--color-text);
-  text-decoration: none;
+  background: transparent;
+  color: var(--nav-text);
+  font: inherit;
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration) var(--easing);
+}
+.ek-account__button:hover,
+.ek-account__button[aria-expanded="true"] {
+  background: var(--nav-bg-elevated);
+}
+.ek-account__button:focus-visible {
+  outline-color: var(--nav-focus);
+}
+.ek-account__name {
+  flex: 1;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
-.ek-user:hover {
-  background: var(--color-surface-hover);
-}
-.ek-user__avatar {
-  width: 2.375rem;
-  height: 2.375rem;
+.ek-account__chevron {
   flex: none;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--tone-neutral-bg);
-  color: var(--tone-neutral-text);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
+  width: 1.125rem;
+  height: 1.125rem;
+  color: var(--nav-text-muted);
+  transition: transform var(--duration) var(--easing);
 }
-.ek-user__text {
+.ek-account__button[aria-expanded="true"] .ek-account__chevron {
+  transform: rotate(180deg);
+}
+.ek-account__panel {
+  z-index: 5;
+  padding: var(--space-3);
+  border: 1px solid var(--nav-divider);
+  border-radius: var(--radius);
+  background: var(--nav-bg-elevated);
+  color: var(--nav-text);
+  box-shadow: var(--shadow-lg);
+}
+.ek-account__panel[hidden] {
+  display: none;
+}
+.ek-account__panel[data-placement="up"] {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + var(--space-1));
+}
+.ek-account__panel[data-placement="inline"] {
+  margin-top: var(--space-2);
+}
+.ek-account__who {
   display: flex;
   flex-direction: column;
-  min-width: 0;
-  line-height: 1.3;
+  gap: 0.125rem;
+  margin: 0 0 var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--nav-divider);
+  overflow-wrap: anywhere;
 }
-.ek-user__name {
-  font-size: var(--text-sm);
+.ek-account__who-name {
   font-weight: var(--weight-semibold);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 11rem;
 }
-.ek-user__sub {
-  font-size: var(--text-xs);
-  color: var(--color-text-subtle);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 11rem;
+.ek-account__who-sub {
+  font-size: var(--text-sm);
+  color: var(--nav-text-muted);
 }
-@media (max-width: 85rem) {
-  .ek-user__text {
-    position: absolute !important;
-    width: 1px !important;
-    height: 1px !important;
-    overflow: hidden !important;
-    clip: rect(0, 0, 0, 0) !important;
-    white-space: nowrap !important;
-  }
+.ek-account__actions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ek-account__action {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm, var(--radius));
+  color: var(--nav-text);
+  text-decoration: none;
+}
+/* A button in the menu (an action, not a destination) looks like the links around it. */
+button.ek-account__action {
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.ek-account__action:hover {
+  background: var(--nav-active-bg);
+}
+.ek-account__action:focus-visible {
+  outline-color: var(--nav-focus);
 }
 
 /* ================================================================== buttons */
@@ -500,6 +569,7 @@ button.ek-card--link:hover {
 [data-value-tone="info"] { --value-color: var(--status-info); }
 [data-value-tone="success"] { --value-color: var(--status-success); }
 [data-value-tone="neutral"] { --value-color: var(--color-text); }
+[data-value-tone="zero"] { --value-color: var(--status-zero); }
 
 /* =================================================================== badges */
 .ek-badge {
@@ -731,6 +801,194 @@ button.ek-card--link:hover {
   resize: vertical;
   line-height: var(--leading);
 }
+/* Combobox: one field for choosing among many by typing. The list floats under the field and shows five to six options
+   at a time; the chosen option wraps in the field instead of being cut. */
+.ek-combobox {
+  position: relative;
+}
+.ek-combobox__field {
+  position: relative;
+  display: flex;
+  min-height: 2.625rem;
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+.ek-combobox__field[data-open="true"] {
+  border-color: var(--color-focus);
+}
+/* The focus ring goes round the whole field – with the × button – not only round the text part. */
+.ek-combobox__input:focus-visible {
+  outline: none;
+}
+.ek-combobox__field:has(.ek-combobox__input:focus-visible) {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.ek-combobox__field:has(.ek-combobox__input[aria-invalid="true"]) {
+  border-color: var(--color-danger);
+  border-width: 2px;
+}
+.ek-combobox__input {
+  flex: 1;
+  min-width: 0;
+  min-height: calc(2.625rem - 2px);
+  padding: var(--space-2) 2.75rem var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-base);
+}
+/* The chosen option is shown by .ek-combobox__value; the input lies over it (same text, for screen readers). */
+.ek-combobox__input--covered {
+  position: absolute;
+  inset: 0 2.75rem 0 0;
+  color: transparent;
+  caret-color: transparent;
+  cursor: pointer;
+}
+.ek-combobox__input--covered::selection {
+  background: transparent;
+}
+.ek-combobox__value {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--space-2) 2.75rem var(--space-2) var(--space-3);
+  overflow-wrap: anywhere;
+}
+.ek-combobox__label {
+  font-weight: var(--weight-medium);
+}
+.ek-combobox__meta {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.ek-combobox__clear {
+  position: absolute;
+  top: 50%;
+  right: 0.1875rem;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.ek-combobox__clear:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+.ek-combobox__clear svg,
+.ek-combobox__chevron {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+.ek-combobox__chevron {
+  position: absolute;
+  top: 50%;
+  right: 0.75rem;
+  transform: translateY(-50%);
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+.ek-combobox__popup {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-hover);
+}
+.ek-combobox__list {
+  max-height: 20rem; /* five to six courses with name and code; the rest by scrolling or searching */
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+.ek-combobox__option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) 2.25rem var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+/* The option the arrow keys are on: a background and a bar at the left edge (not colour alone). */
+.ek-combobox__option[data-active="true"] {
+  background: var(--tone-info-bg);
+  box-shadow: inset 3px 0 0 var(--color-focus);
+}
+.ek-combobox__option[aria-selected="true"] .ek-combobox__label {
+  font-weight: var(--weight-semibold);
+}
+.ek-combobox__check {
+  position: absolute;
+  top: 50%;
+  right: var(--space-2);
+  transform: translateY(-50%);
+  width: 1.125rem;
+  height: 1.125rem;
+  color: var(--tone-info-icon);
+}
+.ek-combobox__match {
+  background: none;
+  color: inherit;
+  font-weight: var(--weight-semibold);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+.ek-combobox__empty {
+  margin: 0;
+  padding: var(--space-3);
+  color: var(--color-text-muted);
+}
+/* A field with a button inside its right end (PasswordField): the text stops before the button. */
+.ek-input-affix {
+  position: relative;
+}
+.ek-input--affix {
+  padding-right: 3rem;
+}
+.ek-input-affix__button {
+  position: absolute;
+  top: 50%;
+  right: 0.1875rem;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.ek-input-affix__button:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+.ek-input-affix__button svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
 .ek-input[aria-invalid="true"],
 .ek-select[aria-invalid="true"],
 .ek-textarea[aria-invalid="true"] {
@@ -780,6 +1038,35 @@ button.ek-card--link:hover {
 .ek-choice__text {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+}
+/* One line with «…» for long labels (RadioGroup truncateLabels). The full label shows in place on hover and keyboard
+   focus – no floating tooltip, nothing to dismiss – and wraps naturally on touch screens, with larger text and on
+   narrow screens (incl. 200 % zoom). Only the visible text is shortened: the accessible name is the full label. */
+.ek-choice__label--truncate {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ek-choice:hover .ek-choice__label--truncate,
+.ek-choice:has(input:focus-visible) .ek-choice__label--truncate {
+  overflow: visible;
+  white-space: normal;
+  text-wrap: pretty;
+}
+@media (hover: none), (max-width: 40rem) {
+  .ek-choice__label--truncate {
+    overflow: visible;
+    white-space: normal;
+    text-wrap: pretty;
+  }
+}
+:root[data-text-size="large"] .ek-choice__label--truncate,
+:root[data-text-size="larger"] .ek-choice__label--truncate {
+  overflow: visible;
+  white-space: normal;
+  text-wrap: pretty;
 }
 .ek-choice__hint {
   font-size: var(--text-sm);
@@ -1093,17 +1380,21 @@ button.ek-card--link:hover {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(300%); }
 }
+/* Reduced motion: no moving segment and no fill that could be read as a percentage – a striped track that means
+   «in progress, amount not known yet» (the text next to it says so too). */
 @media (prefers-reduced-motion: reduce) {
   .ek-progress--indeterminate .ek-progress__bar {
     animation: none;
     width: 100%;
-    opacity: 0.35;
+    background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--color-primary) 30%, transparent) 0 4px,
+      transparent 4px 9px);
   }
 }
 :root[data-reduce-motion="always"] .ek-progress--indeterminate .ek-progress__bar {
   animation: none;
   width: 100%;
-  opacity: 0.35;
+  background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--color-primary) 30%, transparent) 0 4px,
+    transparent 4px 9px);
 }
 
 .ek-spinner {
@@ -1300,6 +1591,20 @@ button.ek-card--link:hover {
 }
 
 /* ============================================================ html preview */
+/* A scaled picture of the top of a page (no scrolling inside). */
+.ek-preview-scaled {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: #fff;
+}
+.ek-preview-scaled__frame {
+  display: block;
+  border: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
 .ek-preview {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -1386,6 +1691,45 @@ button.ek-card--link:hover {
   background: var(--tone-info-bg);
   border-color: var(--tone-info-border);
 }
+/* A course and its favourite toggle side by side; the option takes the room, the star keeps its size. */
+.ek-course-row {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-1);
+}
+.ek-course-row > .ek-course-option {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ek-course-star {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--color-text-subtle);
+  cursor: pointer;
+}
+.ek-course-star svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+.ek-course-star:hover {
+  background: var(--color-surface-muted);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+.ek-course-star[aria-pressed="true"] {
+  color: var(--tone-warning-icon);
+}
+.ek-course-group {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
+}
 
 /* ============================================================== icon tiles */
 .ek-tile {
@@ -1410,111 +1754,218 @@ button.ek-card--link:hover {
 }
 
 /* ============================================================ status cards */
-/* One area of the course (Oversikt): icon, title, key figures; the whole card is a link. */
+/* One area of the course (Oversikt): icon and title, key figures, a short bottom line. The title link covers the card
+   (::after), so the card is clickable without wrapping «Vis detaljer» in the link; the cards in a grid row share one
+   height and the bottom line sits at the bottom (margin-top: auto) – no fixed heights, so nothing is cut off. */
+/* An area card is one link: the whole card opens the area. Equal height in a row; the bottom line (figure, arrow) sits
+   at the bottom whatever the title takes. */
 .ek-status-card {
-  container-type: inline-size;
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-4);
   min-width: 0;
-  padding: var(--space-5);
+  padding: var(--space-5) var(--space-5) var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
-  color: inherit;
+  color: var(--color-text);
   text-decoration: none;
-  transition: box-shadow var(--duration) var(--easing), border-color var(--duration) var(--easing),
-    transform var(--duration) var(--easing);
+  cursor: pointer;
+  transition: transform 180ms var(--easing), box-shadow 180ms var(--easing), border-color 180ms var(--easing);
 }
-a.ek-status-card:hover {
-  border-color: var(--color-border-strong);
+/* Pointer: a 2 px lift (a transform – the grid does not move), a clearer shadow and a border in the area's colour. */
+.ek-status-card:hover {
+  transform: translateY(-2px);
   box-shadow: var(--shadow-hover);
-  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--tone-icon) 45%, var(--color-border));
 }
-@media (prefers-reduced-motion: reduce) {
-  a.ek-status-card:hover { transform: none; }
+.ek-status-card:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+  border-color: color-mix(in srgb, var(--tone-icon) 45%, var(--color-border));
 }
-:root[data-reduce-motion="always"] a.ek-status-card:hover { transform: none; }
+@media (forced-colors: active) {
+  .ek-status-card:focus-visible { outline-color: Highlight; }
+}
+/* Titles start at the same height on every card (centred on the icon when they fit on one line), also when one
+   wraps. */
 .ek-status-card__head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-3);
 }
 .ek-status-card__head .ek-tile {
   --tile-size: 3rem;
+  flex: none;
 }
 .ek-status-card__title {
-  flex: 1;
   min-width: 0;
+  margin: 0;
+  padding-top: calc((3rem - 1lh) / 2);
   font-size: var(--text-card);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
   color: var(--color-text);
   overflow-wrap: anywhere;
 }
-.ek-status-card__chevron {
-  flex: none;
-  width: 1.125rem;
-  height: 1.125rem;
-  color: var(--color-text-subtle);
-}
-/* Narrow cards put the icon above the title, so long titles never run into the chevron. */
-@container (max-width: 13rem) {
-  .ek-status-card__head {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    grid-template-areas:
-      "tile . chevron"
-      "title title title";
-    row-gap: var(--space-3);
-  }
-  .ek-status-card__head .ek-tile { grid-area: tile; }
-  .ek-status-card__title { grid-area: title; }
-  .ek-status-card__chevron { grid-area: chevron; align-self: start; }
-}
-/* Columns share the width, but a longer label («avvik / sannsynlige avvik») may take more. */
-.ek-status-card__metrics {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: auto;
-}
-.ek-status-card__metric {
+.ek-status-card__figure {
   display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-  min-width: 0;
-  padding-right: var(--space-3);
-}
-.ek-status-card__metric + .ek-status-card__metric {
-  padding-left: var(--space-5);
-  border-left: 1px solid var(--color-border);
-}
-.ek-status-card__metrics[data-count="1"] .ek-status-card__metric {
-  flex-direction: row;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--space-3);
+  column-gap: var(--space-2);
+  margin: 0;
 }
 .ek-status-card__value {
-  font-size: var(--text-2xl);
+  font-size: var(--text-3xl);
   font-weight: var(--weight-bold);
-  line-height: 1.15;
+  line-height: 1.1;
   letter-spacing: var(--tracking-tight);
   color: var(--value-color, var(--color-text));
 }
 .ek-status-card__label {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  line-height: var(--leading-snug);
-}
-.ek-status-card__foot {
-  margin-top: auto;
-  font-size: var(--text-xs);
-  color: var(--color-text-subtle);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
 }
 .ek-status-card__empty {
-  color: var(--color-text-muted);
+  margin: 0;
   font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+/* The smaller line and the arrow, at the bottom of every card. */
+/* Bottom-aligned: the arrows and the last line of the smaller text line up on every card. */
+.ek-status-card__foot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: auto;
+}
+.ek-status-card__secondary {
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--value-color, var(--color-text-muted));
+}
+.ek-status-card__secondary[data-value-tone="neutral"],
+.ek-status-card__secondary:not([data-value-tone]) {
+  color: var(--color-text-muted);
+}
+.ek-status-card__arrow {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 50%;
+  color: var(--color-text-muted);
+  transition: background-color 180ms var(--easing), border-color 180ms var(--easing), color 180ms var(--easing);
+}
+.ek-status-card__arrow svg {
+  width: 0.875rem;
+  height: 0.875rem;
+  transition: transform 180ms var(--easing);
+}
+.ek-status-card:hover .ek-status-card__arrow,
+.ek-status-card:focus-visible .ek-status-card__arrow {
+  background: var(--tone-bg);
+  border-color: var(--tone-border);
+  color: var(--tone-icon);
+}
+.ek-status-card:hover .ek-status-card__arrow svg {
+  transform: translateX(2px);
+}
+/* In a row of area cards, the cards share rows (subgrid): icons and titles, the big figures, the bottom lines and the
+   colour lines sit at the same height on every card, whatever a title or a smaller line needs. */
+@supports (grid-template-rows: subgrid) {
+  .ek-area-grid > .ek-status-card {
+    display: grid;
+    grid-row: span 4;
+    grid-template-rows: subgrid;
+    row-gap: var(--space-4);
+  }
+  .ek-area-grid > .ek-status-card > .ek-status-card__foot {
+    align-self: end;
+  }
+}
+/* The area's colour: a thin fixed line at the bottom (decoration – not a progress bar). */
+.ek-status-card__accent {
+  display: block;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--tone-icon);
+}
+/* Reduced motion: no lift and no moving arrow; the border and the focus ring stay. */
+@media (prefers-reduced-motion: reduce) {
+  .ek-status-card:hover,
+  .ek-status-card:hover .ek-status-card__arrow svg { transform: none; }
+}
+:root[data-reduce-motion="always"] .ek-status-card:hover,
+:root[data-reduce-motion="always"] .ek-status-card:hover .ek-status-card__arrow svg { transform: none; }
+
+/* Oversikt: one rhythm of 24 px between the groups and the boxes, and one grid for the four main boxes (rows of equal
+   height, columns that line up). */
+.ek-overview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+.ek-overview__notes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2) var(--space-6);
+}
+.ek-overview__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: stretch;
+}
+.ek-overview__grid > .ek-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+/* A footer (the activity's links) sits at the bottom of the box; the body before it keeps a natural gap. */
+.ek-overview__grid > .ek-card > .ek-card__footer {
+  margin-top: auto;
+}
+.ek-overview__body {
+  padding-bottom: var(--space-5);
+}
+/* «Detaljer og dekning per område»: one block per area. */
+.ek-overview__details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: var(--space-4) var(--space-6);
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.ek-overview__details dt {
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+.ek-overview__details dd {
+  margin: var(--space-1) 0 0;
+}
+.ek-overview__details ul {
+  margin: 0;
+  padding-left: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+/* An opened explanation takes the whole row, so the other one does not jump beside it. */
+.ek-overview__notes > div:has(> .ek-disclosure__button[aria-expanded="true"]) {
+  flex-basis: 100%;
+}
+@media (max-width: 75rem) {
+  .ek-overview__grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ============================================================ metric cards */
@@ -1568,6 +2019,18 @@ button.ek-metric-card[aria-pressed="true"] {
   font-weight: var(--weight-semibold);
   color: var(--color-text);
   line-height: var(--leading-snug);
+}
+/* A smaller figure under the main one: priority by size and place, not only by colour. */
+.ek-metric-card__secondary {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  line-height: var(--leading-snug);
+}
+.ek-metric-card__secondary-value {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--value-color, var(--color-text));
 }
 .ek-metric-card__description {
   margin-top: var(--space-1);
@@ -1623,6 +2086,15 @@ button.ek-metric-card[aria-pressed="true"] {
   min-width: 8.5rem;
   justify-content: space-between;
 }
+/* The step recommended first. */
+.ek-action-row[data-featured="true"] {
+  border-color: var(--color-border-strong, var(--color-border));
+  border-left: 4px solid var(--color-primary);
+  padding-block: var(--space-5);
+}
+.ek-action-row[data-featured="true"] .ek-action-row__title {
+  font-size: var(--text-lg);
+}
 @media (max-width: 40rem) {
   .ek-action-row {
     grid-template-columns: auto minmax(0, 1fr);
@@ -1633,13 +2105,14 @@ button.ek-metric-card[aria-pressed="true"] {
 }
 
 /* ============================================================= feature cards */
-/* A tool or area to open (Canvas-verktøy): icon, title, description and one clear action. */
+/* A tool or area to open (Canvas-verktøy): icon, title, description and one clear action – no status badges. Cards in
+   a row share the row's height, so the actions line up at the bottom; nothing has a fixed height. */
 .ek-feature-card {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-4);
   min-width: 0;
-  padding: var(--space-6);
+  padding: var(--space-5);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -1648,31 +2121,45 @@ button.ek-metric-card[aria-pressed="true"] {
 .ek-feature-card__head {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-5);
+  gap: var(--space-4);
 }
 .ek-feature-card__text {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-1);
   min-width: 0;
 }
 .ek-feature-card__title {
-  font-size: var(--text-xl);
+  font-size: var(--text-lg);
+  overflow-wrap: break-word;
+  hyphens: auto;
 }
 .ek-feature-card__description {
   font-size: var(--text-base);
   color: var(--color-text-muted);
+  overflow-wrap: break-word;
 }
-.ek-feature-card__body {
+/* What limits the tool here (missing access, not a Blueprint course). */
+.ek-feature-card__notice {
   display: flex;
-  flex-wrap: wrap;
+  align-items: flex-start;
   gap: var(--space-2);
+  margin-top: var(--space-1);
   font-size: var(--text-sm);
   color: var(--color-text-muted);
+  overflow-wrap: break-word;
 }
-.ek-feature-card__body > .ek-badge {
-  max-width: 100%;
-  white-space: normal;
+.ek-feature-card__notice[data-tone="warning"] {
+  color: var(--tone-warning-text);
+}
+.ek-feature-card__notice svg {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.2em;
+}
+.ek-feature-card__notice[data-tone="warning"] svg {
+  color: var(--tone-warning-icon);
 }
 .ek-feature-card__action {
   margin-top: auto;
@@ -1741,6 +2228,39 @@ button.ek-metric-card[aria-pressed="true"] {
   font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
+.ek-activity__sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+/* Status mark: icon + text in the status colour (≥ 4.5:1 on the surface in both themes), outlined in the same colour. */
+.ek-activity__status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  padding: 0 var(--space-2);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  line-height: 1.6;
+  color: var(--activity-status-color, var(--status-neutral));
+}
+.ek-activity__status-icon {
+  display: inline-flex;
+  flex: none;
+}
+.ek-activity__status-icon svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+.ek-activity__status[data-status-tone="success"] { --activity-status-color: var(--status-success); }
+.ek-activity__status[data-status-tone="warning"] { --activity-status-color: var(--status-warning); }
+.ek-activity__status[data-status-tone="danger"] { --activity-status-color: var(--status-critical); }
+.ek-activity__status[data-status-tone="info"] { --activity-status-color: var(--status-info); }
 .ek-activity__time {
   display: flex;
   flex-direction: column;
@@ -1804,12 +2324,12 @@ button.ek-metric-card[aria-pressed="true"] {
 }
 .ek-chart__tick {
   fill: var(--color-text-subtle);
-  font-size: 13px;
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
 }
 .ek-chart__category {
   fill: var(--color-text-muted);
-  font-size: 13px;
+  font-size: var(--text-xs);
 }
 .ek-chart__grid {
   stroke: var(--chart-grid);
@@ -1882,11 +2402,6 @@ button.ek-metric-card[aria-pressed="true"] {
 }
 
 /* ============================================================ misc pieces */
-.ek-dryrun-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-}
 .ek-list-reset {
   list-style: none;
   margin: 0;
@@ -2158,10 +2673,6 @@ button.ek-metric-card[aria-pressed="true"] {
   gap: 0.125rem;
   min-width: 0;
 }
-/* The first figure is the primary one and may carry the longer label. */
-.ek-status-card__metrics[data-count="2"] {
-  grid-template-columns: minmax(min-content, 1.45fr) minmax(min-content, 1fr);
-}
 /* In flowing layouts a long badge may wrap instead of pushing the page wider (tables keep one line). */
 .ek-cluster > .ek-badge,
 .ek-stack > .ek-badge {
@@ -2413,6 +2924,80 @@ button.ek-metric-card[aria-pressed="true"] {
   max-width: 28rem;
   word-break: break-all;
 }
+.ek-table--top th,
+.ek-table--top td {
+  vertical-align: top;
+}
+/* Stacked rows on narrow screens: one block per row, the column name before each cell (the header row is hidden
+   visually but stays for assistive technology). */
+@container content (max-width: 44rem) {
+  .ek-table--stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .ek-table--stack,
+  .ek-table--stack tbody,
+  .ek-table--stack tr,
+  .ek-table--stack th,
+  .ek-table--stack td {
+    display: block;
+    width: 100%;
+  }
+  .ek-table--stack tbody tr {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+  }
+  .ek-table--stack tbody tr > * {
+    padding: var(--space-1) 0;
+    border-bottom: 0;
+  }
+  .ek-table--stack tbody td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text-muted);
+  }
+}
+/* The link overview: a link title over its domain and address; the address can wrap anywhere. */
+.ek-link-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 30rem;
+}
+.ek-link-cell__address {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+.ek-link-places {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ek-link-places li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
+.ek-link-candidates {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
 .ek-table--narrow {
   max-width: 28rem;
 }
@@ -2425,20 +3010,236 @@ button.ek-metric-card[aria-pressed="true"] {
 .ek-nav-drawer .ek-btn--icon {
   color: var(--nav-text);
 }
+/* ============================================================== setup (Oppsett) */
+/* One centred column with a comfortable reading width: logo, the four steps, one panel per step. */
+/* Room for the scroll bar is kept also when nothing scrolls, so the page does not jump sideways when a disclosure makes
+   it taller than the window. */
+html:has(.ek-setup) {
+  scrollbar-gutter: stable;
+}
 .ek-setup {
   min-height: 100vh;
   background: var(--color-bg);
-  padding: var(--space-8) var(--space-4);
+  padding: var(--space-8) var(--space-4) var(--space-12);
 }
 .ek-setup__main {
-  max-width: 62rem;
+  max-width: 44rem;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
 }
 .ek-setup__brand {
-  font-size: var(--text-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+.ek-setup__brand .ek-brand__mark {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+.ek-setup__brand-sub {
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--color-border-strong);
+  font-weight: var(--weight-normal);
+  color: var(--color-text-muted);
+}
+.ek-setup__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-8);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+@media (max-width: 40rem) {
+  .ek-setup {
+    padding: var(--space-5) var(--space-4) var(--space-8);
+  }
+  .ek-setup__panel {
+    padding: var(--space-5);
+  }
 }
 .ek-setup__title {
-  font-size: var(--text-xl);
+  font-size: var(--text-2xl);
+  line-height: var(--leading-tight);
+}
+.ek-setup__title:focus {
+  outline: none;
+}
+.ek-setup__title:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 4px;
+}
+.ek-setup__lead {
+  font-size: var(--text-md);
+  color: var(--color-text-secondary);
+}
+.ek-setup__h2 {
+  font-size: var(--text-card);
+  font-weight: var(--weight-semibold);
+}
+/* Back on the left, the main action on the right – also when there is only the main action. */
+.ek-setup__actions {
+  display: flex;
+  flex-wrap: wrap-reverse;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+.ek-setup__actions > .ek-btn--primary {
+  margin-left: auto;
+}
+.ek-setup__summary {
+  display: grid;
+  /* The labels get what they need up to 11rem (longer ones wrap), so the values – course names – get the room. */
+  grid-template-columns: minmax(7rem, 11rem) minmax(0, 1fr);
+  gap: var(--space-2) var(--space-5);
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+.ek-setup__summary dt {
+  color: var(--color-text-muted);
+}
+.ek-setup__summary dd {
+  margin: 0;
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+/* A course: the name on the main line, code and term on a muted line below (also in the access details). */
+.ek-setup__course,
+.ek-setup__access-label {
+  display: block;
+}
+.ek-setup__meta {
+  display: block;
+  font-weight: var(--weight-normal);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted); /* ≥ 7:1 on the surfaces in both themes */
+}
+/* Course names, one per line (long names wrap – they are not shortened here). */
+.ek-setup__names {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+/* Who and where – the most important lines when confirming the connection. */
+.ek-setup__summary dd.ek-setup__key {
+  font-size: var(--text-md);
+}
+/* Short status boxes in the setup (e.g. «Tilkoblingen virker.»). */
+.ek-setup__panel .ek-alert {
+  padding: var(--space-3) var(--space-4);
+}
+@media (max-width: 30rem) {
+  .ek-setup__summary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .ek-setup__summary dd {
+    margin-bottom: var(--space-2);
+  }
+}
+/* Permissions: the text says the level; the icon colour only repeats it. */
+.ek-setup__access {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ek-setup__access li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.ek-setup__access svg {
+  flex: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin-top: 0.2em;
+  color: var(--status-neutral);
+}
+.ek-setup__access li[data-level="all"] svg { color: var(--status-success); }
+.ek-setup__access li[data-level="some"] svg { color: var(--status-warning); }
+.ek-setup__access--detail {
+  font-size: var(--text-sm);
+}
+.ek-setup__connected {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+}
+.ek-setup__connected svg {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0.1em;
+  color: var(--status-success);
+}
+.ek-setup__howto,
+.ek-setup__facts,
+.ek-setup__sources {
+  margin: 0;
+  padding-left: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+/* Progress-only steps (no buttons, e.g. the setup). */
+span.ek-steps__button--static {
+  cursor: default;
+}
+span.ek-steps__button--static:hover {
+  background: none;
+}
+
+/* A choice card with «Vis detaljer»: the label covers the whole card (::after), so a click anywhere selects it, and
+   the details toggle lies above the label. */
+.ek-choice-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.ek-choice-card__details .ek-disclosure__button {
+  padding: 0;
+  min-height: 1.5rem; /* ≥ 24 px target (WCAG 2.5.8) */
+}
+.ek-choice-card__label::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.ek-choice-card__label .ek-choice__label {
+  font-weight: var(--weight-semibold);
+}
+.ek-choice-card__details {
+  position: relative;
+  z-index: 1;
+  padding-left: calc(1.15rem + var(--space-2));
+}
+.ek-choice-card:has(input:focus-visible) {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
 }
 .ek-message-page {
   margin: 0 auto;
@@ -2515,6 +3316,199 @@ button.ek-metric-card[aria-pressed="true"] {
   outline-offset: 2px;
 }
 
+/* Horizontal steps above the content (Emnedesign): one row, compact line on narrow screens. */
+.ek-steps--horizontal {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+.ek-steps--horizontal > .ek-steps__item {
+  gap: var(--space-2);
+}
+.ek-steps--horizontal .ek-steps__button {
+  width: auto;
+  white-space: nowrap;
+}
+.ek-steps--horizontal .ek-steps__item[aria-current="step"] {
+  background: none;
+}
+.ek-steps--horizontal .ek-steps__item[aria-current="step"] .ek-steps__button {
+  background: var(--tone-info-bg);
+  color: var(--tone-info-text);
+}
+.ek-steps--horizontal .ek-steps__item[aria-current="step"] .ek-steps__num {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-primary-contrast);
+}
+.ek-steps__sep {
+  flex: none;
+  color: var(--color-text-muted);
+}
+.ek-stepper__compact {
+  display: none;
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+@media (max-width: 40rem) {
+  .ek-stepper--horizontal .ek-steps {
+    display: none;
+  }
+  .ek-stepper--horizontal .ek-stepper__compact {
+    display: block;
+  }
+}
+
+/* Emnedesign, first step: the choice beside a sample of a designed page on wide screens; the sample after the
+   controls on narrow ones. */
+.ek-design-start {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
+  gap: var(--space-6);
+  align-items: start;
+}
+@container content (max-width: 56rem) {
+  .ek-design-start {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* The next action stays at hand at the bottom of the window while the choices are long; focused elements are
+   scrolled clear of it (scroll-padding), so it never hides what has focus. */
+.ek-action-bar {
+  position: sticky;
+  bottom: var(--space-3);
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+html:has(.ek-action-bar) {
+  scroll-padding-bottom: 6rem;
+}
+.ek-design-start__example {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ek-design-start__example h2 {
+  font-size: var(--text-base);
+  margin: 0;
+}
+/* Module picker: one box with the search field, the number of modules or hits, and the list of rows. */
+.ek-module-picker {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.ek-module-picker__legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-md, var(--text-base));
+  font-weight: var(--weight-semibold);
+}
+.ek-module-picker__box {
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+.ek-module-picker__search {
+  padding: var(--space-3) var(--space-3) 0;
+}
+.ek-module-picker__count {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-border);
+}
+.ek-module-picker__empty {
+  padding: var(--space-3) var(--space-4);
+}
+.ek-module-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2);
+  max-height: min(22rem, 50vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.ek-module-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.ek-module-row:hover {
+  background: var(--color-surface-hover);
+}
+.ek-module-row:has(input:checked) {
+  border-color: var(--color-primary);
+  background: var(--tone-info-bg);
+}
+.ek-module-row:has(input:focus-visible) {
+  outline: 3px solid var(--color-focus, var(--color-link));
+  outline-offset: 1px;
+}
+.ek-module-row input {
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: 0.15rem 0 0;
+  flex: none;
+  accent-color: var(--color-primary);
+}
+.ek-module-row__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ek-module-row__name {
+  font-weight: var(--weight-medium);
+  overflow-wrap: anywhere;
+}
+.ek-module-row__meta {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.ek-scope-summary {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.ek-scope-summary dt {
+  font-weight: var(--weight-semibold);
+}
+.ek-scope-summary dd {
+  margin: 0;
+}
+@media (max-width: 40rem) {
+  .ek-scope-summary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .ek-scope-summary dd {
+    margin-bottom: var(--space-2);
+  }
+}
+
 /* Clickable wizard steps (Stepper). */
 .ek-steps__item--button {
   padding: 0;
@@ -2543,4 +3537,516 @@ button.ek-metric-card[aria-pressed="true"] {
 .ek-steps__button:focus-visible {
   outline: 3px solid var(--color-focus, var(--color-link));
   outline-offset: 2px;
+}
+
+/* ============================================================ review & fix workflow */
+/* The detail view is built for doing the fix: the image (or content) beside the form on wide screens, stacked on
+   narrow ones; the most used buttons stay at hand; technical information sits in disclosures. */
+.ek-review {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+@media (max-width: 60rem) {
+  .ek-review {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.ek-review__media {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.ek-review__image {
+  margin: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-sunken);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 12rem;
+  overflow: hidden;
+}
+.ek-review__image img {
+  display: block;
+  max-width: 100%;
+  max-height: 32rem;
+  object-fit: contain;
+}
+.ek-review__context {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ek-review__context blockquote {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--color-border);
+  background: var(--color-surface-sunken);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: var(--text-sm);
+}
+.ek-review__actions {
+  position: sticky;
+  bottom: calc(-1 * var(--space-4));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  z-index: 1;
+}
+.ek-review__actions .ek-review__hint {
+  margin-left: auto;
+}
+.ek-change-snippet {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-2);
+}
+@media (max-width: 40rem) {
+  .ek-change-snippet {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.ek-change-snippet pre {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-sunken);
+}
+.ek-change-snippet__label {
+  display: block;
+  font-size: var(--text-xs, 0.8125rem);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-1);
+}
+.ek-finding-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.ek-selection-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-pop);
+}
+.ek-selection-bar__count {
+  font-weight: 600;
+  margin-right: auto;
+}
+.ek-item-row__lead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.ek-uses {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.ek-uses li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.ek-publish-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ek-publish-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+/* ================================================== background jobs («Analysestatus») */
+/* A compact control just left of the analysis button, and a panel below it that lies over the page. */
+.ek-jobs {
+  position: relative;
+  flex: none;
+}
+.ek-jobs-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.75rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ek-jobs-button[data-mode="active"] {
+  color: var(--color-text);
+}
+/* At rest: a discreet icon (same height as the analysis button), no animation. */
+.ek-jobs-button[data-mode="rest"] {
+  width: 2.75rem;
+  padding: 0;
+  justify-content: center;
+  border-color: transparent;
+  background: transparent;
+  color: var(--color-text-muted);
+}
+.ek-jobs-button[data-mode="rest"]:hover {
+  border-color: var(--color-border);
+  background: var(--color-surface-hover);
+}
+.ek-jobs-button[data-mode="rest"] svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: currentColor;
+}
+.ek-jobs-button[data-tone="warning"] {
+  border-color: var(--tone-warning-border);
+  background: var(--tone-warning-bg);
+  color: var(--tone-warning-text);
+}
+.ek-jobs-button:hover {
+  border-color: var(--color-primary);
+}
+.ek-jobs-button[aria-expanded="true"] {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
+}
+.ek-jobs-button svg {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+.ek-jobs-button > svg:first-child,
+.ek-jobs-spinner {
+  color: var(--tone-info-icon);
+}
+.ek-jobs-button[data-tone="warning"] > svg:first-child {
+  color: var(--tone-warning-icon);
+}
+.ek-jobs-button__chevron {
+  color: var(--color-text-subtle);
+}
+/* Unresolved jobs: a static warning symbol beside the count (the count says it in words). */
+.ek-jobs-button > svg.ek-jobs-button__warn {
+  color: var(--tone-warning-icon);
+}
+/* At rest the icon is discreet grey. */
+.ek-jobs-button[data-mode="rest"] > svg:first-child {
+  color: var(--color-text-muted);
+}
+/* The one spinning job indicator: small and calm. Under reduced motion it is a static symbol instead. */
+.ek-jobs-spinner {
+  width: 0.875rem;
+  height: 0.875rem;
+  animation-duration: 1.6s;
+}
+.ek-jobs-static {
+  display: none;
+  color: var(--tone-info-icon);
+}
+.ek-jobs-panel {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+  color: var(--color-text);
+  text-align: left;
+  white-space: normal;
+}
+.ek-jobs-panel[hidden] {
+  display: none;
+}
+.ek-jobs-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-right: calc(-1 * var(--space-2));
+}
+.ek-jobs-panel__title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+}
+.ek-jobs-panel__empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+.ek-jobs-panel__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ek-jobs-panel__subtitle {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+  color: var(--color-text-muted);
+}
+.ek-jobs-panel__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1) var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+}
+.ek-jobs-panel__foot .ek-btn--link,
+.ek-jobs-panel__foot a {
+  min-height: 1.5rem;
+  padding: 0;
+  font-size: var(--text-xs);
+}
+.ek-jobs-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ek-job {
+  display: grid;
+  grid-template-columns: 2.25rem minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-border);
+}
+.ek-job:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.ek-job:last-child {
+  padding-bottom: 0;
+}
+/* A static symbol in a light tile: blue while it runs, green when finished, amber or red when it stopped. */
+.ek-job__tile {
+  --tile-bg: var(--tone-neutral-bg);
+  --tile-icon: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius);
+  background: var(--tile-bg);
+  color: var(--tile-icon);
+}
+.ek-job__tile svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+.ek-job[data-state="running"] .ek-job__tile,
+.ek-job[data-state="stopping"] .ek-job__tile { --tile-bg: var(--tone-info-bg); --tile-icon: var(--tone-info-icon); }
+.ek-job[data-state="completed"] .ek-job__tile { --tile-bg: var(--tone-success-bg); --tile-icon: var(--tone-success-icon); }
+.ek-job[data-state="failed"] .ek-job__tile { --tile-bg: var(--tone-danger-bg); --tile-icon: var(--tone-danger-icon); }
+.ek-job[data-state="interrupted"] .ek-job__tile,
+.ek-job[data-state="cancelled"] .ek-job__tile,
+.ek-job[data-state="unknown"] .ek-job__tile { --tile-bg: var(--tone-warning-bg); --tile-icon: var(--tone-warning-icon); }
+.ek-job__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.ek-job__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.ek-job__name {
+  font-size: var(--text-base);
+  font-weight: var(--weight-bold);
+  overflow-wrap: anywhere;
+}
+/* The status in words, on a light pill (colour is never the only signal). */
+.ek-job__badge {
+  flex: none;
+  padding: 0.125rem var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--tone-bg);
+  color: var(--tone-text);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+.ek-job__course {
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+}
+.ek-job__activity {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+.ek-job__step {
+  color: var(--color-text-muted);
+}
+.ek-job__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ek-job__note {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+}
+.ek-job__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+}
+.ek-job__actions:empty {
+  display: none;
+}
+/* A text-only first action lines up with the text above it. */
+.ek-job__actions > .ek-btn--ghost:first-child {
+  margin-inline-start: calc(-1 * var(--space-3) * var(--density));
+}
+/* Thin, clear blue bars. */
+.ek-job .ek-progress {
+  height: 0.375rem;
+  margin-top: var(--space-1);
+  border: 0;
+  background: var(--tone-info-bg);
+}
+
+/* The header's analysis button while an analysis of the course runs: disabled, the status in words, no animation. */
+.ek-btn.ek-btn--status[aria-disabled="true"] {
+  opacity: 1;
+  cursor: not-allowed;
+  max-width: min(26rem, 100%);
+  background: var(--color-surface-sunken);
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+}
+.ek-analyse-status__full {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ek-analyse-status__short {
+  display: none;
+}
+/* A job started on a page: one line, not a status card (and no spinner). */
+.ek-job-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+.ek-job-inline svg {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  color: var(--tone-info-icon);
+}
+.ek-job-inline[data-state="completed"] svg {
+  color: var(--tone-success-icon);
+}
+/* When the results on a page are from, while a new check runs or after one stopped. */
+.ek-freshness {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+}
+.ek-analyse-label__short {
+  display: none;
+}
+/* Narrow screens: short texts («Analyser», «124 av 380») so the button never pushes the header off the screen, and
+   the status control gives way (its full text is in its name and in the panel). */
+@media (max-width: 40rem) {
+  .ek-analyse-status__full,
+  .ek-analyse-label__full {
+    display: none;
+  }
+  .ek-analyse-status__short,
+  .ek-analyse-label__short {
+    display: inline;
+  }
+  .ek-jobs {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .ek-jobs-button {
+    max-width: 100%;
+  }
+  .ek-jobs-button__text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* Room for the words: the open/closed state is in aria-expanded and visible in the panel itself. */
+  .ek-jobs-button__chevron {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ek-jobs-spinner { display: none; }
+  .ek-jobs-static { display: inline-block; }
+}
+:root[data-reduce-motion="always"] .ek-jobs-spinner { display: none; }
+:root[data-reduce-motion="always"] .ek-jobs-static { display: inline-block; }
+@media (forced-colors: active) {
+  .ek-jobs-button,
+  .ek-jobs-panel,
+  .ek-job__badge { border: 1px solid CanvasText; }
 }

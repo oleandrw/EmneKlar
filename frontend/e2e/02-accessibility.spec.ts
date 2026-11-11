@@ -12,12 +12,12 @@ const PAGES: [string, string][] = [
   ["/quizassistent", "Quizassistent"],
   ["/quizassistent/sporsmalsbank", "Quizassistent"],
   ["/quizassistent/ny-quiz", "Quizassistent"],
-  ["/emneforside", "Emneforside"],
+  ["/emnedesign", "Emnedesign"],
   ["/canvas-verktoy", "Canvas-verktøy"],
   ["/canvas-verktoy/modulkrav", "Automatiske modulkrav"],
   ["/canvas-verktoy/blueprint", "Blueprint-låsing"],
   ["/canvas-verktoy/innstillinger", "Canvas-innstillinger"],
-  ["/canvas-verktoy/endringslogg", "Backup og endringslogg"],
+  ["/canvas-verktoy/endringslogg", "Sikkerhetskopier og endringslogg"],
   ["/canvas-verktoy/emne-rag", "Emnets kunnskapsbase"],
   ["/canvas-verktoy/bildeassistent", "KI-bildeassistent"],
   ["/rapporter", "Rapporter"],
@@ -65,12 +65,13 @@ test("axe – mørkt tema og dialoger", async ({ page }) => {
   await page.getByLabel("Tema").selectOption("dark");
   await page.getByRole("button", { name: "Lagre" }).first().click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  for (const path of ["/oversikt", "/universell-utforming", "/emneforside", "/innstillinger/ki-assistenter"]) {
+  for (const path of ["/oversikt", "/universell-utforming", "/emnedesign", "/innstillinger/ki-assistenter"]) {
     await page.goto(path);
     await page.waitForLoadState("networkidle");
     await expectNoAxeViolations(page, `${path} (mørkt tema)`);
   }
-  await page.getByRole("banner").getByRole("button", { name: "Kjør ny analyse" }).click();
+  await page.goto("/oversikt");
+  await page.getByRole("banner").getByRole("button", { name: "Analyser hele emnet" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expectNoAxeViolations(page, "analysedialog (mørkt tema)");
   await page.keyboard.press("Escape");
@@ -96,7 +97,7 @@ test("tastatur: hopp til hovedinnhold og synlig fokus", async ({ page }) => {
   await page.keyboard.press("Enter");
   await expect(page.locator("main")).toBeFocused();
   // The global analysis dialog traps focus and returns it to the opener.
-  const opener = page.getByRole("banner").getByRole("button", { name: "Kjør ny analyse" });
+  const opener = page.getByRole("banner").getByRole("button", { name: "Analyser hele emnet" });
   await opener.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog")).toBeVisible();
@@ -111,7 +112,20 @@ test.describe("mobil", () => {
     await page.goto("/oversikt");
     const menu = page.getByRole("button", { name: /meny/i });
     await expect(menu).toBeVisible();
+    // General help is in the menu, not a second icon in the top bar.
+    await expect(page.getByRole("banner").getByRole("link", { name: "Hjelp" })).toHaveCount(0);
     await menu.click();
+    await expect(page.getByRole("dialog").getByRole("link", { name: "Hjelp" })).toBeVisible();
+    // The account is at the bottom of the menu; Escape closes only the account menu and returns focus to its button.
+    const account = page.getByRole("dialog").getByRole("button", { name: /– konto$/ });
+    await account.click();
+    await expect(account).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByRole("dialog").getByRole("link", { name: "Canvas-tilkobling" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(account).toHaveAttribute("aria-expanded", "false");
+    await expect(account).toBeFocused();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("banner").getByText(/instructure|127\.0\.0\.1/)).toHaveCount(0);
     await expect(page.getByRole("dialog").getByRole("link", { name: "Rapporter" })).toBeVisible();
     await page.getByRole("dialog").getByRole("link", { name: "Rapporter" }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Rapporter" })).toBeVisible();

@@ -239,6 +239,15 @@ class CanvasAPI:
         return await self.client.get_paginated(
             f"/api/v1/courses/{course_id}/blueprint_templates/default/unsynced_changes")
 
+    async def blueprint_associated_courses(self, course_id: str) -> list[dict[str, Any]]:
+        return await self.client.get_paginated(
+            f"/api/v1/courses/{course_id}/blueprint_templates/default/associated_courses")
+
+    async def blueprint_migration(self, course_id: str, migration_id: str) -> dict[str, Any]:
+        """``workflow_state``: ``queued | exporting | imports_queued | completed | exports_failed | imports_failed``."""
+        return await self.client.get_json(
+            f"/api/v1/courses/{course_id}/blueprint_templates/default/migrations/{quote(migration_id, safe='')}")
+
     # -- writes (WritePermit required) ----------------------------------------------------------
 
     async def update_page(self, course_id: str, url_or_id: str, fields: dict[str, Any], *,
@@ -380,6 +389,14 @@ class CanvasAPI:
             body["usage_rights"]["legal_copyright"] = legal_copyright
         return await self.client.write_json("PUT", f"/api/v1/courses/{course_id}/usage_rights", json=body,
                                             permit=permit)
+
+    async def start_blueprint_migration(self, course_id: str, *, comment: str, send_notification: bool,
+                                        permit: WritePermit) -> dict[str, Any]:
+        """Begin a sync to the associated courses (``comment``, ``send_notification``; other options keep Canvas'
+        defaults – settings are not copied by EmneKlar)."""
+        return await self.client.write_json(
+            "POST", f"/api/v1/courses/{course_id}/blueprint_templates/default/migrations", permit=permit,
+            json={"comment": comment[:255], "send_notification": send_notification, "copy_settings": False})
 
     async def restrict_blueprint_item(self, course_id: str, content_type: str, content_id: str, restricted: bool,
                                       restrictions: dict[str, bool] | None, *, permit: WritePermit) -> Any:

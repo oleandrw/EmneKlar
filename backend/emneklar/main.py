@@ -16,22 +16,29 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.responses import Response as StarletteResponse
 from starlette.staticfiles import StaticFiles
+from starlette.types import Scope
 
 from emneklar import APP_NAME, __version__
 from emneklar.api.router import api_routers
 from emneklar.config import RuntimeConfig
 from emneklar.core.container import AppContainer
 from emneklar.core.errors import MESSAGES, AppError
+from emneklar.core.presence import WindowPresence
 from emneklar.core.security.web import SecurityMiddleware
 
 log = logging.getLogger(__name__)
+#: Starlette's own HTTP errors with a message of their own (405 keeps its «Allow» header).
+HTTP_ERROR_CODES = {404: "not_found", 405: "method_not_allowed"}
 
 NO_FRONTEND_PAGE = """<!doctype html><html lang="nb"><head><meta charset="utf-8"><title>EmneKlar</title>
 </head><body style="font-family:system-ui,sans-serif;max-width:40rem;margin:4rem auto;padding:0 1rem;line-height:1.5">
 <h1>Brukergrensesnittet er ikke bygget</h1>
-<p>Kjør <strong>setup.bat</strong> på nytt. Utviklere: kjør <code>npm ci</code> og <code>npm run build</code> i
-mappen <code>frontend</code>, eller start Vite-serveren med <code>npm run dev</code>.</p></body></html>"""
+<p>Installer EmneKlar på nytt (dataene dine beholdes), eller kjør <strong>setup.bat</strong> i programmappen.
+Utviklere: kjør <code>npm ci</code> og <code>npm run build</code> i mappen <code>frontend</code>, eller start
+Vite-serveren med <code>npm run dev</code>.</p></body></html>"""
 
 
 def create_app(container: AppContainer | None = None, *, config: RuntimeConfig | None = None) -> FastAPI:
@@ -56,6 +63,8 @@ def create_app(container: AppContainer | None = None, *, config: RuntimeConfig |
         openapi_url="/api/openapi.json" if config.dev_mode else None,
     )
     app.state.container = container
+    # Counts the open windows; the launcher arms it (core/presence.py), everything else leaves it unarmed.
+    app.state.presence = WindowPresence(running_jobs=lambda: len(container.jobs.list(active_only=True)))
 
     @app.exception_handler(AppError)
     async def app_error(_: Request, exc: AppError) -> JSONResponse:
@@ -69,8 +78,10 @@ def create_app(container: AppContainer | None = None, *, config: RuntimeConfig |
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:
-        code = "not_found" if exc.status_code == 404 else "internal_error"
-        return JSONResponse({"error": {"code": code, "message": MESSAGES[code]}}, status_code=exc.status_code)
+        # 404 and 405 are the client asking for something that is not there; anything else is unexpected here.
+        code = HTTP_ERROR_CODES.get(exc.status_code, "internal_error")
+        return JSONResponse({"error": {"code": code, "message": MESSAGES[code]}}, status_code=exc.status_code,
+                            headers=exc.headers)
 
     @app.exception_handler(Exception)
     async def unexpected(_: Request, exc: Exception) -> JSONResponse:
@@ -88,10 +99,27 @@ def create_app(container: AppContainer | None = None, *, config: RuntimeConfig |
     return app
 
 
+#: Every file under /assets has a content hash in its name (Vite): a new build gives new names, so a browser may keep
+#: a file for good. index.html (no-cache) decides which names are current.
+IMMUTABLE = "public, max-age=31536000, immutable"
+
+
+class HashedAssets(StaticFiles):
+    """The built frontend's hashed files: cached for good, and compressed (see _mount_frontend)."""
+
+    async def get_response(self, path: str, scope: Scope) -> StarletteResponse:
+        response = await super().get_response(path, scope)
+        if response.status_code in (200, 304):
+            response.headers["Cache-Control"] = IMMUTABLE
+        return response
+
+
 def _mount_frontend(app: FastAPI, dist: Path | None) -> None:
     index = dist / "index.html" if dist else None
     if dist and (dist / "assets").is_dir():
-        app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
+        # Compression only here: the scripts and styles are large and static. API responses (and the event stream)
+        # are left as they are.
+        app.mount("/assets", GZipMiddleware(HashedAssets(directory=dist / "assets"), minimum_size=1024), name="assets")
 
     @app.get("/{path:path}", include_in_schema=False)
     async def spa(path: str) -> Response:

@@ -1,13 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, CircleAlert, Download, ExternalLink as ExternalIcon, FileChartColumn, FileText, ListChecks, Trash } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router";
 
 import { api } from "../../core/api/client";
 import { useCurrentCourse } from "../../core/course";
-import { formatDate, formatDateTime, formatTime } from "../../core/format";
-import { HelpLink } from "../../core/HelpLink";
+import { formatDate, formatDateTime, formatNumber, formatTime } from "../../core/format";
 import { usePageTitle } from "../../core/usePageTitle";
-import { useUi } from "../../core/ui";
 import {
   Alert,
   Badge,
@@ -23,6 +22,7 @@ import {
   useToast,
   type Column,
 } from "../../design-system";
+import { JobHistory } from "./JobHistory";
 
 interface ReportTypes {
   types: { value: string; label: string; analysed: boolean }[];
@@ -59,7 +59,7 @@ const REPORT_SECTIONS: [string, string][] = [
 ];
 
 interface OverviewCounts {
-  cards: Record<string, { total: number; last_run: string | null }>;
+  cards: Record<string, { total: number; last_run: string | null; by_classification?: Record<string, number> }>;
 }
 
 function formatSize(bytes: number): string {
@@ -69,7 +69,6 @@ function formatSize(bytes: number): string {
 export function ReportsPage() {
   usePageTitle("Rapporter");
   const { courseId } = useCurrentCourse();
-  const ui = useUi();
   const toast = useToast();
   const client = useQueryClient();
   const [type, setType] = useState("full");
@@ -111,7 +110,12 @@ export function ReportsPage() {
   const selectedType = types.data.types.find((t) => t.value === type);
   const cards = Object.values(overview.data?.cards ?? {});
   const lastRun = cards.map((c) => c.last_run).filter((t): t is string => Boolean(t)).sort().pop() ?? null;
+  // The same hierarchy as Oversikt: confirmed problems are the main figure (red only when there are any), likely ones
+  // a smaller figure under it, and every open finding (also suggestions and manual checks) only as plain text.
   const openFindings = cards.reduce((sum, c) => sum + c.total, 0);
+  const ofClass = (cls: string) => cards.reduce((sum, c) => sum + (c.by_classification?.[cls] ?? 0), 0);
+  const confirmed = ofClass("violation");
+  const likely = ofClass("likely_violation");
   const ready = types.data.types.filter((t) => t.analysed).length;
 
   const columns: Column<Report>[] = [
@@ -144,16 +148,19 @@ export function ReportsPage() {
 
   return (
     <>
-      <PageHeader title="Rapporter" description="Rapporter bygger på de siste analysene som er lagret i EmneKlar. De inneholder ingen studentdata."
-        actions={<HelpLink topic="rapporter" />} />
+      <PageHeader title="Rapporter" description="Rapporter bygger på de siste analysene som er lagret i EmneKlar. De inneholder ingen studentdata." />
       <div className="ek-stack" data-gap="6">
         <div className="ek-grid" data-cols="4" data-gap="5">
           <MetricCard icon={<FileText />} tone="info" shape="square" value={reports.data?.items.length ?? "–"}
             label={reports.data?.items.length === 1 ? "rapport" : "rapporter"} description="Lagret for dette emnet" />
           <MetricCard icon={<CalendarDays />} tone="violet" shape="square" value={lastRun ? formatDate(lastRun) : "–"}
             label="Siste analyse" description={lastRun ? `Kl. ${formatTime(lastRun)}` : "Ingen analyse ennå"} />
-          <MetricCard icon={<CircleAlert />} tone="danger" shape="square" value={overview.data ? openFindings : "–"}
-            valueTone={openFindings ? "critical" : "neutral"} label="åpne funn" description="I siste analyse av alle områder" />
+          <MetricCard icon={<CircleAlert />} tone="danger" shape="square" value={overview.data ? confirmed : "–"}
+            valueTone={confirmed ? "critical" : "neutral"} label="bekreftede avvik og feil"
+            secondary={overview.data ? { value: likely, label: "sannsynlige avvik og feil", tone: "warning" } : null}
+            description={overview.data
+              ? `${formatNumber(openFindings)} åpne funn i alt i siste analyse av alle områder, også det som bør vurderes, forslag og manuelle kontroller.`
+              : "I siste analyse av alle områder"} />
           <MetricCard icon={<ListChecks />} tone="success" shape="square" value={`${ready} av ${types.data.types.length}`}
             label="rapporttyper klare" description="Rapporttyper med en analyse å bygge på" />
         </div>
@@ -172,9 +179,9 @@ export function ReportsPage() {
               PDF: åpne HTML-rapporten og velg «Skriv ut» → «Lagre som PDF» i nettleseren. Rapporten er tilpasset utskrift.
             </p>
             {selectedType && !selectedType.analysed ? (
-              <Alert tone="info" title="Ingen analyse ennå"
-                actions={<Button size="sm" onClick={() => ui.openAnalysis()}>Kjør analyse</Button>}>
-                Kjør en analyse av emnet før du lager denne rapporten.
+              <Alert tone="info" title="Ingen analyse ennå">
+                Kjør en analyse av emnet før du lager denne rapporten – for eksempel med «Analyser hele emnet» på{" "}
+                <Link to="/oversikt">Oversikt</Link>.
               </Alert>
             ) : null}
             <div>
@@ -210,6 +217,7 @@ export function ReportsPage() {
               rowKey={(r) => r.id} empty="Ingen rapporter for dette emnet ennå." />
           )}
         </Card>
+        <JobHistory courseId={courseId} />
       </div>
       <ConfirmDialog
         open={deleting !== null}

@@ -270,7 +270,8 @@ async def youtube_captions(state: BuildState, item: SourceItem) -> tuple[Transcr
     try:
         import youtube_transcript_api  # noqa: F401
     except ImportError:
-        return None, Waiting("YouTube-teksting krever pakken youtube-transcript-api. Lukk EmneKlar og kjør update.bat.")
+        return None, Waiting("YouTube-teksting krever pakken youtube-transcript-api, som mangler i denne "
+                             "installasjonen. Oppdater EmneKlar, eller installer programmet på nytt.")
     await online_pause(state, "youtube")
     try:
         rows, language, generated = await asyncio.to_thread(_youtube_rows, item)
@@ -431,8 +432,8 @@ async def local_transcript(state: BuildState, item: SourceItem) -> tuple[Transcr
     """Download the media and transcribe it (cached by file hash). Returns (transcript, reason when skipped)."""
     worker = transcriber(state)
     if not worker.available():
-        return None, Waiting("Videoen har ingen teksting, og lokale modeller for transkripsjon er ikke installert "
-                             "(lukk EmneKlar, kjør setup.bat på nytt og svar «j» på spørsmålet om lokale modeller).")
+        return None, Waiting("Videoen har ingen teksting, og lokale modeller for transkripsjon følger ikke med "
+                             "EmneKlar. Velg en ekstern KI-tjeneste for transkripsjon under Innstillinger.")
     if worker.downloads_needed() and not state.request.accept_downloads:
         return None, Waiting("Videoen har ingen teksting, og NB-Whisper er ikke lastet ned ennå. Trykk «Oppdater "
                              "kunnskapsbasen» og godta nedlastingen i estimatet for å transkribere.")
@@ -469,7 +470,8 @@ async def local_transcript(state: BuildState, item: SourceItem) -> tuple[Transcr
 
 
 PIECE_ERRORS = {"no_audio": "Fant ingen lyd i videoen.",
-                "no_decoder": "Lyden kunne ikke hentes ut (FFmpeg mangler). Kjør setup.bat på nytt.",
+                "no_decoder": "Lyden kunne ikke hentes ut (FFmpeg-støtten mangler i denne installasjonen). Installer "
+                              "EmneKlar på nytt.",
                 "decode_failed": "Lyden kunne ikke leses (filen kan være skadet eller i et ukjent format).",
                 "timeout": "Det tok for lang tid å hente ut lyden.", "crashed": "Lyduttrekket krasjet.",
                 "memory": "Lyden krevde for mye minne."}

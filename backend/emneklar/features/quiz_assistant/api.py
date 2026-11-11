@@ -21,7 +21,7 @@ from emneklar.core.errors import AppError, NotFoundError
 from emneklar.core.jobs.manager import JobContext
 from emneklar.core.storage.models import AnalysisRun, QuizPreset
 from emneklar.features.course_structure.api import latest_snapshot
-from emneklar.features.findings.api import enrich
+from emneklar.features.findings.api import enrich_many
 from emneklar.features.findings.store import FindingStore
 from emneklar.features.quiz_assistant import ai_review
 from emneklar.features.quiz_assistant.analyzer import quiz_draft
@@ -93,9 +93,8 @@ async def quiz_detail(course_id: str, quiz_id: str, c: AppContainer = Depends(ge
     _flag(c)
     course_id = require_course_id(course_id)
     quiz = await load_quiz(CanvasAPI(c.canvas()), course_id, quiz_id)
-    profile = c.settings.get().analysis.regulatory_profile
-    findings = [enrich(f, profile) for f in _quiz_findings(c, course_id)
-                if str((f.evidence or {}).get("quiz_id")) == quiz_id]
+    findings = enrich_many(c, [f for f in _quiz_findings(c, course_id)
+                               if str((f.evidence or {}).get("quiz_id")) == quiz_id])
     return {"quiz": {"id": quiz.id, "title": quiz.title, "html_url": quiz.html_url, "settings": quiz.settings,
                      "groups": quiz.groups},
             "questions": [q.as_dict() for q in quiz.questions], "findings": findings}

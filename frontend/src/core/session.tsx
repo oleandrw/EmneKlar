@@ -4,6 +4,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { Alert, Spinner } from "../design-system";
 import { api, ApiError, onSessionExpired, setCsrfToken } from "./api/client";
 import type { SessionData } from "./api/types";
+import { announceWindow } from "./presence";
+import { onAppStopped } from "./quit";
 
 const SessionContext = createContext<SessionData | null>(null);
 
@@ -42,6 +44,7 @@ function applyAppearance(session: SessionData): () => void {
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [expired, setExpired] = useState(false);
+  const [stopped, setStopped] = useState(false);
   const query = useQuery({
     queryKey: ["session"],
     queryFn: () => api.get<SessionData>("/api/session"),
@@ -50,6 +53,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => onSessionExpired(() => setExpired(true)), []);
+  useEffect(() => onAppStopped(() => setStopped(true)), []);
+  // While this window shows EmneKlar, it keeps EmneKlar running; when the last window is closed, EmneKlar stops.
+  const shown = Boolean(query.data) && !expired && !stopped;
+  useEffect(() => (shown ? announceWindow() : undefined), [shown]);
 
   useEffect(() => {
     if (query.data) {
@@ -59,13 +66,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return undefined;
   }, [query.data]);
 
+  if (stopped) {
+    // «Avslutt EmneKlar» was chosen: the program no longer runs, so nothing on the page would work.
+    return (
+      <main className="ek-shell__content ek-message-page">
+        <h1>EmneKlar er avsluttet</h1>
+        <p className="ek-mt-4">
+          Programmet kjører ikke lenger på denne maskinen, og du kan lukke vinduet. Start EmneKlar igjen fra
+          Start-menyen eller skrivebordet. Data og innstillinger er beholdt.
+        </p>
+      </main>
+    );
+  }
   if (expired || (query.error instanceof ApiError && query.error.status === 401)) {
     return (
       <main className="ek-shell__content ek-message-page">
         <h1>Økten er ikke gyldig</h1>
         <p className="ek-mt-4">
-          Start EmneKlar med <strong>start.bat</strong> (eller snarveien). Nettleseren åpnes da automatisk med en ny
-          innlogging. Lagrede data og innstillinger er ikke påvirket.
+          Start EmneKlar på nytt fra <strong>Start-menyen</strong> eller skrivebordet. EmneKlar åpnes da automatisk
+          med en ny innlogging. Lagrede data og innstillinger er ikke påvirket.
         </p>
       </main>
     );
@@ -83,8 +102,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         <h1>Fikk ikke kontakt med EmneKlar</h1>
         <div className="ek-mt-4">
           <Alert tone="danger" role="alert" title="Tilkoblingen feilet">
-            {query.error instanceof Error ? query.error.message : "Ukjent feil."} Kontroller at vinduet til EmneKlar
-            fortsatt er åpent, og last siden på nytt.
+            {query.error instanceof Error ? query.error.message : "Ukjent feil."} Kontroller at EmneKlar kjører –
+            start programmet fra Start-menyen eller skrivebordet – og last siden på nytt.
           </Alert>
         </div>
       </main>

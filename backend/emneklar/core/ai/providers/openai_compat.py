@@ -27,6 +27,7 @@ from emneklar.core.ai.base import (
     ImageGenerationResult,
     ImagePart,
     ImageUsage,
+    SearchHit,
     TranscriptionResult,
     TranscriptionSegment,
 )
@@ -251,6 +252,29 @@ class OpenAICompatibleProvider(AIProvider):
         return await post_transcription(self.client, f"{self.base}/audio/transcriptions", self.headers(), model=model,
                                         audio=audio, filename=filename, segments=segments, language=language,
                                         prompt=prompt, provider=self.provider_id)
+
+    async def web_search(self, model: str, query: str, *, max_uses: int = 2) -> list[SearchHit]:
+        """OpenAI only (Responses API, ``web_search`` tool, docs: «Web search»): the sources the search consulted
+        (``include: web_search_call.action.sources``) and the cited addresses – never addresses from the text."""
+        if self.type != "openai" or self.local:
+            return await super().web_search(model, query, max_uses=max_uses)
+        payload = {"model": model, "input": query, "tools": [{"type": "web_search"}],
+                   "include": ["web_search_call.action.sources"], "max_output_tokens": 800}
+        data = await post_json(self.client, f"{self.base}/responses", payload, self.headers())
+        hits: list[SearchHit] = []
+        for item in data.get("output") or []:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") == "web_search_call":
+                for source in (item.get("action") or {}).get("sources") or []:
+                    if isinstance(source, dict) and source.get("url"):
+                        hits.append(SearchHit(url=str(source["url"]), title=str(source.get("title") or "")))
+            elif item.get("type") == "message":
+                for part in item.get("content") or []:
+                    for note in (part.get("annotations") or []) if isinstance(part, dict) else []:
+                        if isinstance(note, dict) and note.get("type") == "url_citation" and note.get("url"):
+                            hits.append(SearchHit(url=str(note["url"]), title=str(note.get("title") or "")))
+        return hits
 
     async def generate_image(self, request: ImageGenerationRequest) -> ImageGenerationResult:
         if not request.model:

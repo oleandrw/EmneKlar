@@ -49,7 +49,6 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   } catch {
     throw new ApiError(0, "network", "Fikk ikke kontakt med EmneKlar. Kjører programmet fortsatt?");
   }
-  if (response.status === 401) sessionListeners.forEach((listener) => listener());
   const text = await response.text();
   let data: unknown = null;
   if (text) {
@@ -63,6 +62,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const err = (
       data as { error?: { code?: string; message?: string; details?: string; extra?: Record<string, unknown> } } | null
     )?.error;
+    // Only EmneKlar's own session check means the session has expired. Canvas rejecting a token is also a 401
+    // (canvas_token_invalid) – that is an error to show where the token is entered, not a reason to log out.
+    if (response.status === 401 && (!err?.code || err.code === "session_required")) {
+      sessionListeners.forEach((listener) => listener());
+    }
     throw new ApiError(
       response.status,
       err?.code ?? "internal_error",

@@ -23,10 +23,15 @@ import {
 } from "../../design-system";
 import { useSaveSettings, type AppSettings } from "./api";
 
-interface UpdateStatus {
+export interface UpdateStatus {
   current_version: string;
   install: { type: "git" | "release" | "source"; label: string; path: string; branch: string | null; can_start_from_app: boolean };
   repository: string | null;
+  /** The standard source (used when the setting is empty): where EmneKlar was installed from, if known. */
+  default_repository: string | null;
+  default_repository_source: string;
+  /** Another source than the standard one is chosen in Innstillinger. */
+  repository_is_custom: boolean;
   channel: string;
   check_enabled: boolean;
   last_checked_at: string | null;

@@ -33,6 +33,18 @@ CATEGORY_LABELS = {
 _LEVEL_ORDER = {"A": 0, "AA": 1, "AAA": 2}
 
 
+class Confirmation(BaseModel):
+    """Something the teacher can confirm after checking a finding by hand (e.g. «the transcript is on the page»).
+    Confirming marks the finding «Kontrollert» – it stays so in later analyses and is listed in reports."""
+
+    id: str
+    label: str
+    hint: str = ""
+    #: Offered only when the finding's evidence has this key – e.g. ``exemption_hint`` for documents uploaded before
+    #: the exemption date. Without it the confirmation would claim something the analysis contradicts.
+    requires_evidence: str | None = None
+
+
 class Rule(BaseModel):
     id: str
     category: str
@@ -46,6 +58,9 @@ class Rule(BaseModel):
     remediation: str
     sources: list[Source]
     fix_policy: Literal["auto_suggest", "user_input", "ai_suggest", "manual"]
+    confirmations: list[Confirmation] = []
+    #: The teacher can state what the recording is (audio only, video with or without sound) – media rules only.
+    media_kind_choice: bool = False
 
     @property
     def wcag_version(self) -> str | None:
@@ -98,5 +113,7 @@ def rule_info(rule: Rule) -> dict[str, object]:
         + [{"title": f"WCAG {c} {catalog[c]['title']} (Understanding)", "url": catalog[c]["url"]}
            for c in rule.wcag if c in catalog],
         "fix_policy": rule.fix_policy,
+        "confirmations": [c.model_dump() for c in rule.confirmations],
+        "media_kind_choice": rule.media_kind_choice,
         "ruleset_version": load_ruleset().version,
     }

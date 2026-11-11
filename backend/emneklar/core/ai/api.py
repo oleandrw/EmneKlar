@@ -71,13 +71,18 @@ async def update_provider(provider_id: str, body: ProviderUpdate,
     settings = c.settings.get()
     provider = _find(settings, provider_id)
     endpoint = _validate_endpoint(provider, body.endpoint) if body.endpoint else None
-    if body.api_key and body.api_key.strip():
-        c.secrets.set(ai_key_name(provider_id), body.api_key.strip())
+    new_key = bool(body.api_key and body.api_key.strip())
+    if new_key:
+        c.secrets.set(ai_key_name(provider_id), (body.api_key or "").strip())
 
     def mutate(s: AppSettings) -> None:
         p = _find(s, provider_id)
         if body.enabled is not None:
             p.enabled = body.enabled
+        elif new_key:
+            # Saving a key means «use this provider» – the switch is turned on with it (it can be turned off again).
+            # Sending course content to external AI still needs its own privacy setting.
+            p.enabled = True
         if endpoint:
             p.endpoint = endpoint
         if body.api_version is not None:

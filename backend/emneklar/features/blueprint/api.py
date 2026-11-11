@@ -214,3 +214,180 @@ async def stage(course_id: str, body: BlueprintRequest, c: AppContainer = Depend
         target={"object_type": "course", "object_id": course_id, "title": f"{len(rows)} elementer"},
         before=before, proposed=proposed, rationale=rationale, risk="high", requires_confirmation=True,
         source={"feature": "blueprint"})
+
+
+# -- sync to associated courses ---------------------------------------------------------------------------------
+
+
+async def sync_preview(c: AppContainer, course_id: str) -> dict[str, Any]:
+    api = CanvasAPI(c.canvas())
+    template = await api.blueprint_template(course_id)
+    if template is None:
+        raise AppError("unsupported", status=409, message="Emnet er ikke et Blueprint-emne, så det er ingenting å "
+                       "synkronisere herfra.")
+    unsynced, associated = await asyncio.gather(api.blueprint_unsynced_changes(course_id),
+                                                api.blueprint_associated_courses(course_id))
+    return {"course_id": course_id, "unsynced": [
+        {"asset_type": u.get("asset_type"), "asset_name": u.get("asset_name"), "change_type": u.get("change_type"),
+         "locked": u.get("locked"), "html_url": u.get("html_url")} for u in unsynced[:500]],
+        "unsynced_count": len(unsynced),
+        "associated_courses": [{"id": str(a.get("id")), "name": a.get("name"), "course_code": a.get("course_code")}
+                               for a in associated[:500]],
+        "associated_course_count": len(associated) or template.get("associated_course_count"),
+        "note": ("Canvas synkroniserer alle endringer i Blueprint-emnet som ikke er synkronisert ennå – også endringer "
+                 "som er gjort utenfor EmneKlar. Låst innhold oppdateres i alle tilknyttede emner; ulåst innhold "
+                 "oppdateres bare der det ikke er endret lokalt.")}
+
+
+@router.get("/courses/{course_id}/blueprint/sync")
+async def sync_info(course_id: str, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
+    return await sync_preview(c, require_course_id(course_id))
+
+
+def stage_sync(c: AppContainer, course_id: str, preview: dict[str, Any]) -> dict[str, Any]:
+    count = preview["associated_course_count"] or 0
+    names = ", ".join(str(a["name"]) for a in preview["associated_courses"][:5] if a.get("name"))
+    reach = "1 tilknyttet emne" if count == 1 else f"{count} tilknyttede emner"
+    return c.changes.stage(
+        course_id=course_id, domain="canvas", kind="blueprint.sync",
+        title=f"Synkroniser Blueprint-emnet til {reach}",
+        target={"object_type": "course", "object_id": course_id, "title": "Blueprint-synkronisering"},
+        before={"unsynced_count": preview["unsynced_count"], "associated_course_count": count},
+        proposed={"comment": "Synkronisert fra EmneKlar", "associated_courses": preview["associated_courses"][:50]},
+        rationale=(f"Sender endringene i Blueprint-emnet til de tilknyttede emnene ({names}"
+                   f"{' …' if count > 5 else ''}). {preview['note']}"),
+        risk="high", requires_confirmation=True, source={"feature": "blueprint_sync"}, merge=True)
+
+
+@router.post("/courses/{course_id}/blueprint/sync/stage")
+async def sync_stage(course_id: str, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
+    """Queue a sync (high risk, confirmed when published). One open sync per Blueprint course."""
+    course_id = require_course_id(course_id)
+    return stage_sync(c, course_id, await sync_preview(c, course_id))
+
+
+@router.get("/courses/{course_id}/blueprint/migrations/{migration_id}")
+async def sync_status(course_id: str, migration_id: str, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
+    migration = await CanvasAPI(c.canvas()).blueprint_migration(require_course_id(course_id), migration_id)
+    state = str(migration.get("workflow_state") or "")
+    return {"id": str(migration.get("id") or migration_id), "workflow_state": state,
+            "finished": state in ("completed", "exports_failed", "imports_failed"),
+            "failed": state in ("exports_failed", "imports_failed"),
+            "label": {"queued": "I kø hos Canvas", "exporting": "Canvas pakker endringene",
+                      "imports_queued": "Canvas legger inn endringene", "completed": "Fullført",
+                      "exports_failed": "Feilet i Blueprint-emnet",
+                      "imports_failed": "Feilet i ett eller flere tilknyttede emner"}.get(state, state or "Ukjent")}
+
+
+# -- move a refused fix to the Blueprint course -------------------------------------------------------------------
+
+
+async def _master_object(api: CanvasAPI, master_id: str, object_type: str, object_id: str,
+                         title: str | None) -> tuple[str, str] | None:
+    """The same content in the Blueprint course: pages by their url (kept by the sync), other types by an exact,
+    unique title. Returns (object id, HTML) or None when it cannot be identified safely."""
+    from emneklar.core.canvas.client import CanvasError
+
+    if object_type == "page":
+        try:
+            page = await api.get_page(master_id, object_id)
+            return str(page.get("url") or object_id), page.get("body") or ""
+        except CanvasError as exc:
+            if exc.code != "canvas_not_found":
+                raise
+        pages = [p for p in await api.list_pages(master_id, include_body=False) if p.get("title") == title]
+        if len(pages) == 1:
+            page = await api.get_page(master_id, str(pages[0].get("url")))
+            return str(page.get("url")), page.get("body") or ""
+        return None
+    listing = {"assignment": (api.list_assignments, "name", "description", api.get_assignment),
+               "discussion": (api.list_discussions, "title", "message", api.get_discussion),
+               "quiz": (api.list_quizzes, "title", "description", api.get_quiz)}.get(object_type)
+    if listing is None or not title:
+        return None
+    lister, title_key, field, getter = listing
+    matches = [x for x in await lister(master_id) if x.get(title_key) == title]
+    if len(matches) != 1:
+        return None
+    full = await getter(master_id, str(matches[0].get("id")))
+    return str(full.get("id")), full.get(field) or ""
+
+
+async def plan_move(c: AppContainer, change_id: int) -> dict[str, Any]:
+    from emneklar.core.canvas.blueprint import blueprint_info
+    from emneklar.core.canvas.client import CanvasError
+    from emneklar.features.accessibility.fixes import HTML_FIELD, apply_recipes, display
+
+    change = c.changes.get(change_id)
+    data, row = c.changes._load(change_id)
+    recipes = list((row.source or {}).get("fixes") or [])
+    object_type = str(change["target"].get("object_type") or "")
+    if not recipes or object_type not in HTML_FIELD:
+        raise AppError("unsupported", status=409, message="Denne endringen kan ikke flyttes automatisk. Åpne "
+                       "Blueprint-emnet i Canvas og gjør endringen der.")
+    api = CanvasAPI(c.canvas())
+    info = await blueprint_info(api, change["course_id"], fresh=True)
+    parent = info.get("parent") or {}
+    if not info.get("is_child") or not parent.get("id"):
+        raise AppError("unsupported", status=409, message="Emnet er ikke knyttet til et Blueprint-emne.")
+    try:
+        await api.get_course(parent["id"], include=())
+    except CanvasError as exc:
+        raise AppError("canvas_forbidden", status=409, message=(
+            f"Du har ikke tilgang til Blueprint-emnet «{parent.get('name') or parent['id']}» med Canvas-brukeren "
+            "EmneKlar er koblet til. Be en som er lærer eller designer i Blueprint-emnet om å gjøre rettingen der."),
+        ) from exc
+    found = await _master_object(api, parent["id"], object_type, str(change["target"].get("object_id")),
+                                 change["target"].get("title"))
+    if found is None:
+        raise AppError("not_found", status=409, message=(
+            "Fant ikke det samme innholdet i Blueprint-emnet (samme sideadresse eller entydig tittel). Åpne "
+            "Blueprint-emnet i Canvas og gjør rettingen der."))
+    master_object_id, master_html = found
+    try:
+        after = apply_recipes(master_html, recipes, relaxed=True)
+    except AppError as exc:
+        raise AppError("change_conflict", status=409, message=(
+            "Rettingen passer ikke med innholdet i Blueprint-emnet (det er endret siden siste synkronisering). Kjør "
+            "en analyse av Blueprint-emnet og rett det der.")) from exc
+    field = HTML_FIELD[object_type]
+    return {"change": change, "data": data, "row": row, "parent": parent, "object_id": master_object_id,
+            "field": field, "before": master_html, "after": after, "recipes": recipes,
+            "before_display": display(master_html), "after_display": display(after)}
+
+
+@router.get("/changes/{change_id}/blueprint-move")
+async def move_preview(change_id: int, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
+    plan = await plan_move(c, change_id)
+    preview = await sync_preview(c, plan["parent"]["id"])
+    return {"parent": plan["parent"], "object_id": plan["object_id"], "before_display": plan["before_display"],
+            "after_display": plan["after_display"], "associated_course_count": preview["associated_course_count"],
+            "associated_courses": preview["associated_courses"][:20], "note": preview["note"]}
+
+
+@router.post("/changes/{change_id}/blueprint-move")
+async def move(change_id: int, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
+    """Stage the same fix in the Blueprint course (+ a sync) and take the refused change out of the queue."""
+    plan = await plan_move(c, change_id)
+    change, parent = plan["change"], plan["parent"]
+    source = dict(plan["row"].source or {})
+    # The findings belong to the associated course: they stay «I endringskø» there until the sync has brought the fix
+    # and a new analysis confirms it (the Blueprint change itself does not fix them yet).
+    source["associated_finding_fingerprints"] = source.pop("finding_fingerprints", [])
+    source["relaxed"] = True  # the recipes were made on the associated course's copy (other course and file ids)
+    moved = c.changes.stage(
+        course_id=parent["id"], domain=change["domain"], kind=change["kind"],
+        title=f"{change['target'].get('title') or ''}: rettet i Blueprint-emnet",
+        target={**change["target"], "object_id": plan["object_id"], "url": None,
+                "moved_from": {"course_id": change["course_id"], "change_id": change_id}},
+        before={plan["field"]: plan["before"]}, proposed={plan["field"]: plan["after"]},
+        rationale=f"Flyttet fra et tilknyttet emne fordi Canvas avviste endringen der (låst av Blueprint).\n"
+                  f"{change['rationale']}",
+        risk=change["risk"], source={**source, "moved_from_course": change["course_id"]}, merge=True,
+        ai_generated=change["ai_generated"])
+    c.changes.discard(change_id, note=f"Flyttet til Blueprint-emnet «{parent.get('name') or parent['id']}».")
+    sync = stage_sync(c, parent["id"], await sync_preview(c, parent["id"]))
+    # The teacher approved the fix and confirmed the move (after seeing the diff and the courses it reaches): both are
+    # ready to publish. The sync is high risk and is confirmed once more when publishing.
+    approved = {row["id"]: row for row in c.changes.approve([moved["id"], sync["id"]])}
+    return {"moved": approved[moved["id"]], "sync": approved[sync["id"]]}

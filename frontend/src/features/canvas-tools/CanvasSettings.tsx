@@ -2,12 +2,11 @@
 // Preferences are never changed automatically – only an explicit choice is put in the change queue.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListPlus } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { api } from "../../core/api/client";
 import { plural } from "../../core/format";
 import { useCurrentCourse } from "../../core/course";
-import { useSession } from "../../core/session";
 import { useUi } from "../../core/ui";
 import {
   Alert,
@@ -57,7 +56,6 @@ const CATEGORY_TONE: Record<Category, Tone> = {
 const ORDER: Category[] = ["technical", "security_accessibility", "recommendation"];
 
 function useStage(courseId: string) {
-  const session = useSession();
   const ui = useUi();
   const toast = useToast();
   const client = useQueryClient();
@@ -69,7 +67,7 @@ function useStage(courseId: string) {
       toast.show({
         tone: "success",
         title: "Endringen er lagt i endringskøen",
-        body: session.dry_run ? "Dry run er på – ingenting sendes til Canvas." : "Gjennomfør den fra endringskøen.",
+        body: "Godkjenn og publiser fra endringskøen.",
       });
       ui.openChanges();
     },
@@ -95,11 +93,14 @@ function DefaultViewFix({ courseId, options }: { courseId: string; options: { va
 function PreferenceRow({ courseId, pref }: { courseId: string; pref: SettingsAnalysis["preferences"][number] }) {
   const [value, setValue] = useState(pref.value);
   const stage = useStage(courseId);
+  const descriptionId = useId();
   return (
     <li className="ek-row">
       <div className="ek-row__main">
-        <Switch label={pref.label} checked={value} onChange={setValue} />
-        {pref.description ? <span className="ek-xs ek-muted">{pref.description}</span> : null}
+        {/* The help text is its own paragraph under the switch (not run on after «På»/«Av»), and the switch's
+            description for screen readers. */}
+        <Switch label={pref.label} checked={value} onChange={setValue} describedBy={pref.description ? descriptionId : undefined} />
+        {pref.description ? <p id={descriptionId} className="ek-xs ek-muted ek-mt-2">{pref.description}</p> : null}
       </div>
       {value !== pref.value ? (
         <Button size="sm" onClick={() => stage.mutate({ kind: "setting", key: pref.key, value })} loading={stage.isPending}>

@@ -1,8 +1,11 @@
-"""EmneKlar shares nothing with other programs: database, data folder, session cookie, keyring service, port.
+"""EmneKlar never uses or changes another program's database, and keeps its own port and session cookie.
 
 Regression for a real collision: an independent implementation of the same specification used
 %LOCALAPPDATA%\\EmneKlar\\database.db with Alembic revision "0001" – EmneKlar took that for its own, fully
 migrated database and failed at start-up ("no such table: jobs"). It must never use or change such a file.
+
+The program, its data folder and its credential-store service are now all called «EmneKlar» (decided before the
+first public release), so the database check is what keeps the two programs' data apart.
 """
 
 from __future__ import annotations
@@ -14,8 +17,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from emneklar import launcher, manage
-from emneklar.config import DEFAULT_PORT, RuntimeConfig, default_data_dir
-from emneklar.core.auth.secrets import KEYRING_SERVICE, MemorySecretStore
+from emneklar.config import DEFAULT_PORT, RuntimeConfig, default_data_dir, legacy_data_dir
+from emneklar.core.auth.secrets import KEYRING_SERVICE, LEGACY_KEYRING_SERVICE, MemorySecretStore
 from emneklar.core.container import AppContainer
 from emneklar.core.storage.db import APPLICATION_ID, Database, ForeignDatabaseError, database_owner
 from tests.conftest import LAUNCH_TOKEN
@@ -119,7 +122,12 @@ def test_the_session_cookie_is_specific_to_the_port(raw_client: TestClient) -> N
     assert ours.status_code == 200
 
 
-def test_defaults_differ_from_the_other_implementation() -> None:
-    assert default_data_dir().name.lower() != "emneklar"
-    assert KEYRING_SERVICE != "EmneKlar"
+def test_the_final_names_and_what_still_keeps_two_programs_apart() -> None:
+    # Decided before the first public release: one name for the program, its data folder and its secrets.
+    assert default_data_dir().name.lower() == "emneklar"
+    assert KEYRING_SERVICE == "EmneKlar"
+    assert legacy_data_dir().name.lower() == "emneklar-claude" and LEGACY_KEYRING_SERVICE == "EmneKlar-Claude"
+    assert default_data_dir().parent == legacy_data_dir().parent
+    # The other implementation's port is not ours, so both the address and the session cookie differ; the database
+    # check above keeps EmneKlar out of a data folder the other program has filled.
     assert DEFAULT_PORT != 8765

@@ -226,6 +226,22 @@ class MediaRef:
     media_id: str | None = None  # Canvas media id (data-media-id), when present
 
 
+CANVAS_FILE_SRC = re.compile(r"^(?:https?://[^/]+)?/(?:courses/\d+/)?files/(\d+)(?:/(?:download|preview))?(?:[?#]|$)")
+
+
+def _canvas_file_source(el: Tag) -> str | None:
+    """File id when a <video>/<audio> plays a Canvas file (``/courses/:id/files/:id/download`` in src or <source>).
+
+    Absolute addresses are only trusted when Canvas' own editor marked the source (``instructure_*_link``)."""
+    candidates = [(str(el.get("src") or ""), " ".join(el.get("class") or []))]
+    candidates += [(str(s.get("src") or ""), " ".join(s.get("class") or [])) for s in el.find_all("source")]
+    for src, classes in candidates:
+        match = CANVAS_FILE_SRC.match(src.strip())
+        if match and (src.startswith("/") or "instructure_" in classes):
+            return match.group(1)
+    return None
+
+
 def find_media(soup: BeautifulSoup) -> list[tuple[Tag, MediaRef]]:
     found: list[tuple[Tag, MediaRef]] = []
     for el in soup.find_all(["iframe", "video", "audio", "a", "embed", "object"]):
@@ -233,6 +249,17 @@ def find_media(soup: BeautifulSoup) -> list[tuple[Tag, MediaRef]]:
         classes = " ".join(el.get("class") or [])
         media_id = str(el.get("data-media-id") or "")
         if el.name in ("video", "audio") and not media_id:
+            # Canvas renders its own media (recorded or uploaded in the editor) as <video>/<audio> too: those are Canvas
+            # media with tracks in Canvas, not a plain HTML5 player that must carry <track> elements itself.
+            legacy = str(el.get("data-media_comment_id") or "")
+            if legacy or "instructure_inline_media_comment" in classes:
+                found.append((el, MediaRef(kind="canvas_media", ident=legacy or None, src=src, element=el.name,
+                                           media_id=legacy or None)))
+                continue
+            file_id = _canvas_file_source(el)
+            if file_id:
+                found.append((el, MediaRef(kind="canvas_attachment", ident=file_id, src=src, element=el.name)))
+                continue
             found.append((el, MediaRef(kind=f"html5_{el.name}", ident=None, src=src, element=el.name)))
             continue
         attachment = ATTACHMENT_IFRAME_RE.search(src)

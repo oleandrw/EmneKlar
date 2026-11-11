@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import tomllib
 from pathlib import Path
 
@@ -14,14 +15,17 @@ from emneklar.core.auth.secrets import MemorySecretStore
 from emneklar.core.container import AppContainer
 from emneklar.core.errors import AppError
 from emneklar.core.security.redaction import RedactingFilter, redact, register_secret
+from emneklar.core.updates.version import Version
 
 
 def test_version_is_consistent() -> None:
     version_file = (REPO_DIR / "VERSION").read_text(encoding="utf-8").strip()
     pyproject = tomllib.loads((REPO_DIR / "backend" / "pyproject.toml").read_text(encoding="utf-8"))
     assert __version__ == version_file == pyproject["project"]["version"]
-    parts = version_file.split(".")
-    assert len(parts) == 3 and all(p.isdigit() for p in parts), "VERSION must be semantic (MAJOR.MINOR.PATCH)"
+    # MAJOR.MINOR.PATCH, or a pre-release of it (-alpha.N, -beta.N, -rc.N) as scripts/bump_version.py writes it.
+    assert re.fullmatch(r"\d+\.\d+\.\d+(-(alpha|beta|rc)\.\d+)?", version_file), "VERSION must be semantic"
+    parsed = Version.parse(version_file)
+    assert parsed is not None and str(parsed) == version_file
 
 
 def test_server_refuses_non_loopback_host(tmp_path: Path) -> None:

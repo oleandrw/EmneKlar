@@ -93,9 +93,8 @@ def embedding_choice(settings: AppSettings, local: LocalModels, ai: AIService | 
     model = local.model("embedding", rag.embedding_model)
     if not local.packages()["sentence_transformers"]:
         return EmbeddingChoice("local", f"local:{model.id}", model.label, False,
-                               "Lokale modeller er ikke installert. Søket bruker bare nøkkelord til de er installert "
-                               "(lukk EmneKlar, kjør setup.bat på nytt og svar «j» på spørsmålet om lokale "
-                               "modeller).", model=model)
+                               "Lokale modeller følger ikke med EmneKlar, så søket bruker bare nøkkelord. Velg en "
+                               "KI-leverandør for semantisk søk under Innstillinger.", model=model)
     downloaded = local.is_downloaded(model.id)
     return EmbeddingChoice("local", f"local:{model.id}", model.label, True, None, needs_download=not downloaded,
                            download_mb=0 if downloaded else model.size_mb, model=model)
@@ -194,7 +193,7 @@ def reranker_choice(settings: AppSettings, local: LocalModels) -> RerankerChoice
     if not settings.rag.reranker_enabled:
         return RerankerChoice(False, model.label, "Rerangering er slått av. Treffene sorteres med RRF.")
     if not local.packages()["sentence_transformers"]:
-        return RerankerChoice(False, model.label, "Lokale modeller er ikke installert. Treffene sorteres med RRF.")
+        return RerankerChoice(False, model.label, "Lokale modeller følger ikke med EmneKlar. Treffene sorteres med RRF.")
     downloaded = local.is_downloaded(model.id)
     return RerankerChoice(True, model.label, needs_download=not downloaded, download_mb=0 if downloaded else model.size_mb,
                           model=model)

@@ -6,7 +6,6 @@ import { useState } from "react";
 import { api } from "../../../core/api/client";
 import { useCurrentCourse } from "../../../core/course";
 import { formatDateTime, formatNumber } from "../../../core/format";
-import { HelpLink } from "../../../core/HelpLink";
 import {
   Alert,
   Badge,
@@ -159,8 +158,7 @@ export function CourseRag() {
     <>
       <PageHeader title="Emnets kunnskapsbase"
         description="Samle tekst, dokumenter, bilder og video fra emnet på denne maskinen, og still spørsmål med klikkbare kilder."
-        status={status.data && !status.data.index ? <Badge dot>Ingen kunnskapsbase opprettet ennå</Badge> : undefined}
-        actions={<HelpLink topic="emne-rag" />} />
+        status={status.data && !status.data.index ? <Badge dot>Ingen kunnskapsbase opprettet ennå</Badge> : undefined} />
       <div className="ek-stack" data-gap="6">
         {status.isPending ? <Spinner label="Henter status for kunnskapsbasen …" /> : status.error ? (
           <Alert tone="danger" role="alert">{(status.error as Error).message}</Alert>

@@ -12,7 +12,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from emneklar.core.storage.db import Database
 from emneklar.core.storage.models import Setting
@@ -20,7 +20,7 @@ from emneklar.core.storage.models import Setting
 SETTINGS_KEY = "app"
 
 StartPage = Literal[
-    "oversikt", "universell-utforming", "innholdskvalitet", "emnestruktur", "quizassistent", "emneforside",
+    "oversikt", "universell-utforming", "innholdskvalitet", "emnestruktur", "quizassistent", "emnedesign",
     "canvas-verktoy", "rapporter",
 ]
 AIStrategy = Literal["auto", "low_cost", "speed", "quality", "manual"]
@@ -37,6 +37,12 @@ class GeneralSettings(_Section):
     start_page: StartPage = "oversikt"
     default_course_id: str | None = None
     page_size: int = Field(25, ge=10, le=200)
+
+    @field_validator("start_page", mode="before")
+    @classmethod
+    def _removed_start_page(cls, value: object) -> object:
+        # Emneforside was replaced by Emnedesign in the same place in the menu.
+        return "emnedesign" if value == "emneforside" else value
 
 
 class CanvasIdentity(_Section):
@@ -161,7 +167,7 @@ class IllustrationSettings(_Section):
     """KI-bildeassistent (Canvas-verktøy). Model choices refer to core/ai/model_profiles.json and image_models.json;
     the per-role overrides are "provider_id/model_id" ("" = the quality profile decides)."""
 
-    quality_profile: Literal["max", "balanced", "fast"] = "max"
+    quality_profile: Literal["max", "balanced", "fast"] = "balanced"
     amount: Literal["low", "balanced", "high"] = "balanced"
     analysis_model: str = Field("", max_length=250)
     planning_model: str = Field("", max_length=250)
@@ -184,9 +190,13 @@ class IllustrationSettings(_Section):
 
 
 class AppSettings(_Section):
+    # The old «Dry run» switch is gone: unknown keys (such as a stored ``dry_run``) are ignored on load and dropped
+    # the next time the settings are saved (migration 0005 also removes it from the stored settings).
     setup_completed: bool = False
-    dry_run: bool = False
     current_course_id: str | None = None
+    #: Courses the teacher marked as favourites in the course selector (local to EmneKlar – Canvas' own favourites
+    #: are not changed), in the order they were added.
+    favorite_course_ids: list[str] = Field(default_factory=list, max_length=500)
     general: GeneralSettings = Field(default_factory=GeneralSettings)
     canvas: CanvasSettings = Field(default_factory=CanvasSettings)
     analysis: AnalysisSettings = Field(default_factory=AnalysisSettings)

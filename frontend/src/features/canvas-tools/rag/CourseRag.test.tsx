@@ -277,6 +277,46 @@ describe("BuildPanel with selected modules", () => {
   });
 });
 
+describe("SettingsPanel without local models", () => {
+  it("says truthfully that local models are not part of EmneKlar and hides the choices that need them", async () => {
+    const { SettingsPanel } = await import("./SettingsPanel");
+    const bare = status({
+      local: { installed: { embedding: false, reranker: false, whisper: false, youtube: true }, device: "cpu", cuda: false,
+        models_dir: "C:\\data\\models", models: [{ id: "BAAI/bge-m3", kind: "embedding", label: "BGE-M3", size_mb: 2270,
+          default: true, downloaded: false } as RagStatus["local"]["models"][number]] },
+    });
+    const { container } = render(wrap(<SettingsPanel status={bare} courseId="104" />));
+    expect(screen.getByText("Lokale modeller følger ikke med EmneKlar")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/setup\.bat|svar «j»|er ikke installert/);
+    // Nothing that only works with local models is offered: no model pickers, no reranker switch, no model table.
+    for (const label of ["Embedding-modell", "Rerangeringsmodell", "NB-Whisper-modell", "Modell for annet språk enn norsk",
+      "Maskinvare"]) {
+      expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+    }
+    expect(screen.queryByRole("switch", { name: "Rerangering med lokal modell" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    // The saved choice («local» is the default) stays visible and says why it does nothing; the alternatives work.
+    const local = screen.getByRole("radio", { name: /Lokal modell på denne maskinen/ });
+    expect(local).toBeChecked();
+    expect(screen.getAllByText(/Ikke tilgjengelig: lokale modeller følger ikke med EmneKlar/).length).toBe(2);
+    await userEvent.click(screen.getByRole("radio", { name: /Bare nøkkelordsøk/ }));
+    expect(screen.getByRole("radio", { name: /Lokal modell på denne maskinen/ })).toBeDisabled();
+    expect(screen.getByText(/video uten teksting blir ikke transkribert/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("radio", { name: /Bare eksisterende undertekster/ }));
+    expect(screen.getByRole("radio", { name: /På denne maskinen/ })).toBeDisabled();
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("still offers the local choices when a developer has installed the models", async () => {
+    const { SettingsPanel } = await import("./SettingsPanel");
+    render(wrap(<SettingsPanel status={status()} courseId="104" />));
+    expect(screen.getByLabelText("Embedding-modell")).toBeInTheDocument();
+    expect(screen.getByLabelText("NB-Whisper-modell")).toBeInTheDocument();
+    expect(screen.getByText(/Anbefalt\. Ingenting forlater maskinen/)).toBeInTheDocument();
+    expect(screen.queryByText("Lokale modeller følger ikke med EmneKlar")).not.toBeInTheDocument();
+  });
+});
+
 describe("QualityPanel and ExportPanel", () => {
   it("shows the health score with an honest explanation and download links", async () => {
     const { QualityPanel } = await import("./QualityPanel");

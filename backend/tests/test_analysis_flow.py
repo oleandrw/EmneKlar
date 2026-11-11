@@ -59,6 +59,27 @@ def test_accessibility_analysis_end_to_end(canvas_client: TestClient, fake_state
     assert fake_state.writes == []
 
 
+def test_the_older_document_exemption_is_confirmed_only_where_it_can_apply(canvas_client: TestClient) -> None:
+    job = canvas_client.post("/api/analysis", json={"course_id": "101", "domains": ["accessibility"]}).json()
+    wait_for_job(canvas_client, job["id"])
+    items = canvas_client.get("/api/courses/101/findings?domain=accessibility&page_size=200").json()["items"]
+    documents = [f for f in items if f["rule_id"].startswith("UU-DOC-")]
+    old = next(f for f in documents if "exemption_hint" in f["evidence"])
+    new = next(f for f in documents if "exemption_hint" not in f["evidence"])
+    offered = {c["id"]: c for c in old["rule"]["confirmations"]}
+    assert offered["older_document_exemption"]["requires_evidence"] == "exemption_hint"
+    # A file uploaded after the exemption date cannot be confirmed as exempt.
+    refused = canvas_client.post(f"/api/findings/{new['id']}/verify", json={"confirmation": "older_document_exemption"})
+    assert refused.status_code == 422
+    done = canvas_client.post(f"/api/findings/{old['id']}/verify",
+                              json={"confirmation": "older_document_exemption", "note": "Arkiv, ikke i bruk"}).json()
+    assert done["status"] == "verified" and done["decision"]["label"] == "Unntaket for eldre dokumenter gjelder"
+    job = canvas_client.post("/api/analysis", json={"course_id": "101", "domains": ["accessibility"]}).json()
+    wait_for_job(canvas_client, job["id"])
+    verified = canvas_client.get("/api/courses/101/findings?domain=accessibility&status=verified").json()["items"]
+    assert any(f["fingerprint"] == old["fingerprint"] for f in verified), "the decision survives a new analysis"
+
+
 def test_ignore_survives_reanalysis(canvas_client: TestClient) -> None:
     job = canvas_client.post("/api/analysis", json={"course_id": "101", "domains": ["accessibility"]}).json()
     wait_for_job(canvas_client, job["id"])
@@ -108,3 +129,58 @@ def test_sse_stream_delivers_progress(canvas_client: TestClient) -> None:
 def test_analysis_requires_a_domain(canvas_client: TestClient) -> None:
     response = canvas_client.post("/api/analysis", json={"course_id": "101", "domains": []})
     assert response.status_code == 400
+
+
+def test_a_cancelled_analysis_keeps_earlier_findings_for_what_it_did_not_reach(canvas_client: TestClient,
+                                                                              monkeypatch) -> None:
+    from emneklar.core.jobs.manager import JobCancelled
+    from emneklar.features.analysis import orchestrator
+
+    domains = ["accessibility", "content_quality"]
+    full = canvas_client.post("/api/analysis", json={"course_id": "101", "domains": domains}).json()
+    wait_for_job(canvas_client, full["id"])
+    before = canvas_client.get("/api/courses/101/findings?domain=accessibility&page_size=200").json()
+    links_before = canvas_client.get("/api/courses/101/links").json()
+    assert links_before["links"] and links_before["run_status"] == "complete"
+
+    # The user cancels after the first task: one worker, and the second task stops the run.
+    original = orchestrator.interleave
+    calls = {"n": 0}
+
+    def stop_after_first(tasks):  # type: ignore[no-untyped-def]
+        ordered = original(tasks)
+        for task in ordered:
+            async def run(inner=task.run):  # type: ignore[no-untyped-def]
+                calls["n"] += 1
+                if calls["n"] >= 2:
+                    raise JobCancelled
+                return await inner()
+            task.run = run
+        return ordered
+
+    monkeypatch.setattr(orchestrator, "interleave", stop_after_first)
+    monkeypatch.setattr(orchestrator, "TASK_CONCURRENCY", 1)
+    cancelled = canvas_client.post("/api/analysis", json={"course_id": "101", "domains": domains}).json()
+    assert wait_for_job(canvas_client, cancelled["id"])["status"] == "cancelled"
+
+    after = canvas_client.get("/api/courses/101/findings?domain=accessibility&page_size=200").json()
+    assert after["runs"][0]["status"] == "cancelled"
+    assert after["total"] == before["total"], "objects the cancelled run never reached keep their earlier findings"
+    links_after = canvas_client.get("/api/courses/101/links").json()
+    assert links_after["checked_at"] == links_before["checked_at"], "the last finished link check is kept"
+    assert len(links_after["links"]) == len(links_before["links"])
+
+
+def test_job_list_limit_keeps_active_jobs_and_history_has_progress(canvas_client: TestClient) -> None:
+    for _ in range(2):
+        job = canvas_client.post("/api/analysis", json={"course_id": "101", "domains": ["structure"]}).json()
+        wait_for_job(canvas_client, job["id"])
+    assert len(canvas_client.get("/api/jobs").json()["jobs"]) == 2
+    limited = canvas_client.get("/api/jobs?limit=1").json()["jobs"]
+    assert len(limited) == 1 and limited[0]["id"] == job["id"], "the newest finished job"
+    history = canvas_client.get("/api/jobs/history?limit=1").json()["jobs"][0]
+    assert history["status"] == "completed" and history["progress"]["types"], "the panel can summarise it after a restart"
+    assert history["started_at"] and history["supports_pause"] is False
+    assert canvas_client.get("/api/jobs/history?status=failed,interrupted").json()["jobs"] == []
+    assert len(canvas_client.get("/api/jobs/history?status=completed").json()["jobs"]) == 2
+    assert len(canvas_client.get("/api/jobs/history?status=nonsense").json()["jobs"]) == 2, "unknown statuses: no filter"

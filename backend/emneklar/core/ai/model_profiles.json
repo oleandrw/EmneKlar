@@ -12,7 +12,7 @@
       "id": "max",
       "label": "Maksimal kvalitet",
       "description": "Mest avanserte analysemodell, beste bildemodell og grundig kontekst- og kvalitetskontroll med inntil to forbedringsrunder.",
-      "default": true,
+      "default": false,
       "fallback_strategy": "quality",
       "roles": {
         "illustration_analysis": ["anthropic/claude-fable-5-1", "openai/gpt-6-astra", "anthropic/claude-opus-5-5"],
@@ -31,7 +31,7 @@
       "id": "balanced",
       "label": "Balansert",
       "description": "Sterk analysemodell og bildegenerering av høy kvalitet, med fornuftig balanse mellom kvalitet, responstid og kostnad.",
-      "default": false,
+      "default": true,
       "fallback_strategy": "auto",
       "roles": {
         "illustration_analysis": ["anthropic/claude-opus-5-5", "openai/gpt-6.1-sol", "anthropic/claude-sonnet-5-5"],

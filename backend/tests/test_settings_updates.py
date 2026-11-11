@@ -18,6 +18,7 @@ from emneklar.core.updates.service import (
     UpdateService,
     git_remote_repository,
     install_json_repository,
+    same_repository,
     update_command,
 )
 from emneklar.core.updates.version import Version, changelog_sections
@@ -29,7 +30,7 @@ from tests.fakes.fake_canvas import COURSE_ID
 
 def test_settings_payload_has_no_secrets(canvas_client: TestClient) -> None:
     data = canvas_client.get("/api/settings").json()
-    assert data["version"] and {f["key"] for f in data["flags"]} >= {"quiz_assistant", "homepage_builder"}
+    assert data["version"] and {f["key"] for f in data["flags"]} >= {"quiz_assistant", "course_design"}
     text = json.dumps(data).lower()
     assert "fakecanvastoken" not in text and "api_key" not in text and "ai" not in data["settings"]
 
@@ -42,10 +43,52 @@ def test_patch_settings_validates_sections_and_fields(canvas_client: TestClient)
     assert canvas_client.patch("/api/settings/canvas", json={"base_url": "https://x"}).status_code == 404
     assert canvas_client.patch("/api/settings/analysis", json={"regulatory_profile": "nope"}).status_code == 400
     assert canvas_client.patch("/api/settings/advanced", json={"update_repository": "ikke gyldig"}).status_code == 400
-    repo = canvas_client.patch("/api/settings/advanced", json={"update_repository": "acme/EmneKlar"}).json()
+    repo = canvas_client.patch("/api/settings/advanced", json={"update_repository": "acme/EmneKlar",
+                                                               "confirm_update_repository": True}).json()
     assert repo["settings"]["advanced"]["update_repository"] == "acme/EmneKlar"
     cleared = canvas_client.patch("/api/settings/advanced", json={"update_repository": ""}).json()
     assert cleared["settings"]["advanced"]["update_repository"] is None
+
+
+def test_another_update_source_must_be_confirmed(canvas_client: TestClient, canvas_container: AppContainer) -> None:
+    default, where = canvas_container.updates.default_repository()
+    status = canvas_client.get("/api/updates/status").json()
+    assert status["default_repository"] == default and status["default_repository_source"] == where
+    assert status["repository_is_custom"] is False
+
+    refused = canvas_client.patch("/api/settings/advanced", json={"update_repository": "fremmed/EmneKlar"})
+    assert refused.status_code == 409
+    error = refused.json()["error"]
+    assert error["code"] == "update_source_confirmation_required" and "fremmed/EmneKlar" in error["message"]
+    assert canvas_container.settings.get().advanced.update_repository is None, "nothing changed without confirming"
+
+    saved = canvas_client.patch("/api/settings/advanced", json={"update_repository": "fremmed/EmneKlar",
+                                                                "confirm_update_repository": True})
+    assert saved.status_code == 200
+    assert canvas_client.get("/api/updates/status").json()["repository_is_custom"] is True
+    # Saving the same source again (other settings in the form) needs no new confirmation.
+    assert canvas_client.patch("/api/settings/advanced", json={"update_repository": "fremmed/EmneKlar",
+                                                               "debug_logging": True}).status_code == 200
+    # An empty field means the standard source – no confirmation needed.
+    assert canvas_client.patch("/api/settings/advanced", json={"update_repository": ""}).status_code == 200
+    if default:
+        assert canvas_client.patch("/api/settings/advanced", json={"update_repository": default}).status_code == 200
+
+
+def test_the_standard_source_in_other_letters_needs_no_confirmation(canvas_client: TestClient,
+                                                                    canvas_container: AppContainer,
+                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    # GitHub does not tell upper and lower case apart: «Eier/emneklar» is the standard source «eier/EmneKlar».
+    monkeypatch.setattr(canvas_container.updates, "default_repository", lambda: ("eier/EmneKlar", "install.json"))
+    assert canvas_client.patch("/api/settings/advanced", json={"update_repository": "Eier/emneklar"}).status_code == 200
+    assert canvas_client.get("/api/updates/status").json()["repository_is_custom"] is False
+    # The saved source in other letters again: still no confirmation.
+    assert canvas_client.patch("/api/settings/advanced", json={"update_repository": "EIER/EMNEKLAR"}).status_code == 200
+    # A different repository still needs it – also with letters that only differ in case from another name.
+    refused = canvas_client.patch("/api/settings/advanced", json={"update_repository": "Fremmed/EmneKlar"})
+    assert refused.status_code == 409 and refused.json()["error"]["code"] == "update_source_confirmation_required"
+    assert same_repository("eier/EmneKlar", " EIER/emneklar ") and not same_repository("eier/EmneKlar", "eier/Annet")
+    assert not same_repository(None, "eier/EmneKlar")
 
 
 def test_feature_flags_can_be_overridden_and_reset(canvas_client: TestClient) -> None:
@@ -181,7 +224,8 @@ def test_start_refuses_major_without_confirmation(canvas_client: TestClient, can
     launched: list[str] = []
     monkeypatch.setattr(update_service.subprocess, "Popen", lambda args, **_: launched.append(args))
     monkeypatch.setattr(UpdateService, "install_info", lambda self: {"type": "release", "can_start_from_app": True})
-    canvas_client.patch("/api/settings/advanced", json={"update_repository": "acme/EmneKlar"})
+    canvas_client.patch("/api/settings/advanced", json={"update_repository": "acme/EmneKlar",
+                                                        "confirm_update_repository": True})
     _, canvas_container.update_transport = github({"tag_name": "v9.0.0", "prerelease": False, "draft": False})
     assert canvas_client.post("/api/updates/check").json()["is_major"] is True
     refused = canvas_client.post("/api/updates/start", json={})

@@ -15,6 +15,7 @@ from emneklar.core.canvas.html import canvas_ref, context_text, element_path, fi
 from emneklar.core.canvas.snapshot import SnapObj
 from emneklar.core.security.guarded_http import build_guarded_client
 from emneklar.core.security.ssrf import UrlBlocked, validate_url
+from emneklar.features.accessibility.analyzer import blueprint_evidence
 from emneklar.features.accessibility.checks.base import ContentDoc, element_signature
 from emneklar.features.analysis.core import AnalysisContext, AnalysisTask, ObjectCheck
 from emneklar.features.content_quality.hygiene import check_hygiene
@@ -35,17 +36,18 @@ def draft(ctx: AnalysisContext, obj: SnapObj, rule_id: str, message: str, *, ide
           location: dict[str, Any] | None = None, evidence: dict[str, Any] | None = None,
           fix: dict[str, Any] | None = None, confidence: str = "high", classification: str | None = None) -> FindingDraft:
     rule = RULES[rule_id]
-    modules = ctx.view.module_of.get(obj.ref)
-    location = dict(location or {})
-    if modules:
-        location["module"] = modules[0]
+    location = {**dict(location or {}), **ctx.view.module_location(obj)}
+    evidence = dict(evidence or {})
+    blueprint = blueprint_evidence(obj)
+    if blueprint:
+        evidence["blueprint"] = blueprint
     return FindingDraft(
         domain=DOMAIN, rule_id=rule.id, category=rule.category, classification=classification or rule.classification,
         test_method=rule.testability, severity=rule.severity, confidence=confidence, title=rule.title,
         message=message, remediation=rule.remediation,
         fingerprint=make_fingerprint(ctx.course_id, DOMAIN, rule.id, obj.ref, identity),
         object_type=obj.object_type, object_id=obj.canvas_id, object_title=obj.title, object_url=obj.html_url,
-        location=location, evidence=evidence or {},
+        location=location, evidence=evidence,
         fix=fix if obj.object_type in EDITABLE and obj.body is not None else None, ruleset_version=RULESET_VERSION)
 
 
@@ -55,13 +57,37 @@ def anchor_location(a: Tag) -> dict[str, Any]:
 
 
 def link_fix(state: str, result: LinkResult | None, a: Tag) -> dict[str, Any] | None:
+    """A link fix is always the teacher's choice: replace the address, change the text, remove the link but keep the
+    text, or remove the whole link. EmneKlar never removes a link because a check failed."""
     if state == "REDIRECT" and result is not None and result.permanent_redirect and result.final_url:
         return {"type": "replace_link_href", "label": "Oppdater lenken til den nye adressen",
-                "params": {"suggestion": result.final_url}}
-    if state in ("DEAD", "INTERNAL"):
-        return {"type": "replace_link_href", "label": "Erstatt lenken eller fjern den (teksten beholdes)",
+                "params": {"suggestion": result.final_url, "allow_unlink": True, "text": text_of(a)[:200]}}
+    if state in ("DEAD", "INTERNAL", "TIMEOUT", "AUTH_REQUIRED", "UNKNOWN"):
+        return {"type": "replace_link_href", "label": "Rett lenken",
                 "params": {"suggestion": "", "allow_unlink": True, "text": text_of(a)[:200]}}
     return None
+
+
+def _uses(ctx: AnalysisContext, uses: list[tuple[SnapObj, Tag, str]]) -> list[dict[str, Any]]:
+    """Every place a link is used – with the Canvas address of the content, so «Brukt i» can open it directly."""
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    for obj, el, kind in uses:
+        key = (obj.object_type, obj.canvas_id)
+        entry = out.setdefault(key, {"object_type": obj.object_type, "object_id": obj.canvas_id, "title": obj.title,
+                                     "url": obj.html_url, "count": 0, "kind": kind,
+                                     "text": text_of(el)[:120] if el.name == "a" else None,
+                                     **ctx.view.module_location(obj)})
+        entry["count"] += 1
+    return sorted(out.values(), key=lambda u: (str(u.get("module") or ""), u["title"]))[:200]
+
+
+def same_href_count(a: Tag) -> int:
+    """How many links in the same content use exactly this address (for «alle forekomster på siden»)."""
+    href = str(a.get("href") or "").strip()
+    root = a
+    while root.parent is not None:
+        root = root.parent
+    return sum(1 for x in root.find_all("a") if str(x.get("href") or "").strip() == href) if href else 1
 
 
 class ContentQualityAnalyzer:
@@ -137,7 +163,8 @@ class ContentQualityAnalyzer:
                 return []
             return [draft(ctx, obj, "CQ-LINK-INTERNAL-MISSING",
                           f"«{text_of(a)[:60]}» peker til {target_type} «{ref.ident}», som ikke finnes i emnet.",
-                          identity=f"missing:{href}", location=location, evidence={"href": href},
+                          identity=f"missing:{href}", location=location,
+                          evidence={"href": href, "link_text": text_of(a)[:120] or None},
                           fix=link_fix("DEAD", None, a))]
         if target.meta.get("published") is False and target_type != "file":
             return [draft(ctx, obj, "CQ-LINK-UNPUBLISHED", f"«{text_of(a)[:60]}» går til upublisert innhold "
@@ -208,7 +235,8 @@ class ContentQualityAnalyzer:
         async def run() -> list[FindingDraft]:
             result = await checker.check(url)
             ctx.shared.setdefault("link_results", {})[url] = result.as_dict() | {
-                "used_in": sorted({f"{o.object_type}:{o.canvas_id}|{o.title}" for o, _, _ in uses})}
+                "used_in": sorted({f"{o.object_type}:{o.canvas_id}|{o.title}" for o, _, _ in uses}),
+                "uses": _uses(ctx, uses)}
             if result.state == "WORKING":
                 return []
             drafts = []
@@ -221,8 +249,10 @@ class ContentQualityAnalyzer:
                                     location=location,
                                     evidence={"href": url, "state": result.state, "http_status": result.http_status,
                                               "final_url": result.final_url, "checked_at": result.checked_at.isoformat(),
-                                              "from_cache": result.from_cache},
-                                    fix=link_fix(result.state, result, el) if el.name == "a" else None,
+                                              "from_cache": result.from_cache, "link_text": label or None,
+                                              "occurrences": same_href_count(el) if el.name == "a" else 1},
+                                    fix=link_fix(result.state, result, el) if el.name == "a" and kind == "link"
+                                    else None,
                                     confidence=result.confidence))
             return drafts
 

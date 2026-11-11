@@ -55,12 +55,15 @@ export function SettingsPanel({ status, courseId }: { status: RagStatus; courseI
         <div className="ek-stack" data-gap="6">
           <RadioGroup legend="Embedding (semantisk søk)" name="rag-embedding" value={form.embedding_backend}
             onChange={(embedding_backend) => set({ embedding_backend })} options={[
-              { value: "local", label: "Lokal modell på denne maskinen", hint: "Anbefalt. Ingenting forlater maskinen." },
+              { value: "local", label: "Lokal modell på denne maskinen",
+                hint: installed.embedding ? "Anbefalt. Ingenting forlater maskinen."
+                  : "Ikke tilgjengelig: lokale modeller følger ikke med EmneKlar. Søket bruker da bare nøkkelord.",
+                disabled: !installed.embedding && form.embedding_backend !== "local" },
               { value: "provider", label: "KI-leverandør (OpenAI-kompatibel)",
                 hint: "For eksempel Ollama med bge-m3 lokalt, eller OpenAI/Azure. Ekstern leverandør krever samtykke." },
               { value: "none", label: "Bare nøkkelordsøk (BM25)", hint: "Raskest og uten modeller, men finner færre treff." },
             ]} />
-          {form.embedding_backend === "local" ? (
+          {form.embedding_backend === "local" && installed.embedding ? (
             <SelectField label="Embedding-modell" value={form.embedding_model} options={options("embedding")}
               onChange={(e) => set({ embedding_model: e.target.value })}
               hint="Bytter du modell, må kunnskapsbasen bygges på nytt." />
@@ -74,9 +77,11 @@ export function SettingsPanel({ status, courseId }: { status: RagStatus; courseI
                 onChange={(e) => set({ embedding_provider_model: e.target.value })} hint="For eksempel bge-m3 i Ollama." />
             </div>
           ) : null}
-          <Switch label="Rerangering med lokal modell" checked={form.reranker_enabled}
-            onChange={(reranker_enabled) => set({ reranker_enabled })} />
-          {form.reranker_enabled ? (
+          {installed.reranker ? (
+            <Switch label="Rerangering med lokal modell" checked={form.reranker_enabled}
+              onChange={(reranker_enabled) => set({ reranker_enabled })} />
+          ) : null}
+          {installed.reranker && form.reranker_enabled ? (
             <SelectField label="Rerangeringsmodell" value={form.reranker_model} options={options("reranker")}
               onChange={(e) => set({ reranker_model: e.target.value })} />
           ) : null}
@@ -96,20 +101,26 @@ export function SettingsPanel({ status, courseId }: { status: RagStatus; courseI
         <div className="ek-stack" data-gap="4">
           <TranscriptionFields status={status} name="rag-transcription" value={transcriptionOf(form)} onChange={set} />
           <div className="ek-grid" data-cols="2">
-            <SelectField label="NB-Whisper-modell" value={form.whisper_model}
-              onChange={(e) => set({ whisper_model: e.target.value as RagSettings["whisper_model"] })}
-              hint="Automatisk: large på GPU, small eller medium på CPU." options={[
-                { value: "auto", label: "Automatisk" }, { value: "tiny", label: "Tiny (raskest)" },
-                { value: "base", label: "Base" }, { value: "small", label: "Small" }, { value: "medium", label: "Medium" },
-                { value: "large", label: "Large (best, tregest)" },
-              ]} />
-            <SelectField label="Modell for annet språk enn norsk" value={form.whisper_other_language_model}
-              options={options("whisper_other")} onChange={(e) => set({ whisper_other_language_model: e.target.value })} />
-            <SelectField label="Maskinvare" value={form.device}
-              onChange={(e) => set({ device: e.target.value as RagSettings["device"] })} options={[
-                { value: "auto", label: "Automatisk (GPU hvis tilgjengelig)" }, { value: "cpu", label: "Bare CPU" },
-                { value: "cuda", label: "NVIDIA-GPU (CUDA)" },
-              ]} />
+            {installed.whisper ? (
+              <SelectField label="NB-Whisper-modell" value={form.whisper_model}
+                onChange={(e) => set({ whisper_model: e.target.value as RagSettings["whisper_model"] })}
+                hint="Automatisk: large på GPU, small eller medium på CPU." options={[
+                  { value: "auto", label: "Automatisk" }, { value: "tiny", label: "Tiny (raskest)" },
+                  { value: "base", label: "Base" }, { value: "small", label: "Small" }, { value: "medium", label: "Medium" },
+                  { value: "large", label: "Large (best, tregest)" },
+                ]} />
+            ) : null}
+            {installed.whisper ? (
+              <SelectField label="Modell for annet språk enn norsk" value={form.whisper_other_language_model}
+                options={options("whisper_other")} onChange={(e) => set({ whisper_other_language_model: e.target.value })} />
+            ) : null}
+            {installed.embedding || installed.whisper ? (
+              <SelectField label="Maskinvare" value={form.device}
+                onChange={(e) => set({ device: e.target.value as RagSettings["device"] })} options={[
+                  { value: "auto", label: "Automatisk (GPU hvis tilgjengelig)" }, { value: "cpu", label: "Bare CPU" },
+                  { value: "cuda", label: "NVIDIA-GPU (CUDA)" },
+                ]} />
+            ) : null}
             <TextField label="Største fil (MB)" type="number" min={1} max={500} value={form.max_file_mb}
               onChange={(e) => set({ max_file_mb: Number(e.target.value) })} />
             <TextField label="Største video (MB)" type="number" min={10} max={20000} value={form.max_video_mb}
@@ -148,13 +159,14 @@ export function SettingsPanel({ status, courseId }: { status: RagStatus; courseI
               ser størrelsen før det skjer.
             </p>
           ) : (
-            <Alert tone="info" title="Lokale modeller er ikke installert">
-              Uten dem bruker kunnskapsbasen nøkkelordsøk og eksisterende teksting. Lukk EmneKlar, dobbeltklikk{" "}
-              <strong>setup.bat</strong> i EmneKlar-mappen og svar «j» på spørsmålet om lokale modeller. Det laster ned
-              flere GB. Oppdateringer beholder dem senere.
+            <Alert tone="info" title="Lokale modeller følger ikke med EmneKlar">
+              Kunnskapsbasen bruker nøkkelordsøk og eksisterende teksting. Vil du ha semantisk søk eller transkripsjon
+              av video uten teksting, velger du en KI-leverandør under «Søk» og «Video, lyd og filer» over.
             </Alert>
           )}
-          <DataTable caption="Lokale modeller" captionHidden columns={columns} rows={models} rowKey={(m) => m.id} />
+          {installed.embedding || installed.whisper ? (
+            <DataTable caption="Lokale modeller" captionHidden columns={columns} rows={models} rowKey={(m) => m.id} />
+          ) : null}
         </div>
       </Card>
     </div>

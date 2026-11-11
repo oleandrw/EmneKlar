@@ -7,7 +7,7 @@ import { ToastProvider } from "../../design-system";
 import { ModuleRequirements } from "./ModuleRequirements";
 
 vi.mock("../../core/course", () => ({ useCurrentCourse: () => ({ courseId: "104", course: null, loading: false }) }));
-vi.mock("../../core/session", () => ({ useSession: () => ({ dry_run: true }) }));
+vi.mock("../../core/session", () => ({ useSession: () => ({}) }));
 vi.mock("../../core/ui", () => ({ useUi: () => ({ openChanges: vi.fn() }) }));
 
 const OPTIONS = {

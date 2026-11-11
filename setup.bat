@@ -1,6 +1,7 @@
 @echo off
 rem EmneKlar - setup. Double-click once after downloading EmneKlar; safe to run again (it repairs the
 rem installation). No administrator rights are needed. See scripts\setup.py for the details.
+rem An installation made by the installer has its own Python in runtime\ - setup then only checks it.
 rem Arguments: --no-pause (do not wait for a key press at the end), --strict (tested versions only).
 rem Optional: set EMNEKLAR_PYTHON to the full path of a python.exe to use that interpreter.
 rem Keep everything above "chcp 65001" ASCII-only: cmd.exe reads those lines with the OEM code page.
@@ -8,6 +9,9 @@ setlocal EnableExtensions DisableDelayedExpansion
 chcp 65001 >nul
 title EmneKlar – oppsett
 cd /d "%~dp0"
+
+rem With its own runtime the installation needs no Python on the machine.
+if exist "%~dp0runtime\python.exe" goto :bundled
 
 rem Find Python 3.11 or newer: EMNEKLAR_PYTHON, then the Python launcher (py -3), then python on PATH.
 set "EMNEKLAR_SETUP_PY="
@@ -19,6 +23,12 @@ if not defined EMNEKLAR_SETUP_PY goto :no_python
 
 rem CALL also works when the interpreter is a .bat shim (e.g. pyenv-win) instead of an .exe.
 call %EMNEKLAR_SETUP_PY% "%~dp0scripts\setup.py" %*
+set "EMNEKLAR_EXIT=%ERRORLEVEL%"
+call :maybe_pause %*
+exit /b %EMNEKLAR_EXIT%
+
+:bundled
+"%~dp0runtime\python.exe" "%~dp0scripts\setup.py" %*
 set "EMNEKLAR_EXIT=%ERRORLEVEL%"
 call :maybe_pause %*
 exit /b %EMNEKLAR_EXIT%

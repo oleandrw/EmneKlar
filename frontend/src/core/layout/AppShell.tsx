@@ -2,24 +2,25 @@ import { Menu, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router";
 
-import { Alert, IconButton } from "../../design-system";
+import { IconButton } from "../../design-system";
 import { AnalysisDialog } from "../../features/analysis/AnalysisDialog";
 import { ChangeSetDrawer } from "../../features/changes/ChangeSetDrawer";
+import { JobsProvider } from "../jobs";
 import { useSession } from "../session";
 import { useUi } from "../ui";
 import {
   ChangeSetButton,
   CourseSelector,
-  DryRunToggle,
-  HelpButton,
-  JobIndicator,
   RunAnalysisButton,
-  UserChip,
 } from "./HeaderControls";
+import { AccountMenu } from "./AccountMenu";
+import { JobStatus } from "./JobStatus";
 import { PRIMARY_NAV, SECONDARY_NAV, type NavItem } from "./nav";
 
-/** An open book with a check mark – the course, made clear. */
-function BrandMark() {
+/** The EmneKlar logo: an open book with a check mark – the course, made clear. Also used on the setup page, and drawn
+ * the same way in src/assets/emneklar-logo.svg (the window, the taskbar and the tab), public/favicon.svg (pages made by
+ * the server) and packaging/windows/EmneKlar.ico (shortcuts and the installer); a test keeps them alike. */
+export function BrandMark() {
   return (
     <svg className="ek-brand__mark" viewBox="0 0 36 36" aria-hidden="true">
       <path d="M3.5 10.2c4.9-2 9.8-1.7 14.5 1.1v18.4c-4.7-2.8-9.6-3.1-14.5-1.1z" fill="#34d399" />
@@ -69,6 +70,8 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
         <NavList items={PRIMARY_NAV} flags={session.flags} onNavigate={onNavigate} />
         <NavList items={SECONDARY_NAV} flags={session.flags} onNavigate={onNavigate} bottom />
       </nav>
+      {/* The signed-in Canvas user, below Innstillinger and Hjelp (also in the menu on small screens). */}
+      <AccountMenu onNavigate={onNavigate} />
     </>
   );
 }
@@ -106,61 +109,53 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [menuOpen]);
 
   return (
-    <div className="ek-shell">
-      <a className="ek-skip-link" href="#hovedinnhold">
-        Hopp til hovedinnhold
-      </a>
-      <aside className="ek-shell__nav">
-        <Navigation />
-      </aside>
-      <dialog
-        ref={drawerRef}
-        className="ek-nav-drawer"
-        aria-label="Hovedmeny"
-        onClose={() => setMenuOpen(false)}
-        onCancel={() => setMenuOpen(false)}
-      >
-        <div className="ek-cluster ek-nav-drawer__top" data-justify="end">
-          <IconButton label="Lukk menyen" onClick={() => setMenuOpen(false)}>
-            <X aria-hidden="true" />
-          </IconButton>
-        </div>
-        {menuOpen ? <Navigation onNavigate={() => setMenuOpen(false)} /> : null}
-      </dialog>
-      <header className="ek-shell__header">
-        <IconButton
-          label="Åpne menyen"
-          className="ek-shell__menu-button"
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen(true)}
+    <JobsProvider>
+      <div className="ek-shell">
+        <a className="ek-skip-link" href="#hovedinnhold">
+          Hopp til hovedinnhold
+        </a>
+        <aside className="ek-shell__nav">
+          <Navigation />
+        </aside>
+        <dialog
+          ref={drawerRef}
+          className="ek-nav-drawer"
+          aria-label="Hovedmeny"
+          onClose={() => setMenuOpen(false)}
+          onCancel={() => setMenuOpen(false)}
         >
-          <Menu aria-hidden="true" />
-        </IconButton>
-        <CourseSelector />
-        <ChangeSetButton />
-        <span className="ek-header__spacer" />
-        <div className="ek-header__group">
-          <JobIndicator />
-          <DryRunToggle />
-          <span className="ek-header__divider" aria-hidden="true" />
-          <HelpButton />
-          <UserChip />
-          {session.canvas.token_configured ? <RunAnalysisButton /> : null}
-        </div>
-      </header>
-      <main id="hovedinnhold" ref={mainRef} className="ek-shell__main" tabIndex={-1}>
-        {session.dry_run ? (
-          <div className="ek-shell__content ek-shell__notice">
-            <Alert tone="warning" title="Dry run er slått på">
-              EmneKlar analyserer, forhåndsviser og legger endringer i kø som vanlig, men sender ingen endringer til
-              Canvas.
-            </Alert>
+          <div className="ek-cluster ek-nav-drawer__top" data-justify="end">
+            <IconButton label="Lukk menyen" onClick={() => setMenuOpen(false)}>
+              <X aria-hidden="true" />
+            </IconButton>
           </div>
-        ) : null}
-        <div className="ek-shell__content">{children}</div>
-      </main>
-      <AnalysisDialog open={ui.analysisOpen} onClose={ui.closeAnalysis} />
-      <ChangeSetDrawer open={ui.changesOpen} onClose={ui.closeChanges} />
-    </div>
+          {menuOpen ? <Navigation onNavigate={() => setMenuOpen(false)} /> : null}
+        </dialog>
+        {/* General help is «Hjelp» in the main menu, and the account is at the bottom of it (also on small screens). */}
+        <header className="ek-shell__header">
+          <IconButton
+            label="Åpne menyen"
+            className="ek-shell__menu-button"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(true)}
+          >
+            <Menu aria-hidden="true" />
+          </IconButton>
+          <CourseSelector />
+          <ChangeSetButton />
+          <span className="ek-header__spacer" />
+          <div className="ek-header__group">
+            {/* «Analysestatus»: every background job, also while scrolling and between pages (the header is sticky). */}
+            <JobStatus />
+            {session.canvas.token_configured ? <RunAnalysisButton /> : null}
+          </div>
+        </header>
+        <main id="hovedinnhold" ref={mainRef} className="ek-shell__main" tabIndex={-1}>
+          <div className="ek-shell__content">{children}</div>
+        </main>
+        <AnalysisDialog open={ui.analysisOpen} onClose={ui.closeAnalysis} />
+        <ChangeSetDrawer open={ui.changesOpen} onClose={ui.closeChanges} />
+      </div>
+    </JobsProvider>
   );
 }

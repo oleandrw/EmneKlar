@@ -11,7 +11,6 @@ import {
   Lightbulb,
   MessagesSquare,
   Paperclip,
-  Play,
   Route,
   SquareCheckBig,
   type LucideIcon,
@@ -22,13 +21,10 @@ import { api } from "../../core/api/client";
 import { useCurrentCourse } from "../../core/course";
 import { formatDate, formatDateTime } from "../../core/format";
 import { useSession } from "../../core/session";
-import { HelpLink } from "../../core/HelpLink";
 import { usePageTitle } from "../../core/usePageTitle";
-import { useUi } from "../../core/ui";
 import {
   Alert,
   Badge,
-  Button,
   Card,
   EmptyState,
   ExternalLink,
@@ -39,6 +35,8 @@ import {
   type Tone,
 } from "../../design-system";
 import { FindingsView } from "../findings/FindingsView";
+import { ResultsFreshness } from "../analysis/AnalysisStatus";
+import { useCourseAnalysis } from "../../core/jobs";
 
 interface StructureItem {
   id: string;
@@ -126,12 +124,12 @@ function Journey({ steps, label }: { steps: string[]; label: string }) {
 
 function StudentJourney() {
   const { courseId } = useCurrentCourse();
-  const ui = useUi();
   const structure = useQuery({
     queryKey: ["structure", courseId],
     queryFn: () => api.get<StructureResponse>(`/api/courses/${courseId}/structure`),
     enabled: Boolean(courseId),
   });
+  const { runningHere } = useCourseAnalysis("structure");
   if (!courseId) return <EmptyState title="Velg et emne">Velg et emne i toppen av siden.</EmptyState>;
   if (structure.isPending) return <Spinner label="Henter emnestrukturen …" />;
   if (structure.error) {
@@ -139,14 +137,16 @@ function StudentJourney() {
   }
   if (!structure.data.snapshot_at) {
     return (
-      <EmptyState title="Ingen analyse ennå" headingLevel={3}
-        actions={<Button variant="primary" onClick={() => ui.openAnalysis({ domains: ["structure"] })}>Kjør analyse</Button>}>
-        Studentreisen bygges fra siste analyse av emnet.
+      <EmptyState title={runningHere ? "Første kontroll pågår" : "Ingen analyse ennå"} headingLevel={3}>
+        {runningHere
+          ? "Studentreisen vises her når kontrollen er ferdig."
+          : "Studentreisen bygges fra siste analyse av emnet. Start med «Analyser emnestruktur» øverst til høyre."}
       </EmptyState>
     );
   }
   return (
     <div className="ek-stack" data-gap="6">
+      <ResultsFreshness domain="structure" resultsAt={structure.data.snapshot_at} />
       <p className="ek-small ek-muted">
         Slik møter studentene innholdet, modul for modul, ut fra rekkefølgen i Canvas (analyse{" "}
         {formatDateTime(structure.data.snapshot_at)}). Visningen viser rekkefølgen – den sier ikke at én
@@ -204,7 +204,6 @@ function StudentJourney() {
 
 export function CourseStructurePage() {
   usePageTitle("Emnestruktur");
-  const ui = useUi();
   const session = useSession();
   const journeyEnabled = session.flags.student_journey !== false;
   const [tab, setTab] = useState<"suggestions" | "journey">("suggestions");
@@ -213,14 +212,6 @@ export function CourseStructurePage() {
       <PageHeader
         title="Emnestruktur"
         description="Råd om moduler, rekkefølge, navngiving og plassering. Forslagene er veiledende – ingenting flyttes uten at du godkjenner det."
-        actions={
-          <>
-            <HelpLink topic="emnestruktur" />
-            <Button variant="primary" icon={<Play aria-hidden="true" />} onClick={() => ui.openAnalysis({ domains: ["structure"] })}>
-              Analyser emnestruktur
-            </Button>
-          </>
-        }
       />
       <Tabs
         label="Emnestruktur"
@@ -237,7 +228,7 @@ export function CourseStructurePage() {
           ) : (
             <FindingsView
               domain="structure"
-              emptyText="Kjør en analyse for å få forslag til emnestrukturen. Analysen leser bare fra Canvas."
+              emptyText="Start med «Analyser emnestruktur» øverst til høyre for å få forslag til emnestrukturen. Analysen leser bare fra Canvas."
             />
           )}
         </div>

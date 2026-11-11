@@ -1,7 +1,7 @@
 {
   "name": "emneklar-frontend",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0-alpha.1",
   "type": "module",
   "description": "Brukergrensesnittet til EmneKlar. Alt bygges lokalt – ingen CDN.",
   "scripts": {

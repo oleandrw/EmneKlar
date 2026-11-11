@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 from bs4 import NavigableString, Tag
 
 from emneklar.core.canvas.html import accessible_name, context_text, element_path, is_hidden, norm_text, text_of
+from emneklar.core.canvas.links import href_problem
 from emneklar.features.accessibility.checks.base import ContentDoc, Issue, fix
 
 HEADINGS = ("h1", "h2", "h3", "h4", "h5", "h6")
@@ -140,6 +141,23 @@ def _meaningful_context(link: Tag, name: str) -> int:
     return len(words)
 
 
+def suggest_link_text(a: Tag, href: str) -> str:
+    """A starting point for a link text (the teacher edits it): the link's title, the image's file name for linked
+    images, or the address' site and last path segment."""
+    title = norm_text(str(a.get("title") or ""))
+    if title:
+        return title[:120]
+    if href_problem(href):
+        return ""
+    parts = urlsplit(href)
+    segment = [s for s in parts.path.split("/") if s]
+    name = re.sub(r"[-_]+", " ", segment[-1].rsplit(".", 1)[0]) if segment else ""
+    host = (parts.hostname or "").removeprefix("www.")
+    if host and name and not name.isdigit():
+        return f"{name.capitalize()} ({host})"[:120]
+    return host[:120]
+
+
 def _normalise_href(href: str) -> str:
     parts = urlsplit(href)
     return f"{parts.netloc.lower()}{parts.path.rstrip('/')}?{parts.query}"
@@ -161,11 +179,18 @@ def check_links(doc: ContentDoc) -> list[Issue]:
             if images and all(img.has_attr("alt") and not norm_text(str(img.get("alt"))) for img in images):
                 continue  # reported by UU-IMG-EMPTY-ALT-LINK
             removable = not a.find(True) and not norm_text(a.get_text())
+            problem = href_problem(href)
+            message = f"Lenken til {href[:120]} har ikke noe tilgjengelig navn."
+            if removable and problem:
+                message += " Adressen er heller ikke gyldig."
+            # An empty link is invisible on the page. The teacher chooses: remove the leftover (pre-selected when the
+            # address cannot work), or give it text – and the right address. Never removed without that choice.
             issues.append(Issue(
-                "UU-LINK-EMPTY", f"Lenken til {href[:120]} har ikke noe tilgjengelig navn.", element=a,
-                evidence={"href": href},
-                fix=fix("remove_element", "Fjern den tomme lenken", path=path) if removable
-                else fix("set_link_text", "Legg inn lenketekst", path=path)))
+                "UU-LINK-EMPTY", message, element=a, evidence={"href": href},
+                fix=fix("replace_link_href", "Rett den tomme lenken", path=path, empty=True, text="",
+                        suggestion="" if problem else href, default_action="remove" if problem else "replace")
+                if removable else fix("set_link_text", "Legg inn lenketekst", path=path,
+                                      suggestion=suggest_link_text(a, href))))
             continue
         lowered = name.lower().strip(" .:!»«\"'")
         if lowered in VAGUE:

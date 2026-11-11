@@ -35,6 +35,7 @@ from urllib.parse import urlsplit
 
 from emneklar import APP_NAME, __version__
 from emneklar.config import ConfigError, RuntimeConfig, default_data_dir
+from emneklar.core.system import prepare_standard_streams, tell_user
 
 log = logging.getLogger("emneklar.manage")
 
@@ -370,11 +371,18 @@ def cmd_migrate(_args: argparse.Namespace) -> int:
         return _fail(f"Feil i oppsettet: {exc}")
     if running_instance(config.run_dir) is not None:
         return _fail("EmneKlar kjører. Avslutt EmneKlar før databasen oppdateres "
-                     "(lukk EmneKlar-vinduet eller kjør «python -m emneklar.manage stop»).")
+                     "(«Avslutt EmneKlar» i programmet, eller «python -m emneklar.manage stop»).")
     from emneklar.core.storage.db import ForeignDatabaseError, database_owner
+    from emneklar.core.storage.legacy import prepare_data_dir
 
     if database_owner(config.db_path) == "foreign":
         return _fail(str(ForeignDatabaseError(config.db_path)))
+    try:
+        copied = prepare_data_dir(config)  # data from before the program got its final name: copied once
+    except ConfigError as exc:
+        return _fail(str(exc))
+    if copied is not None:
+        print(f"Dataene fra {copied.source} er kopiert til {copied.target}. Den gamle mappen er ikke endret.")
     config.ensure_dirs()
     file_logging = _FileLogging(config.logs_dir)
     try:
@@ -453,16 +461,20 @@ def cmd_health(args: argparse.Namespace) -> int:
 
 
 def cmd_stop(args: argparse.Namespace) -> int:
+    """Also the Start-menu shortcut «Avslutt EmneKlar» (no console window): the answer is then shown in a box."""
     result = stop_instance(data_dir_from_env() / "run", timeout=args.timeout)
     if result == "not_running":
-        print(f"{APP_NAME} kjører ikke – ingenting å stoppe.")
+        tell_user(APP_NAME, f"{APP_NAME} kjører ikke – ingenting å stoppe.")
         return 0
     if result == "stopped":
-        print(f"{APP_NAME} er avsluttet.")
+        tell_user(APP_NAME, f"{APP_NAME} er avsluttet.")
         return 0
     if result == "refused":
-        return _fail(f"{APP_NAME} avviste forespørselen om å avslutte. Lukk {APP_NAME}-vinduet i stedet.")
-    return _fail(f"{APP_NAME} avsluttet ikke innen {args.timeout:g} sekunder. Lukk {APP_NAME}-vinduet i stedet.")
+        tell_user(APP_NAME, f"{APP_NAME} avviste forespørselen om å avslutte. Prøv igjen, eller logg ut av Windows.",
+                  error=True)
+        return 1
+    tell_user(APP_NAME, f"{APP_NAME} avsluttet ikke innen {args.timeout:g} sekunder. Prøv igjen om litt.", error=True)
+    return 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -486,6 +498,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    prepare_standard_streams()
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:  # UTF-8 also when redirected (CI logs, pipes); consoles are Unicode anyway

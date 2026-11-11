@@ -5,6 +5,8 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 export interface AnalysisPreset {
   domains?: ("accessibility" | "content_quality" | "structure" | "quiz")[];
   scope?: "course" | "modules" | "items";
+  /** The page's own area: the dialog analyses only this area (no choice of areas, no full analysis). */
+  area?: "accessibility" | "content_quality" | "structure" | "quiz";
 }
 
 interface UiState {

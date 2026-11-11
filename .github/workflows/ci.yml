@@ -1,8 +1,8 @@
 name: CI
 
-# Actions minutes: pull requests get a fast Linux-only check; the full Windows matrix, E2E and the
-# Windows install test run on main and on demand (Actions → CI → Run workflow on any branch).
-# Windows runners count double, so they are kept off the per-commit path.
+# Actions minutes: pull requests get a fast Linux-only check; the full Windows matrix, E2E, the Windows package
+# (runtime, installer, update) and the Windows install from source run on main and on demand
+# (Actions → CI → Run workflow on any branch). Windows runners count double, so they are kept off the per-commit path.
 on:
   push:
     branches: [main]
@@ -23,6 +23,8 @@ env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   # Node.js LTS. frontend/package-lock.json needs >= 22.22.2 (react-router, jsdom); "22" resolves to the newest 22.x.
   NODE_VERSION: "22"
+  # The Python version of the runtime that is bundled with the Windows package (packaging/runtime.json).
+  RUNTIME_PYTHON: "3.14"
 
 jobs:
   backend:
@@ -31,11 +33,11 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      # Pull requests: Ubuntu + Python 3.13 only. main / manual runs: Windows and Ubuntu, 3.12 and 3.13,
-      # plus Ubuntu 3.11 (oldest supported version, requires-python >= 3.11).
+      # Pull requests: Ubuntu + Python 3.13 only. main / manual runs: Windows and Ubuntu, 3.12 to 3.14 (3.14 is the
+      # version bundled with the Windows package), plus Ubuntu 3.11 (oldest supported, requires-python >= 3.11).
       matrix: ${{ fromJSON(github.event_name == 'pull_request'
         && '{"os":["ubuntu-latest"],"python":["3.13"]}'
-        || '{"os":["windows-latest","ubuntu-latest"],"python":["3.12","3.13"],"include":[{"os":"ubuntu-latest","python":"3.11"}]}') }}
+        || '{"os":["windows-latest","ubuntu-latest"],"python":["3.12","3.13","3.14"],"include":[{"os":"ubuntu-latest","python":"3.11"}]}') }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -148,6 +150,11 @@ jobs:
           python -m pip install -c backend/constraints.txt pip-audit
           python -m pip_audit --requirement "$RUNNER_TEMP/runtime-requirements.txt" --no-deps --disable-pip \
             --progress-spinner off
+      # Exactly the files that are installed in the runtime bundled with the Windows package.
+      - name: pip-audit (the locked packages of the bundled Windows runtime)
+        run: >
+          python -m pip_audit --requirement packaging/runtime-win-amd64.txt --no-deps --disable-pip
+          --progress-spinner off
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -155,8 +162,91 @@ jobs:
         working-directory: frontend
         run: npm audit --audit-level=high --omit=dev
 
+  windows-package:
+    name: Windows package (runtime, installer, install, update, uninstall)
+    # What a teacher gets: the installer with its own Python runtime. Built exactly as the release workflow builds
+    # it, then installed, started, stopped, reinstalled, updated (also with a version that cannot start) and removed.
+    runs-on: windows-latest
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build the user interface
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.RUNTIME_PYTHON }}
+      - name: Build the bundled runtime (hash-checked)
+        run: python scripts/build_runtime.py build
+      - name: Package
+        run: |
+          runtime="$(ls dist-release/EmneKlar-runtime-win-amd64-*.zip)"
+          version="$(tr -d '[:space:]' < VERSION)"
+          echo "RUNTIME=$runtime" >> "$GITHUB_ENV"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          python scripts/package_release.py --repository "$GITHUB_REPOSITORY" --runtime "$runtime"
+      - name: Inno Setup (preinstalled on the runner image; installed if it is missing)
+        shell: pwsh
+        run: |
+          $found = (Get-Command iscc -ErrorAction SilentlyContinue) -or
+            (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")
+          if (-not $found) { choco install innosetup --no-progress -y; if ($LASTEXITCODE -ne 0) { exit 1 } }
+      - name: Build the installer (not signed)
+        run: python scripts/build_installer.py --package "dist-release/EmneKlar-$VERSION.zip" --runtime "$RUNTIME"
+      - name: Install, start, stop, reinstall and uninstall
+        run: >
+          python scripts/verify_windows_installer.py --installer "dist-release/EmneKlar-$VERSION-setup.exe"
+          --work "$RUNNER_TEMP/emneklar-installer"
+      - name: Update an installed copy (with a new runtime)
+        run: >
+          python scripts/local_update_test.py --package "dist-release/EmneKlar-$VERSION.zip" --runtime "$RUNTIME"
+          --work "$RUNNER_TEMP/emneklar-update"
+      - name: Roll back a new version that cannot start
+        run: >
+          python scripts/local_update_test.py --package "dist-release/EmneKlar-$VERSION.zip" --runtime "$RUNTIME"
+          --work "$RUNNER_TEMP/emneklar-rollback" --break-new-version
+      # Only an installer that passed every check above is kept: for trying it on another PC. It is the normal build
+      # (not the test build), not code-signed and not a release – nothing can update to it.
+      - name: Keep the installer for 14 days (not signed, not a release)
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist-release/EmneKlar-${{ env.VERSION }}-setup.exe
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+      - name: Show the installer's checksum
+        run: |
+          {
+            echo "### EmneKlar-$VERSION-setup.exe"
+            echo
+            echo "Download it under *Artifacts* below; it is deleted after 14 days. Not code-signed (SmartScreen will"
+            echo "warn) and not a release. It is the normal build: on another PC it uses %LOCALAPPDATA%\\EmneKlar,"
+            echo "port 8770 and the credential service \"EmneKlar\", like a teacher's installation."
+            echo
+            echo "SHA-256: \`$(cut -d' ' -f1 "dist-release/EmneKlar-$VERSION-setup.exe.sha256")\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-package-logs
+          path: ${{ runner.temp }}/emneklar-*/**/*.log
+          if-no-files-found: ignore
+
   windows-install:
-    name: Windows install (setup.bat, start, health, stop)
+    name: Windows install from source (setup.bat with your own Python, start, health, stop)
+    # The fallback way to install: the zip package or a clone, with a Python that is already on the machine.
     runs-on: windows-latest
     if: github.event_name != 'pull_request'
     timeout-minutes: 30
@@ -216,3 +306,38 @@ jobs:
           name: windows-install-logs
           path: ${{ runner.temp }}/emneklar-data/logs/
           if-no-files-found: ignore
+
+  platform-smoke:
+    name: Starts on ${{ matrix.os }} (smoke test – not a supported platform)
+    # macOS and Linux have no package, no installer and no updater (docs/PLATFORMS.md). This only answers one
+    # question: does the program start from source and answer on that system? A failure here never blocks a merge or
+    # a release, and a green run is not a promise of support.
+    runs-on: ${{ matrix.os }}
+    if: github.event_name != 'pull_request'
+    continue-on-error: true
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # ubuntu-latest: Linux x86_64. macos-latest: Apple silicon (arm64). macos-15-intel: Intel (x86_64).
+        os: [ubuntu-latest, macos-latest, macos-15-intel]
+    env:
+      EMNEKLAR_SECRET_BACKEND: memory # no Secret Service / Keychain prompt on a build machine
+      EMNEKLAR_NO_BROWSER: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.RUNTIME_PYTHON }}
+      - name: Install from source (pinned versions)
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/python -m pip install -c backend/constraints.txt -e backend
+      - name: Start, check /api/health, stop
+        run: |
+          export EMNEKLAR_DATA_DIR="$RUNNER_TEMP/emneklar-data"
+          cd backend
+          .venv/bin/python -m emneklar > "$RUNNER_TEMP/emneklar-console.txt" 2>&1 &
+          .venv/bin/python -m emneklar.manage health --wait 120
+          .venv/bin/python -m emneklar.manage stop --timeout 60
+          if .venv/bin/python -m emneklar.manage health; then echo "still answers after stop"; exit 1; fi

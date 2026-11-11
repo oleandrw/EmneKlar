@@ -70,6 +70,7 @@ class AppContainer:
         ai_transport: httpx.AsyncBaseTransport | None = None,
         update_transport: httpx.AsyncBaseTransport | None = None,
         local_models: LocalModels | None = None,
+        youtube_lookup: Any = None,
     ) -> None:
         self.db = Database(config.db_path)  # refuses a database that belongs to another program
         config.ensure_dirs()
@@ -91,6 +92,7 @@ class AppContainer:
         self._parsers: Any = None
         self._updates: UpdateService | None = None
         self._local_models = local_models  # test seam: a fake with deterministic models
+        self._youtube_lookup = youtube_lookup  # test seam: caption status of YouTube videos without the network
         self.started_at = datetime.now(UTC)
 
     # -- lifecycle ---------------------------------------------------------------------
@@ -112,6 +114,9 @@ class AppContainer:
         interrupted = self.jobs.recover_after_restart()
         if interrupted:
             log.info("%s jobb(er) ble avbrutt ved forrige avslutning", interrupted)
+        unfinished = self.changes.recover_after_restart()
+        if unfinished:
+            log.info("%s publisering(er) ble avbrutt ved forrige avslutning og er merket som feilet", unfinished)
         settings = self.settings.get()
         default_course = settings.general.default_course_id
         if default_course and settings.current_course_id != default_course:
@@ -124,7 +129,19 @@ class AppContainer:
             log.info("%s eldre databasekopier fra oppdateringer/migreringer ble slettet", copies)
         self.apply_log_level(settings)
         self.settings.on_change(self.apply_log_level)
+        self._copy_legacy_secrets(settings)
         self._write_instance_file()
+
+    def _copy_legacy_secrets(self, settings: AppSettings) -> None:
+        """After the one-time copy of the old data folder: bring the Canvas token and the AI keys along, once."""
+        from emneklar.core.auth.secrets import ai_key_name
+        from emneklar.core.storage.legacy import finish_legacy_copy
+
+        names = [CANVAS_TOKEN, *(ai_key_name(provider.id) for provider in settings.ai.providers)]
+        try:
+            finish_legacy_copy(self.config, self.secrets, names)
+        except AppError as exc:  # the credential store did not answer: tried again at the next start
+            log.warning("Hemmelighetene fra forrige navn kunne ikke kopieres nå (%s)", exc.code)
 
     @staticmethod
     def apply_log_level(settings: AppSettings) -> None:
@@ -167,9 +184,6 @@ class AppContainer:
     def app_settings(self) -> AppSettings:
         return self.settings.get()
 
-    def is_dry_run(self) -> bool:
-        return self.settings.get().dry_run
-
     # -- Canvas --------------------------------------------------------------------------
 
     def canvas_token(self) -> str | None:
@@ -194,7 +208,7 @@ class AppContainer:
         if self.canvas_transport is not None:
             http = httpx.AsyncClient(transport=self.canvas_transport, follow_redirects=False)
         return CanvasClient(base_url, token_provider, http=http, allow_http=self.config.allow_insecure_canvas,
-                            max_concurrency=max_concurrency, dry_run=self.is_dry_run)
+                            max_concurrency=max_concurrency)
 
     def reset_canvas(self) -> None:
         """Drop the cached client (e.g. after the URL or token changed)."""
@@ -227,6 +241,16 @@ class AppContainer:
 
             self._ai = AIService(self)
         return self._ai
+
+    @property
+    def youtube_lookup(self) -> Any:
+        """Caption lookup for YouTube videos. When the network is replaced by test doubles (``link_transport``) and no
+        fake is given, nothing is sent and every video stays a manual check."""
+        if self._youtube_lookup is not None:
+            return self._youtube_lookup
+        from emneklar.features.accessibility.youtube_captions import library_lookup, offline_lookup
+
+        return offline_lookup if self.link_transport is not None else library_lookup
 
     @property
     def local_models(self) -> LocalModels:

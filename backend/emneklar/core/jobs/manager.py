@@ -270,16 +270,21 @@ class JobManager:
             jobs = [j for j in jobs if j.status in ACTIVE]
         return sorted(jobs, key=lambda j: j.created_at, reverse=True)
 
-    def history(self, *, course_id: str | None = None, limit: int = 20) -> builtins.list[dict[str, Any]]:
+    def history(self, *, course_id: str | None = None, limit: int = 20,
+                statuses: builtins.list[str] | None = None) -> builtins.list[dict[str, Any]]:
         with self._db.session() as session:
             query = select(Job).order_by(Job.created_at.desc()).limit(limit)
             if course_id is not None:
                 query = query.where(Job.course_id == course_id)
+            if statuses:
+                query = query.where(Job.status.in_(statuses))
             return [
                 {"id": r.id, "kind": r.kind, "course_id": r.course_id, "title": r.title, "status": r.status,
+                 "params": r.params or {}, "supports_pause": False,
                  "created_at": r.created_at.isoformat() if r.created_at else None,
+                 "started_at": r.started_at.isoformat() if r.started_at else None,
                  "finished_at": r.finished_at.isoformat() if r.finished_at else None,
-                 "error": r.error, "result": r.result}
+                 "error": r.error, "result": r.result, "progress": r.progress or {}}
                 for r in session.scalars(query).all()
             ]
 

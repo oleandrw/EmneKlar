@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from emneklar.config import DEFAULT_PORT, RuntimeConfig
+from emneklar.core import system
 from emneklar.core.auth.secrets import MemorySecretStore
 from emneklar.core.container import AppContainer
 from emneklar.main import create_app
@@ -19,6 +20,24 @@ from tests.fakes.fake_canvas import FakeCanvasState, create_fake_canvas, seed_st
 
 ORIGIN = f"http://127.0.0.1:{DEFAULT_PORT}"
 LAUNCH_TOKEN = "test-launch-token"
+
+
+@pytest.fixture(autouse=True)
+def _never_the_real_data_folder(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may read or write the user's own data folder – or start the one-time copy from the old folder name.
+    Anything that resolves the data folder from the environment gets a throw-away folder."""
+    monkeypatch.setenv("EMNEKLAR_DATA_DIR", str(tmp_path_factory.mktemp("datamappe")))
+
+
+@pytest.fixture(autouse=True)
+def _never_a_real_browser(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may open a window or a tab in the user's browser. A test that checks how EmneKlar is shown replaces
+    these two itself."""
+    def refuse(*args: object, **kwargs: object) -> bool:
+        raise AssertionError("a test tried to open the user's browser")
+
+    monkeypatch.setattr(system, "_start_detached", refuse)
+    monkeypatch.setattr(system.webbrowser, "open", refuse)
 
 
 @pytest.fixture
@@ -113,3 +132,10 @@ def wait_for_job(client: TestClient, job_id: str, timeout: float = 30.0) -> dict
             return job
         time.sleep(0.05)
     raise AssertionError(f"job {job_id} did not finish: {job}")
+
+
+def approve_and_apply(client: TestClient, ids: list[int], *, confirm: bool = False) -> httpx.Response:
+    """«Publiser til Canvas» takes approved changes only – approve first, as the change queue does."""
+    approved = client.post("/api/changes/approve", json={"ids": ids})
+    assert approved.status_code == 200, approved.text
+    return client.post("/api/changes/apply", json={"ids": ids, "confirm_high_risk": confirm})

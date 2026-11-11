@@ -42,15 +42,18 @@ export function TranscriptionFields({ status, value, onChange, name }: {
     <div className="ek-stack" data-gap="4">
       <RadioGroup legend="Lyd og video uten teksting" hint="Gjelder alle emner." name={name} value={value.transcription}
         onChange={(transcription) => onChange({ transcription })} options={[
-          { value: "local", label: "På denne maskinen", hint: "Ingen API-kostnad. Krever lokal modell." },
+          { value: "local", label: "På denne maskinen",
+            hint: status.local.installed.whisper ? "Ingen API-kostnad. Bruker en lokal modell."
+              : "Ikke tilgjengelig: lokale modeller følger ikke med EmneKlar.",
+            disabled: !status.local.installed.whisper && value.transcription !== "local" },
           { value: "provider", label: <>Ekstern KI-tjeneste <CostBadge /></>,
             hint: "Sender lyden til leverandøren du velger." },
           { value: "off", label: "Bare eksisterende undertekster", hint: "Hopper over lyd som mangler tekst." },
         ]} />
       {value.transcription === "local" && !status.local.installed.whisper ? (
         <Alert tone="info">
-          Den lokale modellen er ikke installert. Lukk EmneKlar, kjør setup.bat på nytt og svar «j» på spørsmålet om
-          lokale modeller, eller velg et annet alternativ.
+          Lokale modeller følger ikke med EmneKlar, så video uten teksting blir ikke transkribert. Velg «Ekstern
+          KI-tjeneste» eller «Bare eksisterende undertekster».
         </Alert>
       ) : null}
       {value.transcription === "provider" ? (

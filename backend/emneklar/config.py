@@ -10,25 +10,34 @@ This is *not* where user settings or secrets live:
 Only what must be known before the app starts is read here, from environment
 variables prefixed with ``EMNEKLAR_``. Program code and user data are kept
 apart: everything persistent lives under :attr:`RuntimeConfig.data_dir`
-(``%LOCALAPPDATA%\\EmneKlar-Claude`` on Windows), so replacing or updating the
+(``%LOCALAPPDATA%\\EmneKlar`` on Windows), so replacing or updating the
 program folder never touches user data.
 
-Why not ``%LOCALAPPDATA%\\EmneKlar`` and port 8765: another, independent
-implementation of the same specification uses exactly that folder (with the
-same file and folder names) and that port. The two programs must never share
-files, and both must be able to run at the same time.
+Names: the program, its data folder and its credential-store service are all
+called «EmneKlar» (decided before the first public release). Earlier versions
+used «EmneKlar-Claude»; ``core/storage/legacy.py`` copies that data once.
+Another, independent implementation of the same specification also uses
+``%LOCALAPPDATA%\\EmneKlar`` (and port 8765). EmneKlar never opens a database
+that is not its own (``core/storage/db.py``), so on a machine where that
+program has data, EmneKlar refuses to start instead of touching it – and it
+keeps its own port (8770) and a session cookie per port.
 """
 
 from __future__ import annotations
 
 import ipaddress
+import json
 import os
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+from emneklar.core.system import user_data_dir
 
 DEFAULT_PORT = 8770
-DATA_FOLDER = "EmneKlar-Claude"
+DATA_FOLDER = "EmneKlar"
+#: The data folder of versions before the first public release (copied once, see core/storage/legacy.py).
+LEGACY_DATA_FOLDER = "EmneKlar-Claude"
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 REPO_DIR = BACKEND_DIR.parent
 
@@ -37,14 +46,49 @@ class ConfigError(RuntimeError):
     """Raised when the process configuration is unsafe or invalid."""
 
 
+#: Defaults for this one installation, in a file in the program folder that is never part of a release. The test
+#: build of the installer writes it, so that «EmneKlar (test)» has its own data folder, port and credential-store
+#: service whatever starts it (the shortcut, start.bat, update.bat, setup.bat) – it can never open the user's real
+#: data, or replace the real Canvas token, by accident.
+#: ``{"data_dir": "<absolute path>", "port": 8791, "keyring_service": "EmneKlar-test"}``. Environment variables
+#: (EMNEKLAR_DATA_DIR, EMNEKLAR_PORT) win; the service name is read in core/auth/secrets.py.
+LOCAL_FILE = "emneklar.local.json"
+
+
+def installation_defaults() -> dict[str, Any]:
+    try:
+        data = json.loads((REPO_DIR / LOCAL_FILE).read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def standard_data_dir() -> Path:
+    """Where an ordinary installation keeps the user's data."""
+    return user_data_dir(DATA_FOLDER)
+
+
 def default_data_dir() -> Path:
-    if sys.platform == "win32":
-        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-        return Path(base) / DATA_FOLDER
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / DATA_FOLDER
-    base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-    return Path(base) / DATA_FOLDER.lower()
+    """The data folder when EMNEKLAR_DATA_DIR is not set: this installation's own (see LOCAL_FILE), else the standard."""
+    local = installation_defaults().get("data_dir")
+    if isinstance(local, str) and local.strip() and Path(local).is_absolute():
+        return Path(local)
+    return standard_data_dir()
+
+
+def default_port() -> int:
+    port = installation_defaults().get("port")
+    return port if isinstance(port, int) and not isinstance(port, bool) and 1024 <= port <= 65535 else DEFAULT_PORT
+
+
+def uses_standard_data_dir() -> bool:
+    """True when the data folder is the standard one: not chosen with EMNEKLAR_DATA_DIR and not set for this
+    installation. Only then is the data from the earlier folder name copied (core/storage/legacy.py)."""
+    return not os.environ.get("EMNEKLAR_DATA_DIR") and default_data_dir() == standard_data_dir()
+
+
+def legacy_data_dir() -> Path:
+    return user_data_dir(LEGACY_DATA_FOLDER)
 
 
 def is_loopback_host(host: str) -> bool:
@@ -176,7 +220,7 @@ class RuntimeConfig:
         )
         config = cls(
             host=os.environ.get("EMNEKLAR_HOST", "127.0.0.1"),
-            port=int(os.environ.get("EMNEKLAR_PORT", DEFAULT_PORT)),
+            port=int(os.environ.get("EMNEKLAR_PORT") or default_port()),
             data_dir=Path(data_dir_env) if data_dir_env else default_data_dir(),
             frontend_dist=Path(dist_env) if dist_env else REPO_DIR / "frontend" / "dist",
             dev_mode=dev_mode,

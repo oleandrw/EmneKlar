@@ -185,7 +185,7 @@ export function AnalyseStep({ courseId, scope, settings, catalog, busyJobId, run
             <Checkbox label="Lag bildene rett etter analysen" hint="Ellers ser du bildeplanen først og lager bildene i neste steg."
               checked={generateNow} onChange={(e) => setGenerateNow(e.target.checked)} />
             {generateNow ? (
-              <Checkbox label="Automatisk innsetting" hint="Bilder som består kvalitetskontrollen, settes inn i Canvas uten gjennomgang. Bilder som må kontrolleres, venter alltid på deg. Alt går via endringskøen med sikkerhetskopi og angremulighet."
+              <Checkbox label="Automatisk innsetting" hint="Unntaket fra at du godkjenner hvert bilde: bilder som består kvalitetskontrollen, settes inn i Canvas uten gjennomgang når du krysser av her. Bilder som må kontrolleres, venter alltid på deg. Alt går via endringskøen med sikkerhetskopi og angremulighet."
                 checked={autoInsert} onChange={(e) => setAutoInsert(e.target.checked)} />
             ) : null}
             {generateNow && autoInsert && estimate.usage_rights_required ? (

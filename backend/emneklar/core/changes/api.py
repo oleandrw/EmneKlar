@@ -1,4 +1,9 @@
-"""Change set (endringskø), change log (endringslogg), undo and backups."""
+"""Change set (endringskø), publishing, change log (endringslogg), undo and backups.
+
+One queue for every feature: UU and content-quality fixes, structure changes, quizzes, the front page, Canvas tools
+and the illustration assistant all stage changes here, and «Publiser til Canvas» publishes the approved ones –
+across courses – in one job.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +14,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from emneklar.api.deps import get_container
+from emneklar.core.changes.engine import LISTED_STATUSES
 from emneklar.core.container import AppContainer
 from emneklar.core.storage.models import Backup
 
@@ -28,7 +34,7 @@ def group_label(domain: str, count: int) -> str:
 
 
 class Ids(BaseModel):
-    ids: list[int] = Field(min_length=1, max_length=500)
+    ids: list[int] = Field(min_length=1, max_length=2000)
 
 
 class ApplyBody(Ids):
@@ -42,17 +48,29 @@ class ProposedBody(BaseModel):
 @router.get("/changes")
 async def list_changes(course_id: str | None = None, include_done: bool = False,
                        c: AppContainer = Depends(get_container)) -> dict[str, Any]:
-    statuses: tuple[str, ...] = ("staged", "approved", "conflict", "failed")
+    statuses: tuple[str, ...] = LISTED_STATUSES
     if include_done:
         statuses = (*statuses, "applied", "discarded", "undone")
     items = c.changes.list(course_id, statuses)
+    names = c.changes.course_names(sorted({i["course_id"] for i in items}))
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    courses: dict[str, dict[str, Any]] = {}
     for item in items:
         groups[item["domain"]].append(item)
+        item["course_name"] = names.get(item["course_id"])
+        entry = courses.setdefault(item["course_id"], {"course_id": item["course_id"],
+                                                       "name": names.get(item["course_id"]), "count": 0,
+                                                       "approved": 0, "problems": 0})
+        entry["count"] += 1
+        entry["approved"] += int(item["status"] == "approved")
+        entry["problems"] += int(item["status"] in ("failed", "conflict"))
+    running = c.changes.publishing()
     return {
         "items": items,
         "groups": [{"domain": d, "label": group_label(d, len(v)), "count": len(v)} for d, v in groups.items()],
-        "dry_run": c.is_dry_run(),
+        "courses": list(courses.values()),
+        "summary": c.changes.summary(course_id),
+        "publishing_job": running.public() if running else None,
     }
 
 
@@ -93,16 +111,26 @@ async def approve(body: Ids, c: AppContainer = Depends(get_container)) -> dict[s
     return {"items": c.changes.approve(body.ids)}
 
 
+@router.post("/changes/unapprove")
+async def unapprove(body: Ids, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
+    return {"items": c.changes.unapprove(body.ids)}
+
+
 @router.post("/changes/check-conflicts")
 async def check_conflicts(body: Ids, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
     return {"items": await c.changes.check_conflicts(body.ids)}
 
 
+@router.post("/changes/{change_id}/rebuild")
+async def rebuild(change_id: int, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
+    """«Lag forslaget på nytt»: rebuild a fix change on the current content in Canvas after a conflict."""
+    return await c.changes.rebuild(change_id)
+
+
 @router.post("/changes/apply")
 async def apply_changes(body: ApplyBody, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
-    first = c.changes.get(body.ids[0])
-    return c.changes.submit_apply(body.ids, confirm_high_risk=body.confirm_high_risk,
-                                  course_id=first["course_id"]).public()
+    """«Publiser til Canvas»: publish the given changes (one job, possibly several courses)."""
+    return c.changes.submit_apply(body.ids, confirm_high_risk=body.confirm_high_risk).public()
 
 
 @router.get("/changelog")

@@ -55,6 +55,12 @@ def _abs(base: str, url: str | None) -> str | None:
     return url if url.startswith("http") else f"{base}{url}"
 
 
+def _blueprint_meta(raw: dict[str, Any]) -> dict[str, Any]:
+    """Blueprint fields Canvas includes on list calls in Blueprint and associated courses (docs/CANVAS_API.md)."""
+    return {k: raw.get(k) for k in ("restricted_by_master_course", "master_course_restrictions",
+                                    "is_master_course_child_content", "is_master_course_master_content")}
+
+
 def normalise(kind: str, raw: dict[str, Any], base: str) -> list[SnapObj]:
     """Convert one Canvas API object into snapshot objects."""
     if kind == "pages":
@@ -64,9 +70,7 @@ def normalise(kind: str, raw: dict[str, Any], base: str) -> list[SnapObj]:
                         meta={"page_id": str(raw.get("page_id") or ""), "published": raw.get("published"),
                               "front_page": raw.get("front_page"), "editor": raw.get("editor") or "rce",
                               "block_editor": block, "editing_roles": raw.get("editing_roles"),
-                              "restricted_by_master_course": raw.get("restricted_by_master_course"),
-                              "master_course_restrictions": raw.get("master_course_restrictions"),
-                              "is_master_course_child_content": raw.get("is_master_course_child_content")},
+                              **_blueprint_meta(raw)},
                         canvas_updated_at=raw.get("updated_at"))]
     if kind == "modules":
         out = [SnapObj("module", str(raw["id"]), raw.get("name") or "",
@@ -83,26 +87,27 @@ def normalise(kind: str, raw: dict[str, Any], base: str) -> list[SnapObj]:
     if kind == "assignments":
         return [SnapObj("assignment", str(raw["id"]), raw.get("name") or "", html_url=_abs(base, raw.get("html_url")),
                         body=raw.get("description") or "",
-                        meta={k: raw.get(k) for k in ("published", "due_at", "unlock_at", "lock_at", "points_possible",
-                                                      "submission_types", "quiz_id", "is_quiz_assignment",
-                                                      "discussion_topic", "restricted_by_master_course",
-                                                      "master_course_restrictions", "grading_type")},
+                        meta={**{k: raw.get(k) for k in ("published", "due_at", "unlock_at", "lock_at",
+                                                         "points_possible", "submission_types", "quiz_id",
+                                                         "is_quiz_assignment", "discussion_topic", "grading_type")},
+                              **_blueprint_meta(raw)},
                         canvas_updated_at=raw.get("updated_at"))]
     if kind == "discussions":
         return [SnapObj("discussion", str(raw["id"]), raw.get("title") or "", html_url=_abs(base, raw.get("html_url")),
                         body=raw.get("message") or "",
-                        meta={k: raw.get(k) for k in ("published", "assignment_id", "locked", "pinned",
-                                                      "restricted_by_master_course", "master_course_restrictions")},
+                        meta={**{k: raw.get(k) for k in ("published", "assignment_id", "locked", "pinned",
+                                                         "is_announcement")},
+                              **_blueprint_meta(raw)},
                         canvas_updated_at=raw.get("updated_at"))]
     if kind == "quizzes":
         return [SnapObj("quiz", str(raw["id"]), raw.get("title") or "", html_url=_abs(base, raw.get("html_url")),
                         body=raw.get("description") or "",
-                        meta={k: raw.get(k) for k in ("quiz_type", "published", "question_count", "points_possible",
-                                                      "time_limit", "shuffle_answers", "hide_results",
-                                                      "show_correct_answers", "allowed_attempts", "scoring_policy",
-                                                      "one_question_at_a_time", "cant_go_back", "due_at", "lock_at",
-                                                      "unlock_at", "assignment_id", "restricted_by_master_course",
-                                                      "master_course_restrictions")},
+                        meta={**{k: raw.get(k) for k in ("quiz_type", "published", "question_count", "points_possible",
+                                                         "time_limit", "shuffle_answers", "hide_results",
+                                                         "show_correct_answers", "allowed_attempts", "scoring_policy",
+                                                         "one_question_at_a_time", "cant_go_back", "due_at", "lock_at",
+                                                         "unlock_at", "assignment_id")},
+                              **_blueprint_meta(raw)},
                         canvas_updated_at=raw.get("updated_at"))]
     if kind == "files":
         return [SnapObj("file", str(raw["id"]), raw.get("display_name") or raw.get("filename") or "",
@@ -220,6 +225,8 @@ class SnapshotView:
     by_type: dict[str, list[SnapObj]] = field(default_factory=dict)
     by_ref: dict[str, SnapObj] = field(default_factory=dict)
     module_of: dict[str, list[str]] = field(default_factory=dict)  # content ref -> module names
+    # content ref -> [(module id, module item id)] – for direct links to the item in Canvas
+    module_items_of: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
 
     @classmethod
     def load(cls, db: Database, snapshot_id: int) -> SnapshotView:
@@ -242,12 +249,28 @@ class SnapshotView:
         self.by_type = dict(by_type)
         modules = {m.canvas_id: m for m in by_type.get("module", [])}
         module_of: dict[str, list[str]] = defaultdict(list)
+        module_items_of: dict[str, list[tuple[str, str]]] = defaultdict(list)
         for item in by_type.get("module_item", []):
             module = modules.get(item.parent_id or "")
             ref = self.item_content_ref(item)
             if module is not None and ref:
                 module_of[ref].append(module.title)
+                module_items_of[ref].append((module.canvas_id, item.canvas_id))
         self.module_of = dict(module_of)
+        self.module_items_of = dict(module_items_of)
+
+    def module_location(self, obj: SnapObj) -> dict[str, Any]:
+        """Module name (and ids for direct links) of the first module the content is placed in."""
+        names = self.module_of.get(obj.ref)
+        if not names:
+            return {}
+        data: dict[str, Any] = {"module": names[0]}
+        items = self.module_items_of.get(obj.ref)
+        if items:
+            data["module_id"], data["module_item_id"] = items[0]
+        if len(names) > 1:
+            data["modules"] = names[:10]
+        return data
 
     def item_content_ref(self, item: SnapObj) -> str | None:
         kind = str(item.meta.get("type") or "")

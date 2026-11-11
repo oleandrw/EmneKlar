@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from emneklar.core.canvas.api import CanvasAPI, answer_is_correct, is_block_editor_page
-from emneklar.core.canvas.client import CanvasClient, CanvasError, DryRunBlocked, WritePermit, parse_link_header
+from emneklar.core.canvas.client import CanvasClient, CanvasError, WritePermit, parse_link_header
 from tests.fakes.fake_canvas import COURSE_ID, TOKEN, create_fake_canvas, seed_state
 
 BASE = "http://canvas.test"
@@ -16,11 +16,11 @@ async def _no_sleep(_: float) -> None:
     return None
 
 
-def make_client(state=None, *, token: str = TOKEN, dry_run: bool = False, transport=None) -> CanvasClient:
+def make_client(state=None, *, token: str = TOKEN, transport=None) -> CanvasClient:
     state = state or seed_state(BASE)
     http = httpx.AsyncClient(transport=transport or httpx.ASGITransport(app=create_fake_canvas(state)),
                              base_url=BASE)
-    return CanvasClient(BASE, lambda: token, http=http, allow_http=True, sleep=_no_sleep, dry_run=lambda: dry_run)
+    return CanvasClient(BASE, lambda: token, http=http, allow_http=True, sleep=_no_sleep)
 
 
 async def test_users_self_and_invalid_token() -> None:
@@ -119,12 +119,14 @@ async def test_write_without_permit_is_refused() -> None:
 
 
 @pytest.mark.invariant
-async def test_dry_run_blocks_writes_even_with_permit() -> None:
+async def test_write_is_sent_only_with_a_permit() -> None:
     state = seed_state(BASE)
-    api = CanvasAPI(make_client(state, dry_run=True))
-    with pytest.raises(DryRunBlocked):
-        await api.update_page(COURSE_ID, "velkommen", {"body": "<p>x</p>"}, permit=WritePermit(1, "test"))
+    api = CanvasAPI(make_client(state))
+    with pytest.raises(CanvasError):
+        await api.update_page(COURSE_ID, "velkommen", {"body": "<p>x</p>"}, permit=None)  # type: ignore[arg-type]
     assert state.writes == []
+    await api.update_page(COURSE_ID, "velkommen", {"body": "<p>x</p>"}, permit=WritePermit(1, "test"))
+    assert [w[0] for w in state.writes] == ["PUT"]
 
 
 @pytest.mark.invariant

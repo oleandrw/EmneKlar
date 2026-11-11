@@ -12,6 +12,12 @@
       "runtimeExecutable": "backend/.venv/Scripts/python.exe",
       "runtimeArgs": ["backend/tests/fakes/dev_server.py", "--port", "8767", "--canvas-port", "8791", "--configured"],
       "port": 8767
+    },
+    {
+      "name": "emneklar-demo",
+      "runtimeExecutable": "backend/.venv/Scripts/python.exe",
+      "runtimeArgs": ["backend/tests/fakes/dev_server.py", "--port", "8769", "--canvas-port", "8793", "--demo"],
+      "port": 8769
     }
   ]
 }

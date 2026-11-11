@@ -11,9 +11,11 @@ import {
   Button,
   Card,
   Checkbox,
+  Combobox,
   DataTable,
   Dialog,
   PageHeader,
+  PasswordField,
   RadioGroup,
   SelectField,
   Switch,
@@ -94,6 +96,28 @@ describe("Dialog", () => {
     render(<Dialog open onClose={() => {}} title="Lagrer" dismissible={false}>…</Dialog>);
     expect(screen.getByRole("button", { name: "Lukk" })).toBeDisabled();
   });
+
+  it("returns focus to the opener when the parent removes it instead of closing it", async () => {
+    function Example() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <Button onClick={() => setOpen(true)}>Endre lenke</Button>
+          {open ? (
+            <Dialog open onClose={() => setOpen(false)} title="Endre lenke">
+              <Button onClick={() => setOpen(false)}>Ferdig</Button>
+            </Dialog>
+          ) : null}
+        </>
+      );
+    }
+    const user = userEvent.setup();
+    render(<Example />);
+    await user.click(screen.getByRole("button", { name: "Endre lenke" }));
+    await user.click(screen.getByRole("button", { name: "Ferdig" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Endre lenke" })).toHaveFocus();
+  });
 });
 
 describe("Form fields", () => {
@@ -105,13 +129,28 @@ describe("Form fields", () => {
     expect(input).toHaveAccessibleDescription(/hiof\.instructure\.com/);
   });
 
+  it("hides a secret by default and shows it with a named button inside the field", async () => {
+    const { container } = render(
+      <form onSubmit={() => { throw new Error("must not submit"); }}>
+        <PasswordField label="Tilgangstoken" revealLabel="Vis tilgangstoken" concealLabel="Skjul tilgangstoken" defaultValue="hemmelig" />
+      </form>,
+    );
+    const input = screen.getByLabelText("Tilgangstoken");
+    expect(input).toHaveAttribute("type", "password");
+    await userEvent.click(screen.getByRole("button", { name: "Vis tilgangstoken" }));
+    expect(input).toHaveAttribute("type", "text");
+    expect(input).toHaveValue("hemmelig");
+    expect(screen.getByRole("button", { name: "Skjul tilgangstoken" })).toHaveAttribute("aria-controls", input.id);
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
   it("exposes switches with their state", async () => {
     function Example() {
       const [on, setOn] = useState(false);
-      return <Switch label="Dry run" checked={on} onChange={setOn} />;
+      return <Switch label="Varsle når jobben er ferdig" checked={on} onChange={setOn} />;
     }
     render(<Example />);
-    const toggle = screen.getByRole("switch", { name: /Dry run/ });
+    const toggle = screen.getByRole("switch", { name: /Varsle når jobben er ferdig/ });
     expect(toggle).toHaveAttribute("aria-checked", "false");
     await userEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-checked", "true");
@@ -141,5 +180,78 @@ describe("Accessibility of composed components", () => {
       </MemoryRouter>,
     );
     expect(await axeViolations(container)).toEqual([]);
+  });
+});
+
+describe("Combobox", () => {
+  const LONG = "Et emne med et svært langt navn som ikke får plass på én linje i feltet og derfor må brytes over to linjer";
+  const OPTIONS = [
+    { value: "a", label: "Kjemi 1", meta: "KJ1 · Høst 2026" },
+    { value: "b", label: "Fysikk", meta: "FY1 · Høst 2026" },
+    { value: "c", label: LONG, meta: "LANG · Vår 2027" },
+  ];
+  function Picker({ initial = "" }: { initial?: string }) {
+    const [value, setValue] = useState(initial);
+    return (
+      <>
+        <Combobox label="Emne" placeholder="Velg eller søk etter emne" options={OPTIONS} value={value} onChange={setValue}
+          clearLabel="Fjern valgt emne" noResults="Fant ingen emner som passer" />
+        <p>Valgt: {value || "ingen"}</p>
+      </>
+    );
+  }
+
+  it("is one field: click to open, type to search, arrows and Enter to choose, Esc to close", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<Picker />);
+    const field = screen.getByRole("combobox", { name: "Emne" });
+    expect(field).toHaveAttribute("aria-expanded", "false");
+    await user.click(field);
+    const list = screen.getByRole("listbox", { name: "Emne" });
+    expect(field).toHaveAttribute("aria-controls", list.id);
+    expect(within(list).getAllByRole("option")).toHaveLength(3);
+    expect(field.getAttribute("aria-activedescendant"), "the first option is active").toBe(within(list).getAllByRole("option")[0].id);
+    expect(await axeViolations(container)).toEqual([]);
+
+    await user.keyboard("{ArrowDown}");
+    expect(field.getAttribute("aria-activedescendant")).toBe(screen.getAllByRole("option")[1].id);
+    expect(screen.getAllByRole("option")[1]).toHaveAttribute("data-active", "true");
+    await user.keyboard("{Escape}");
+    expect(field).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("Valgt: ingen"), "Esc chooses nothing").toBeInTheDocument();
+
+    await user.type(field, "høst");
+    expect(screen.getAllByRole("option").map((o) => o.getAttribute("aria-label"))).toEqual([
+      "Kjemi 1, KJ1 · Høst 2026", "Fysikk, FY1 · Høst 2026"]);
+    expect([...container.querySelectorAll("mark")].map((m) => m.textContent), "the match is marked").toEqual(["Høst", "Høst"]);
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(screen.getByText("Valgt: b")).toBeInTheDocument();
+    expect(field).toHaveAttribute("aria-expanded", "false");
+    expect(field).toHaveValue("Fysikk");
+  });
+
+  it("shows a long chosen name whole, says when nothing matches, and empties the choice with ×", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<Picker initial="c" />);
+    const field = screen.getByRole("combobox", { name: "Emne" });
+    expect(field, "the input carries the name for screen readers").toHaveValue(LONG);
+    expect(container.querySelector(".ek-combobox__value"), "and the field shows all of it (it wraps)").toHaveTextContent(LONG);
+    expect(await axeViolations(container)).toEqual([]);
+
+    await user.tab();
+    expect(field).toHaveFocus();
+    await user.keyboard("x");
+    expect(field, "typing starts a new search instead of adding to the name").toHaveValue("x");
+    await user.type(field, "yz");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.getAllByText("Fant ingen emner som passer")).toHaveLength(2); // in the list and read out
+    await user.keyboard("{Escape}");
+    expect(field, "closing without a new choice keeps the old one").toHaveValue(LONG);
+
+    await user.click(screen.getByRole("button", { name: "Fjern valgt emne" }));
+    expect(screen.getByText("Valgt: ingen")).toBeInTheDocument();
+    expect(field).toHaveValue("");
+    expect(field).toHaveFocus();
+    expect(screen.queryByRole("button", { name: "Fjern valgt emne" }), "nothing chosen: nothing to empty").toBeNull();
   });
 });

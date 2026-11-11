@@ -67,7 +67,21 @@ er brukt direkte i koden – ikke gjett nye verdier; kontroller mot dokumentasjo
 * Teksting: `GET /api/v1/courses/:id/media_objects` (`media_tracks[]` med `kind`, `workflow_state`, `asr`) og
   `GET /api/v1/media_attachments/:attachment_id/media_tracks`. Teksting regnes som funnet når det finnes et spor
   med `kind` `captions|subtitles` og `workflow_state=ready`. Ikke bruk `media_objects/:id/media_tracks`
-  (returnerer bare brukerens egne spor). YouTube, Studio og andre LTI kan ikke kontrolleres via API.
+  (returnerer bare brukerens egne spor). Studio og andre LTI kan ikke kontrolleres via API.
+* **Observert 6.11.2026 (hiof.instructure.com, Blueprint-emne):** medielisten viste `media_tracks: []` for alle 170
+  medieobjekter, selv om de fleste var tekstet – sporene ligger på mediefilen. EmneKlar stoler derfor bare på
+  medielisten når den *viser* teksting, og leser ellers sporene fra vedlegget: id-en i innbyggingen
+  (`/media_attachments_iframe/:id`), eller filen i emnet med `media_entry_id` lik medie-id-en (`GET …/files`).
+  Canvas viser egne medier også som `<video class="instructure_inline_media_comment" data-media_comment_id=…>` og
+  videofiler som `<video><source class="instructure_video_link" src="/courses/:id/files/:id/download">`.
+* **Medietype** (kontrollert mot canvas-lms-kildekoden 6. november 2026: `app/models/media_object.rb`,
+  `packages/canvas-rce/src/rce/contentRendering.jsx`, `packages/canvas-rce/src/rce/plugins/shared/ContentSelection.js`,
+  `lib/data_fixup/add_media_data_attribute_to_iframes.rb`): `media_objects[].media_type` er `audio`/`video`, eller
+  normalisert med skråstrek (`audio/*`, `video/mp4`). Bare delen før `/` brukes. Filer har `content-type`. Editoren
+  skriver `data-media-type="audio|video"` og `data-media-id` på innbyggingen (`<iframe … src="/media_attachments_iframe/:id?type=audio">`).
+  Datarettingsjobben setter `data-media-type="video"` når typen er ukjent, så metadata fra Canvas går foran merkingen.
+* YouTube: teksting kontrolleres med `youtube-transcript-api` (uoffisielt, sender bare video-id-en): `is_generated`
+  skiller opplasterens teksting fra automatisk teksting.
 
 ## Emne-RAG (lesing)
 
@@ -143,7 +157,69 @@ er brukt direkte i koden – ikke gjett nye verdier; kontroller mot dokumentasjo
   discussion_topic | external_tool | lti-quiz | quiz | wiki_page`), `content_id` (numerisk; sider bruker
   `page_id`), `restricted`, `restrictions[content|points|due_dates|availability_dates]`.
 * Låsestatus leses fra listekall (sider, oppgaver, diskusjoner, quizer): `restricted_by_master_course`,
-  `master_course_restrictions`, `is_master_course_master_content`.
+  `master_course_restrictions`, `is_master_course_master_content`, `is_master_course_child_content`.
+
+*Synkronisering og tilknyttede emner – kontrollert mot developerdocs.instructure.com (Blueprint Courses) 6. november
+2026:*
+
+* Tilknyttede emner: `GET …/blueprint_templates/default/associated_courses` (liste med Course-objekter).
+* Synkroniser: `POST …/blueprint_templates/default/migrations` med `comment`, `send_notification`, `copy_settings`
+  (standard `true` for nylig tilknyttede emner), `send_item_notifications`, `publish_after_initial_sync` → BlueprintMigration.
+  EmneKlar sender `comment`, `send_notification=false` og `copy_settings=false` (EmneKlar kopierer aldri innstillinger).
+* Status: `GET …/migrations/:id`, `workflow_state` `queued | exporting | imports_queued | completed | exports_failed |
+  imports_failed` (eksempelet i dokumentasjonen viser også `running`, som behandles som pågående).
+* Usynkroniserte endringer: `GET …/unsynced_changes` → ChangeRecord (`asset_id`, `asset_type` `assignment |
+  attachment | discussion_topic | external_tool | quiz | wiki_page | syllabus | settings`, `asset_name`,
+  `change_type` `created | updated | deleted`, `html_url`, `locked`, `exceptions`). En synkronisering tar med *alle*
+  usynkroniserte endringer, også dem som er gjort utenfor EmneKlar – forhåndsvisningen sier det.
+* `ExceptionRecord.conflicting_changes`: endringer i det tilknyttede emnets kopi som hindret en Blueprint-endring i å
+  bli brukt. Lokale endringer av ulåst innhold blir altså ikke overskrevet ved synkronisering.
+* Abonnement: `GET …/blueprint_subscriptions` → `id`, `template_id`, `blueprint_course {id, name, course_code,
+  term_name}`.
+
+**Hvordan EmneKlar håndterer Blueprint (ingen egen sperre):**
+
+* Rettinger tilbys også for låst innhold. Canvas avgjør med den tilkoblede brukerens rettigheter. Avviser Canvas
+  en endring av låst innhold i et tilknyttet emne (valideringsfeil «… locked by Master Course», HTTP 400 i canvas-lms
+  `MasterCourses::Restrictor`), forklarer EmneKlar hvorfor og tilbyr å flytte rettingen til Blueprint-emnet.
+* Flytting finner samme innhold i Blueprint-emnet via sideadressen (som synkroniseringen beholder) eller en entydig
+  tittel for oppgaver, diskusjoner og quizer, og bruker rettingsoppskriftene på Blueprint-innholdet (lenkene og
+  fil-id-ene er ulike i de to emnene; elementet gjenkjennes ved plassering og lenkemål/alt-tekst). Finnes ikke
+  innholdet entydig, eller mangler brukeren tilgang til Blueprint-emnet, vises det med forklaring – ingen gjetting.
+* Endringer i et Blueprint-emne når de tilknyttede emnene først ved synkronisering; den legges i køen som en egen,
+  høyrisiko endring (`blueprint.sync`) og publiseres etter innholdsendringene i samme publisering.
+* **Begrensninger:** Canvas-API-et oppgir ikke hvilket objekt i Blueprint-emnet et tilknyttet objekt kommer fra
+  (`migration_id` vises ikke i de vanlige innholdskallene), derfor sideadresse/tittel. Nye quizer (New Quizzes) og
+  eksterne verktøy kan ikke rettes som HTML. EmneKlar kan ikke vite om en administrator har særrettigheter før Canvas
+  svarer.
+
+## Direkte lenker til innhold («Åpne i Canvas»)
+
+* Canvas har ikke API for å peke til et bestemt element i en side. EmneKlar åpner riktig innhold og legger på et
+  tekstfragment (`#:~:text=…`, lenketekst eller overskrift) som moderne nettlesere bruker til å rulle til og markere
+  teksten; andre nettlesere åpner bare siden.
+* Ruter (canvas-lms): `/courses/:id/pages/:url` (+`/edit`), `/assignments/:id` (+`/edit`),
+  `/discussion_topics/:id` (+`/edit`, også kunngjøringer), `/quizzes/:id` (+`/edit`), `/assignments/syllabus`,
+  `/modules/items/:id`, `/modules#context_module_:id`, `/files?preview=:id`. Objektets `html_url` brukes når Canvas
+  oppgir den.
+
+## Emnedesign
+
+*Kontrollert mot canvas-lms-kildekoden 6. november 2026 (`lib/api/v1/assignment.rb`) og prosjektets sanering
+(`core/security/sanitize.py`, se under).*
+
+* **Kan formateres** (rik tekst med inline-stil): sider inkl. forsiden og modulintroduksjoner (`wiki_page[body]`),
+  oppgavebeskrivelser (`assignment[description]`), emneplanen (`course[syllabus_body]`) og innledningen i klassiske
+  quizer (`quiz[description]`). Bare innholdsfeltet sendes – frister, poeng og innstillinger er ikke med i kallet.
+* **Utelates:** New Quizzes (`is_quiz_lti_assignment: true` på oppgaven) – instruksjonene ligger i New Quizzes-verktøyet
+  med eget API (`/api/quiz/v1/…`), som EmneKlar ikke bruker. Oppgaver som speiler en klassisk quiz
+  (`is_quiz_assignment`/`quiz_id`) eller en gradert diskusjon (`discussion_topic`) vises bare som quizen. Quizspørsmål og
+  svar, diskusjoner og Canvas' eget grensesnitt (navigasjon, sidetitler, innleveringsknapper, quizkontroller) endres
+  ikke.
+* Moduler har ikke eget beskrivelsesfelt; «modulintroduksjon» er den første siden i modulen.
+* Designet bruker bare tillatte CSS-egenskaper (ikke `box-shadow`, `aspect-ratio`, `font-weight`). Canvas
+  re-serialiserer stil (`Arial , sans-serif`, doble anførselstegn, uten mellomrom) – sammenligning normaliserer dette.
+  `class` og `data-*` beholdes, men designet gjenkjennes også uten dem.
 
 ## HTML som Canvas beholder (sanering ved lagring)
 

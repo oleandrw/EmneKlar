@@ -86,7 +86,7 @@ const status: Status = {
   },
   ai: { available: true, reason: null, external_allowed: true, confirm_before_send: true },
   image_providers: [{ id: "openai", name: "OpenAI", type: "openai", configured: true, models: [], needs_model_name: false }],
-  design: null, design_versions: [], runs: [], busy_job: null, dry_run: false,
+  design: null, design_versions: [], runs: [], busy_job: null,
   text_models: [{ ref: "anthropic/claude-opus-5-5", display_name: "Claude Opus 5.5", provider_id: "anthropic", vision: true }],
 };
 

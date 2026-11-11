@@ -16,7 +16,6 @@ export interface FlagInfo {
 
 export interface AppSettings {
   setup_completed: boolean;
-  dry_run: boolean;
   current_course_id: string | null;
   general: { language: string; theme: "light" | "dark" | "system"; start_page: string; default_course_id: string | null; page_size: number };
   canvas: { base_url: string | null; identity: { id: string; name: string } | null; last_verified_at: string | null };

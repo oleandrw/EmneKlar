@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from typing import Any
+
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import wait_for_job
+from emneklar.features.canvas_settings.analysis import analyze
+from tests.conftest import approve_and_apply, wait_for_job
 from tests.fakes.fake_canvas import BLUEPRINT_COURSE_ID, COURSE_ID, FakeCanvasState
 
 pytestmark = pytest.mark.invariant
 
 
 def apply(client: TestClient, ids: list[int], confirm: bool = False) -> dict:
-    response = client.post("/api/changes/apply", json={"ids": ids, "confirm_high_risk": confirm})
+    response = approve_and_apply(client, ids, confirm=confirm)
     assert response.status_code == 200, response.text
     job = wait_for_job(client, response.json()["id"])
     assert job["status"] == "completed", job
@@ -86,13 +90,12 @@ def test_stage_apply_and_undo_requirements_for_selected_module(canvas_client: Te
     assert item(fake_state, "1001")["completion_requirement"] is None
 
 
-def test_requirements_respect_dry_run(canvas_client: TestClient, fake_state: FakeCanvasState) -> None:
+def test_staged_requirements_are_not_written_before_publishing(canvas_client: TestClient,
+                                                               fake_state: FakeCanvasState) -> None:
+    writes = len(fake_state.writes)
     staged = canvas_client.post(f"/api/courses/{COURSE_ID}/module-requirements/stage",
                                 json={"module_ids": ["203"]}).json()
-    canvas_client.put("/api/system/dry-run", json={"enabled": True})
-    writes = len(fake_state.writes)
-    assert set(apply(canvas_client, staged["change_ids"])["summary"]) == {"dry_run"}
-    assert len(fake_state.writes) == writes
+    assert staged["change_ids"] and len(fake_state.writes) == writes
     assert item(fake_state, "1021")["completion_requirement"] is None
 
 
@@ -124,7 +127,7 @@ def test_blueprint_preview_lock_apply_and_undo(canvas_client: TestClient, fake_s
     change = canvas_client.post(f"/api/courses/{BLUEPRINT_COURSE_ID}/blueprint/stage", json=body).json()
     assert change["risk"] == "high" and change["requires_confirmation"] is True
     assert len(change["proposed"]["items"]) == 4  # two pages, the discussion and the assignment (other restrictions)
-    blocked = canvas_client.post("/api/changes/apply", json={"ids": [change["id"]]})
+    blocked = approve_and_apply(canvas_client, [change["id"]])
     assert blocked.status_code == 409, "high-impact locking needs explicit confirmation"
     assert apply(canvas_client, [change["id"]], confirm=True)["summary"] == {"applied": 1}
     locks = fake_state.courses[BLUEPRINT_COURSE_ID].restrictions
@@ -161,13 +164,60 @@ def test_settings_analysis_categorises_findings(canvas_client: TestClient, fake_
     assert found["CS-ASSIGN-LOCK-BEFORE-DUE"]["category"] == "technical"
     assert found["CS-COURSE-PUBLIC"]["category"] == "security_accessibility"
     assert found["CS-PAGE-EDIT-STUDENTS"]["object"]["title"] == "Fargelære"
-    assert found["CS-QUIZ-TIME-LIMIT"]["category"] == "security_accessibility"
+    assert "CS-QUIZ-TIME-LIMIT" not in found, "a time limit is the teacher's choice, not a problem"
+    assert data["category_labels"]["security_accessibility"] == "Sikkerhet"
     assert "CS-TAB-MODULES-HIDDEN" in found
     assert "CS-QUIZ-ANSWERS-UNLIMITED" not in found, "a practice quiz may show answers"
     assert data["counts"]["technical"] >= 1
     assert all(p["key"] in fake_state.courses[COURSE_ID].settings for p in data["preferences"])
     assert not any(i["category"] == "preference" and i["fix"] for i in data["items"]), \
         "preferences are never offered as automatic fixes"
+
+
+NOW = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
+COURSE = {"id": 1, "name": "Emne", "workflow_state": "available", "blueprint": False, "default_view": "modules"}
+
+
+def assignment(id_: int, **fields: Any) -> dict[str, Any]:
+    return {"id": id_, "name": f"Oppgave {id_}", "published": True, "points_possible": 10,
+            "submission_types": ["online_upload"], "due_at": "2026-11-20T22:59:00Z", **fields}
+
+
+def settings_items(course: dict[str, Any], assignments: list[dict[str, Any]],
+                   quizzes: list[dict[str, Any]] | None = None) -> dict[tuple[str, str], dict[str, Any]]:
+    result = analyze(course=course, settings={}, tabs=[], front_page=None, pages=[], assignments=assignments,
+                     quizzes=quizzes or [], modules=[], now=NOW)
+    return {(i["rule_id"], i["object"]["id"]): i for i in result["items"]}
+
+
+def test_settings_report_what_stops_students_from_doing_and_handing_in_work() -> None:
+    found = settings_items(COURSE, [
+        assignment(1, submission_types=["on_paper"]),
+        assignment(2, published=False, due_at="2026-11-12T22:59:00Z"),
+        assignment(3, published=False, due_at="2027-01-12T22:59:00Z"),  # far ahead: nothing to report yet
+        assignment(4, only_visible_to_overrides=True, has_overrides=False),
+        assignment(5, due_at=None, unlock_at="2026-11-10T08:00:00Z", lock_at="2026-11-09T08:00:00Z"),
+        assignment(6, points_possible=0, submission_types=["none"]),  # ungraded without submission: intended
+        assignment(7, only_visible_to_overrides=True, has_overrides=True),  # assigned to a section
+    ], [{"id": 9, "title": "Quiz", "published": True, "question_count": 3, "quiz_type": "assignment",
+         "time_limit": 20, "cant_go_back": True}])
+    assert found[("CS-ASSIGN-NO-SUBMISSION", "1")]["current"] == "På papir"
+    assert found[("CS-ASSIGN-NO-SUBMISSION", "1")]["category"] == "recommendation"
+    soon = found[("CS-ASSIGN-UNPUBLISHED-DUE-SOON", "2")]
+    assert soon["category"] == "technical" and "kl." in soon["current"] and "T22:59" not in soon["current"]
+    assert ("CS-ASSIGN-UNPUBLISHED-DUE-SOON", "3") not in found
+    assert found[("CS-ASSIGN-NO-ASSIGNEES", "4")]["category"] == "technical"
+    assert ("CS-ASSIGN-NO-ASSIGNEES", "7") not in found
+    assert found[("CS-ASSIGN-LOCK-BEFORE-UNLOCK", "5")]["title"] == "Stenges før den åpner"
+    assert not any(obj == "6" for _, obj in found)
+    assert not {rule for rule, _ in found} & {"CS-QUIZ-TIME-LIMIT", "CS-QUIZ-NO-BACK"}, \
+        "quiz design choices are not reported"
+
+
+@pytest.mark.parametrize("course", [{**COURSE, "blueprint": True}, {**COURSE, "workflow_state": "unpublished"}])
+def test_unpublished_work_is_only_reported_where_students_take_the_course(course: dict[str, Any]) -> None:
+    found = settings_items(course, [assignment(2, published=False, due_at="2026-11-12T22:59:00Z")])
+    assert ("CS-ASSIGN-UNPUBLISHED-DUE-SOON", "2") not in found
 
 
 def test_stage_default_view_and_explicit_preference(canvas_client: TestClient, fake_state: FakeCanvasState) -> None:

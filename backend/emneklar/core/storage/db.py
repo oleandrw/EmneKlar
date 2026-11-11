@@ -49,8 +49,8 @@ class ForeignDatabaseError(ConfigError):
     def __init__(self, path: Path) -> None:
         super().__init__(
             f"Databasen {path} tilhører et annet program, ikke EmneKlar. EmneKlar har ikke endret den og bruker den "
-            "ikke. Bruk en egen datamappe for EmneKlar: fjern innstillingen EMNEKLAR_DATA_DIR hvis den peker hit, "
-            "eller velg en annen mappe.")
+            "ikke. Et annet program bruker denne datamappen: flytt eller fjern det programmets mappe, eller gi "
+            "EmneKlar en egen datamappe med miljøvariabelen EMNEKLAR_DATA_DIR.")
         self.path = path
 
 

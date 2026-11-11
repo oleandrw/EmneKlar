@@ -14,9 +14,10 @@ Follows the official Canvas REST API documentation:
 * bounded concurrency (a semaphore) so one analysis never floods Canvas.
 
 **Write guard.** Every mutating request (POST/PUT/PATCH/DELETE) requires a
-:class:`WritePermit`, which only the shared change engine issues, and is
-refused while Dry run is active. Features therefore cannot write to Canvas
-except through preview → change set → backup → log.
+:class:`WritePermit`, which only the shared change engine issues when the
+user publishes an approved change. Analyses and previews therefore never
+write, and features cannot write to Canvas except through
+preview → change set → approval → conflict check → backup → log.
 """
 
 from __future__ import annotations
@@ -46,11 +47,6 @@ MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
 
 class CanvasError(AppError):
     pass
-
-
-class DryRunBlocked(AppError):
-    def __init__(self) -> None:
-        super().__init__("dry_run_active", status=409)
 
 
 @dataclass(frozen=True)
@@ -102,7 +98,6 @@ class CanvasClient:
         timeout: float = 30.0,
         allow_http: bool = False,
         max_concurrency: int = 4,
-        dry_run: Callable[[], bool] = lambda: False,
         sleep: Callable[[float], Any] = asyncio.sleep,
     ) -> None:
         self.base_url = validate_base_url(base_url, allow_http=allow_http)
@@ -118,7 +113,6 @@ class CanvasClient:
         self._max_retries = max_retries
         self._sleep = sleep
         self._semaphore = asyncio.Semaphore(max(1, max_concurrency))
-        self._dry_run = dry_run
         self.request_count = 0
 
     async def aclose(self) -> None:
@@ -205,11 +199,8 @@ class CanvasClient:
         permit: WritePermit | None = None,
     ) -> httpx.Response:
         method = method.upper()
-        if method in MUTATING:
-            if permit is None:
-                raise CanvasError("canvas_write_blocked", status=500, detail=f"{method} {path_or_url}")
-            if self._dry_run():
-                raise DryRunBlocked()
+        if method in MUTATING and permit is None:
+            raise CanvasError("canvas_write_blocked", status=500, detail=f"{method} {path_or_url}")
         url = self._url(path_or_url)
         # GETs are retried on transient errors. Writes are retried only when Canvas
         # explicitly refused them for rate limiting (then nothing was processed).
@@ -310,8 +301,6 @@ class CanvasClient:
         """
         if permit is None:  # pragma: no cover - typed, but keep the guard explicit
             raise CanvasError("canvas_write_blocked", status=500, detail="upload")
-        if self._dry_run():
-            raise DryRunBlocked()
         parts = urlsplit(upload_url)
         on_canvas = self.is_canvas_origin(upload_url)
         if parts.scheme not in ("https", "http") or not parts.hostname or parts.username or parts.password:

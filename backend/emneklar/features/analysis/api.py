@@ -14,7 +14,7 @@ from emneklar.api.deps import get_container, require_course_id
 from emneklar.core.container import AppContainer
 from emneklar.core.errors import AppError, NotFoundError
 from emneklar.core.flags import is_enabled
-from emneklar.core.jobs.manager import JobContext
+from emneklar.core.jobs.manager import ACTIVE, FINAL, JobContext
 from emneklar.core.storage.models import AnalysisRun, Job
 from emneklar.features.analysis.core import AnalysisRequest
 from emneklar.features.analysis.orchestrator import run_analysis
@@ -59,16 +59,24 @@ def _history_job(c: AppContainer, job_id: str) -> dict[str, Any] | None:
 
 
 @router.get("/jobs")
-async def list_jobs(active: bool = False, course_id: str | None = None,
+async def list_jobs(active: bool = False, course_id: str | None = None, limit: int | None = None,
                     c: AppContainer = Depends(get_container)) -> dict[str, Any]:
-    jobs = [j.public() for j in c.jobs.list(course_id=course_id, active_only=active)]
-    return {"jobs": jobs}
+    """Jobs in this run of EmneKlar, newest first. ``limit`` caps the finished ones – active jobs are always included,
+    so the status panel never loses a job that is still running."""
+    states = c.jobs.list(course_id=course_id, active_only=active)
+    if limit is not None:
+        finished = [j for j in states if j.status in FINAL][:max(0, limit)]
+        states = [j for j in states if j.status not in FINAL or j in finished]
+    return {"jobs": [j.public() for j in states]}
 
 
 @router.get("/jobs/history")
-async def job_history(course_id: str | None = None, limit: int = 20,
+async def job_history(course_id: str | None = None, limit: int = 20, status: str | None = None,
                       c: AppContainer = Depends(get_container)) -> dict[str, Any]:
-    return {"jobs": c.jobs.history(course_id=course_id, limit=min(100, max(1, limit)))}
+    """Stored jobs, newest first. ``status`` (comma-separated, e.g. ``failed,interrupted``) keeps jobs that stopped
+    on an error however old they are – the status panel never drops them because of age."""
+    wanted = [s for s in (status or "").split(",") if s in FINAL | ACTIVE] or None
+    return {"jobs": c.jobs.history(course_id=course_id, limit=min(100, max(1, limit)), statuses=wanted)}
 
 
 @router.get("/jobs/{job_id}")

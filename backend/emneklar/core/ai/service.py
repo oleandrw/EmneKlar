@@ -26,6 +26,7 @@ from emneklar.core.ai.base import (
     EmbeddingResult,
     ImageGenerationRequest,
     ImageGenerationResult,
+    SearchHit,
     TranscriptionResult,
 )
 from emneklar.core.ai.catalog import ModelRegistry
@@ -41,8 +42,17 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 AI_LABEL = "KI-forslag – må vurderes"
+#: Providers whose API has a web search tool EmneKlar uses.
+SEARCH_TYPES = {"anthropic", "openai"}
+SEARCH_UNAVAILABLE = ("Nettsøk krever en KI-tjeneste med søk (Anthropic eller OpenAI) som er slått på, med ekstern KI "
+                      "tillatt. Du kan søke selv i nettleseren.")
 MESSAGES_SHARING_OFF = ("Sending av emneinnhold til ekstern KI er slått av. Slå det på under Innstillinger → "
                         "Sikkerhet og personvern, eller bruk en lokal modell.")
+
+
+def _and(parts: list[str]) -> str:
+    """«a, b og c»."""
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " og " + parts[-1]
 
 
 def is_local(provider: ProviderConfig) -> bool:
@@ -121,16 +131,29 @@ class AIService:
                      input_tokens=estimate_tokens(input_chars, images), needs_vision=images > 0 or None)
 
     def unavailable_reason(self, settings: AppSettings) -> str | None:
-        if not any(p.enabled for p in settings.ai.providers):
-            return "Ingen KI-leverandør er satt opp. Gå til Innstillinger → KI-assistenter."
-        ready = self.readiness(settings)
-        if not any(ready.values()):
-            if any(self.configured(p) and not is_local(p) for p in settings.ai.providers) and \
-                    not settings.privacy.allow_external_ai:
-                return ("Sending av emneinnhold til ekstern KI er slått av. Slå det på under Innstillinger → "
-                        "Sikkerhet og personvern, eller bruk en lokal modell.")
-            return "Ingen KI-leverandør er klar. Kontroller nøkkel og endepunkt under Innstillinger → KI-assistenter."
-        return None
+        """Why no AI can be used now – precisely what is missing (a stored key is not the same as a provider that is
+        switched on, and external AI also needs the privacy setting)."""
+        if any(self.readiness(settings).values()):
+            return None
+        providers = settings.ai.providers
+        external_off = not settings.privacy.allow_external_ai
+        privacy = (" Sending av emneinnhold til ekstern KI må også slås på under Innstillinger → Sikkerhet og "
+                   "personvern." if external_off else "")
+        if not any(p.enabled for p in providers):
+            stored = [p.name for p in providers if p.type != "openai_compatible" and self.key_for(p.id)]
+            if stored:
+                return (f"{_and(stored)} har lagret nøkkel, men er ikke slått på. Slå på «Bruk …» under Innstillinger → "
+                        f"KI-assistenter.{privacy}")
+            return ("Ingen KI-leverandør er slått på i EmneKlar. Legg inn en nøkkel og slå på leverandøren under "
+                    "Innstillinger → KI-assistenter (nøkler fra andre programmer brukes ikke).")
+        enabled = [p for p in providers if p.enabled]
+        if not any(self.configured(p) for p in enabled):
+            return (f"{_and([p.name for p in enabled])} er slått på, men mangler nøkkel eller endepunkt. Kontroller under "
+                    "Innstillinger → KI-assistenter.")
+        if external_off and any(self.configured(p) and not is_local(p) for p in enabled):
+            return ("Sending av emneinnhold til ekstern KI er slått av. Slå det på under Innstillinger → "
+                    "Sikkerhet og personvern, eller bruk en lokal modell.")
+        return "Ingen KI-leverandør er klar. Kontroller nøkkel og endepunkt under Innstillinger → KI-assistenter."
 
     def plan(self, task: str, *, input_chars: int, images: int, summary: str) -> dict[str, Any]:
         settings = self.c.settings.get()
@@ -213,6 +236,43 @@ class AIService:
                 decision.reason += f" Reservemodell brukt: {model['display_name']}."
             return result, decision
         raise AIError("ai_all_failed", status=502, detail=last.message if last else None)
+
+    # -- web search (through a provider's own search tool) -------------------------------------------
+
+    def search_route(self, task: str) -> dict[str, Any] | None:
+        """The first model for ``task`` whose provider can search the web (Anthropic or OpenAI), or None."""
+        settings = self.c.settings.get()
+        if self.unavailable_reason(settings):
+            return None
+        decision = self.decide(task, input_chars=500, images=0)
+        for model in [decision.primary, *decision.fallbacks]:
+            config = settings.provider(model["provider_id"]) if model else None
+            if model and config and config.enabled and config.type in SEARCH_TYPES and \
+                    (is_local(config) or settings.privacy.allow_external_ai):
+                return model
+        return None
+
+    async def web_search(self, task: str, query: str, *, summary: str, confirmed: bool,
+                         course_id: str | None = None, max_uses: int = 2) -> tuple[list[SearchHit], dict[str, Any]]:
+        """Search the web for ``task`` with the first suitable provider. The privacy gate and the usage log apply as
+        for :meth:`run`; only the results the search itself returned come back."""
+        settings = self.c.settings.get()
+        model = self.search_route(task)
+        if model is None:
+            raise AIError("ai_search_unavailable", status=409, message=SEARCH_UNAVAILABLE)
+        config = settings.provider(model["provider_id"])
+        assert config is not None
+        if not is_local(config) and settings.privacy.confirm_before_send and not confirmed:
+            raise AIError("ai_consent_required", status=409)
+        try:
+            hits = await self.provider(config).web_search(model["model_id"], query, max_uses=max_uses)
+        except AIError as exc:
+            self._log_usage(task, model["provider_id"], model["model_id"], settings, success=False, error=exc.code,
+                            tokens=0, summary=summary, course_id=course_id, reason="Nettsøk")
+            raise
+        self._log_usage(task, model["provider_id"], model["model_id"], settings, success=True, error=None, tokens=0,
+                        summary=summary, course_id=course_id, reason="Nettsøk")
+        return hits, model
 
     # -- embeddings (Emne-RAG with a provider instead of a local model) ---------------------------------
 

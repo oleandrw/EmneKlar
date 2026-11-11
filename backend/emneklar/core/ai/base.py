@@ -141,6 +141,14 @@ class AIError(AppError):
     pass
 
 
+class SearchHit(BaseModel):
+    """One result from a provider's web search – exactly as the search returned it (never written by the model)."""
+
+    url: str
+    title: str = ""
+    page_age: str | None = None
+
+
 class AIProvider(ABC):
     provider_id: str
     type: str
@@ -165,6 +173,11 @@ class AIProvider(ABC):
         """Image generation. Only OpenAI-compatible image APIs have it – Anthropic models analyse images but do not
         generate them."""
         raise AIError("unsupported", status=409, message="Denne KI-leverandøren kan ikke lage bilder.")
+
+    async def web_search(self, model: str, query: str, *, max_uses: int = 2) -> list[SearchHit]:
+        """Web search through the provider's own search tool. Only the Anthropic Messages API (``web_search``) and the
+        OpenAI Responses API (``web_search``) have it."""
+        raise AIError("unsupported", status=409, message="Denne KI-leverandøren kan ikke søke på nettet.")
 
     async def health_check(self) -> HealthStatus:
         try:

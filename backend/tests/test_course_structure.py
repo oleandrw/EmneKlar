@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from tests.conftest import wait_for_job
+from tests.conftest import approve_and_apply, wait_for_job
 from tests.fakes.fake_canvas import COURSE_ID, FakeCanvasState
 
 IMAGE_TEXT = ("Bilder lagres som raster eller vektor. Rasterbilder består av piksler, og oppløsningen avgjør hvor "
@@ -66,7 +66,7 @@ def test_misplaced_item_and_staged_move(canvas_client: TestClient, fake_state: F
     change = canvas_client.post(f"/api/structure/findings/{misplaced['id']}/stage", json={}).json()
     assert change["kind"] == "module_item.update" and change["status"] == "staged"
     assert any(i["id"] == "1099" for i in course.modules[1]["items"]), "nothing moves before the change is applied"
-    response = canvas_client.post("/api/changes/apply", json={"ids": [change["id"]]})
+    response = approve_and_apply(canvas_client, [change["id"]])
     job = wait_for_job(canvas_client, response.json()["id"])
     assert job["result"]["results"][0]["status"] == "applied"
     assert any(i["id"] == "1099" for i in course.modules[2]["items"])
@@ -82,7 +82,7 @@ def test_rename_module_is_staged(canvas_client: TestClient, fake_state: FakeCanv
     assert change["proposed"] == {"name": "Modul 3 – Video"} and change["editable"] is True
     edited = canvas_client.patch(f"/api/changes/{change['id']}", json={"proposed": {"name": "Modul 3 – Video og lyd"}})
     assert edited.status_code == 200
-    job = wait_for_job(canvas_client, canvas_client.post("/api/changes/apply", json={"ids": [change["id"]]}).json()["id"])
+    job = wait_for_job(canvas_client, approve_and_apply(canvas_client, [change["id"]]).json()["id"])
     assert job["result"]["results"][0]["status"] == "applied"
     assert fake_state.courses[COURSE_ID].modules[2]["name"] == "Modul 3 – Video og lyd"
 

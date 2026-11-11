@@ -12,7 +12,7 @@ from html import escape
 from typing import Any
 
 from emneklar import __version__
-from emneklar.features.reporting.data import CLASS_LABELS, CLASS_ORDER, DomainReport, ReportData
+from emneklar.features.reporting.data import CLASS_ORDER, SUMMARY_LABELS, DomainReport, ReportData
 
 MONTHS = ["januar", "februar", "mars", "april", "mai", "juni", "juli", "august", "september", "oktober", "november",
           "desember"]
@@ -79,19 +79,20 @@ def _table(caption: str, findings: list[dict[str, Any]], accessibility: bool) ->
 
 
 def _summary(domains: list[DomainReport]) -> str:
-    header = "".join(f'<th scope="col">{escape(CLASS_LABELS[c])}</th>' for c in CLASS_ORDER)
+    header = "".join(f'<th scope="col">{escape(SUMMARY_LABELS[c])}</th>' for c in CLASS_ORDER)
     rows = []
     for d in domains:
         if not d.analysed:
-            rows.append(f'<tr><th scope="row">{escape(d.label)}</th><td colspan="{len(CLASS_ORDER) + 2}">'
+            rows.append(f'<tr><th scope="row">{escape(d.label)}</th><td colspan="{len(CLASS_ORDER) + 3}">'
                         "Ikke analysert ennå</td></tr>")
             continue
         counts = d.counts
         cells = "".join(f"<td>{counts[c]}</td>" for c in CLASS_ORDER)
         rows.append(f'<tr><th scope="row">{escape(d.label)}</th>{cells}<td>{counts["fixed"]}</td>'
-                    f"<td>{counts['ignored']}</td></tr>")
+                    f"<td>{counts['ignored']}</td><td>{counts['verified']}</td></tr>")
     return (f'<table><caption>Åpne funn per område og klasse</caption><thead><tr><th scope="col">Område</th>{header}'
-            f'<th scope="col">Rettet</th><th scope="col">Ignorert</th></tr></thead><tbody>{"".join(rows)}</tbody>'
+            f'<th scope="col">Rettet</th><th scope="col">Ignorert</th><th scope="col">Kontrollert</th></tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody>'
             "</table>")
 
 
@@ -115,6 +116,14 @@ def _domain(d: DomainReport) -> str:
         out += (f"<h3>Ignorert ({len(d.ignored)})</h3><p>Funn som er vurdert og markert som ignorert i EmneKlar.</p>"
                 + "<ul>" + "".join(f"<li>{escape(f['title'])} – {escape(f['object_title'] or '')}</li>"
                                    for f in d.ignored) + "</ul>")
+    if d.verified:
+        out += (f"<h3>Kontrollert manuelt ({len(d.verified)})</h3><p>Manuelle kontroller der læreren har bekreftet "
+                "forholdet i EmneKlar (for eksempel at et lydopptak har transkripsjon). EmneKlar har ikke selv "
+                "kontrollert innholdet i bekreftelsen.</p><ul>"
+                + "".join(f"<li>{escape(f['title'])} – {escape(f['object_title'] or '')}"
+                          + (f": {escape(f['decision_label'])}" if f["decision_label"] else "")
+                          + (f" ({escape(f['decision_note'])})" if f["decision_note"] else "") + "</li>"
+                          for f in d.verified) + "</ul>")
     if d.limitations:
         out += "<h3>Begrensninger</h3><ul>" + "".join(f"<li>{escape(x)}</li>" for x in d.limitations) + "</ul>"
     return out
@@ -149,11 +158,14 @@ def render_csv(data: ReportData) -> bytes:
     buffer = io.StringIO()
     writer = csv.writer(buffer, delimiter=";", lineterminator="\r\n")
     writer.writerow(["Område", "Status", "Klasse", "Alvorlighet", "Testmetode", "Regel", "Tittel", "Beskrivelse",
-                     "Objekttype", "Objekt", "Modul", "URL", "Kriterier", "Lovstatus", "Forslag til retting"])
+                     "Objekttype", "Objekt", "Modul", "URL", "Kriterier", "Lovstatus", "Forslag til retting",
+                     "Bekreftet av lærer"])
     for d in data.domains:
-        for f in d.remaining + d.manual + d.fixed + d.ignored:
+        for f in d.remaining + d.manual + d.fixed + d.ignored + d.verified:
+            confirmed = " – ".join(x for x in (f["decision_label"], f["decision_note"]) if x) \
+                if f["status"] == "verified" else ""
             writer.writerow([_cell(x) for x in (
                 d.label, f["status_label"], f["classification_label"], f["severity_label"], f["method_label"],
                 f["rule_id"], f["title"], f["message"], f["object_type"], f["object_title"], f["module"],
-                f["object_url"], ", ".join(f["criteria"]), f["legal_label"], f["remediation"])])
+                f["object_url"], ", ".join(f["criteria"]), f["legal_label"], f["remediation"], confirmed)])
     return "﻿".encode() + buffer.getvalue().encode("utf-8")

@@ -52,6 +52,9 @@
   --shadow-sm: 0 1px 2px rgb(22 29 45 / 0.04);
   --shadow: 0 1px 2px rgb(22 29 45 / 0.04), 0 4px 14px rgb(22 29 45 / 0.04);
   --shadow-hover: 0 2px 4px rgb(22 29 45 / 0.05), 0 10px 28px rgb(22 29 45 / 0.08);
+  /* Raised panels (an action bar, a menu): between the card shadow and the hover/pop shadows. */
+  --shadow-md: 0 1px 3px rgb(22 29 45 / 0.05), 0 6px 18px rgb(22 29 45 / 0.06);
+  --shadow-lg: 0 4px 10px rgb(22 29 45 / 0.07), 0 14px 32px rgb(22 29 45 / 0.12);
   --shadow-pop: 0 16px 40px rgb(22 29 45 / 0.18), 0 2px 8px rgb(22 29 45 / 0.08);
 
   /* Layout */
@@ -138,18 +141,25 @@
   --tone-orange-text: #96400a;
   --tone-orange-icon: #dd6a16;
 
-  /* Status colours for key figures (text, ≥ 4.5:1 on white) */
-  --status-critical: #c42b2b;
-  --status-warning: #b25607;
-  --status-info: #1f5bd0;
-  --status-success: #157a42;
+  /* Status colours for key figures and status marks (text, ≥ 4.5:1 on white): critical = confirmed errors,
+     warning = to review or check, info = suggestions, success = completed. --status-zero is a muted zero – «nothing
+     here», which is not the same as «completed», so it never borrows the success colour. */
+  --status-critical: #c42b2b; /* 5.6:1 */
+  --status-warning: #b25607; /* 5.0:1 */
+  --status-info: #1f5bd0; /* 6.1:1 */
+  --status-success: #157a42; /* 5.4:1 */
   --status-neutral: #4b5466;
+  --status-zero: #6b7280; /* 4.8:1 */
 
-  /* Charts: series for EmneKlar's finding classes (validated as a set) and chrome */
-  --chart-violation: #d03b3b;
-  --chart-review: #e08a1e;
-  --chart-improvement: #2a78d6;
-  --chart-manual: #8b93a3;
+  /* Charts: series for EmneKlar's finding classes (validated as a set) and chrome. Every series is a graphical
+     object (WCAG 1.4.11): ≥ 3:1 against the card surface (white) – checked in tokens.test.ts. */
+  --chart-violation: #d03b3b; /* 4.8:1 */
+  --chart-likely: #a23b72; /* plum: apart from the confirmed red, 6.2:1 on white */
+  /* dark amber: 3.6:1 on white, 3.3:1 on the page plane (was #e08a1e, 2.7:1). The same hue as in dark mode, and
+     further from the confirmed red than an orange of the same contrast (also in colour-vision simulations). */
+  --chart-review: #b47c00;
+  --chart-improvement: #2a78d6; /* 4.4:1 */
+  --chart-manual: #8b93a3; /* 3.1:1 */
   --chart-grid: #ece9e2;
   --chart-axis: #cfcac0;
 
@@ -223,16 +233,19 @@
   --tone-orange-text: #f8c39b;
   --tone-orange-icon: #f08a42;
 
-  --status-critical: #f28b85;
-  --status-warning: #f0b35c;
-  --status-info: #8fb3ff;
-  --status-success: #6fd39a;
+  --status-critical: #f28b85; /* on the surface: 7.0:1 */
+  --status-warning: #f0b35c; /* 9.0:1 */
+  --status-info: #8fb3ff; /* 8.0:1 */
+  --status-success: #6fd39a; /* 9.1:1 */
   --status-neutral: #c0c9d8;
+  --status-zero: #8f9ab0; /* 5.9:1 */
 
-  --chart-violation: #c94545;
-  --chart-review: #c98500;
-  --chart-improvement: #3987e5;
-  --chart-manual: #6b7383;
+  /* Chart series on the dark card surface (#171e2b), ≥ 3:1 each – checked in tokens.test.ts. */
+  --chart-violation: #c94545; /* 3.5:1 */
+  --chart-likely: #d36ba2; /* 5.1:1 */
+  --chart-review: #c98500; /* 5.4:1 – unchanged, already above 3:1 */
+  --chart-improvement: #3987e5; /* 4.6:1 */
+  --chart-manual: #6b7383; /* 3.5:1 */
   --chart-grid: #263042;
   --chart-axis: #3a465c;
 
@@ -241,6 +254,8 @@
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.35);
   --shadow: 0 1px 2px rgb(0 0 0 / 0.35), 0 4px 14px rgb(0 0 0 / 0.25);
   --shadow-hover: 0 2px 4px rgb(0 0 0 / 0.4), 0 10px 28px rgb(0 0 0 / 0.35);
+  --shadow-md: 0 1px 3px rgb(0 0 0 / 0.38), 0 6px 18px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 4px 10px rgb(0 0 0 / 0.45), 0 14px 32px rgb(0 0 0 / 0.45);
   --shadow-pop: 0 16px 40px rgb(0 0 0 / 0.55);
 }
 

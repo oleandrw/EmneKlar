@@ -9,13 +9,22 @@ The update runs in ten steps, each announced as "Steg N av 10 – …":
      5  fetch the new version                     10  start EmneKlar again
 
 If anything in steps 5–9 fails, the program files, the dependencies and the database are rolled back and the
-previous version is started again. User data (``%LOCALAPPDATA%\\EmneKlar-Claude``) is never deleted; the database is
+previous version is started again. User data (``%LOCALAPPDATA%\\EmneKlar``) is never deleted; the database is
 backed up before anything changes.
 
 Installation types (same rule as ``emneklar.core.updates.service``): ``git`` if ``.git`` exists (updated with
 ``git pull --ff-only``; refused if tracked files have uncommitted changes), ``release`` if ``install.json``
 exists, otherwise ``source``. Release and source installations are updated with the release package
-``EmneKlar-<versjon>.zip`` (verified against ``EmneKlar-<versjon>.zip.sha256``).
+``EmneKlar-<versjon>.zip`` (verified against ``EmneKlar-<versjon>.zip.sha256``; a signature of that checksum file,
+``EmneKlar-<versjon>.zip.sha256.sig``, is checked against RELEASE_SIGNING_KEYS when signing is in use).
+
+Python: an installation made by the installer has its own runtime in ``runtime\\`` (Python with every dependency
+already installed – see scripts/build_runtime.py). Such an installation never runs pip: in step 5 the runtime the
+new version needs is fetched if it differs from the installed one (its SHA-256 is in the release package's
+install.json), and in step 6 there is nothing to install. The runtime folder is replaced as a whole and put back as
+a whole if a later step fails. update.bat therefore runs this script with a copy of the interpreter, so that
+``runtime\\`` is not in use while it is replaced. Without ``runtime\\`` the installation uses the virtual environment
+``backend\\.venv`` made by setup.bat, and step 6 installs the pinned dependencies with pip, as before.
 
 Exit codes: 0 = updated, or already up to date
             1 = the update failed (changes were rolled back, or nothing had been changed yet)
@@ -29,6 +38,8 @@ update.bat runs a temporary copy of this file, so the update may safely replace 
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import contextlib
 import hashlib
 import hmac
@@ -55,12 +66,16 @@ from pathlib import Path, PurePosixPath
 from typing import Any, TextIO
 
 try:
-    import emneklar  # noqa: F401 - normally importable through the venv's editable install
-except ModuleNotFoundError:  # run by another Python: use the installation's own package
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
+    import emneklar  # noqa: F401 - importable through the venv's editable install or the runtime's ._pth file
+except ModuleNotFoundError:  # run by another Python (setup.bat), or by the interpreter copy update.bat makes
+    # The installation is ``--repo <mappe>`` when given (update.bat runs a temporary copy of this file), else the
+    # folder above scripts/.
+    _repo = next((sys.argv[i + 1] for i, word in enumerate(sys.argv[:-1]) if word == "--repo"), None)
+    sys.path.insert(0, str((Path(_repo) if _repo else Path(__file__).resolve().parents[1]).resolve() / "backend"))
 
 from emneklar import __version__
 from emneklar.core.security.redaction import redact, register_secret
+from emneklar.core.system import platform_tag
 from emneklar.core.updates.version import Version
 from emneklar.manage import (
     ProcessWatcher,
@@ -84,12 +99,26 @@ REMOTE_RE = re.compile(r"github\.com[:/]+([A-Za-z0-9-]+/[A-Za-z0-9._-]+?)(?:\.gi
 # Never backed up, replaced or removed by a release update.
 EXCLUDED_DIRS = frozenset({".git", ".venv", "node_modules", ".update", "__pycache__", ".pytest_cache",
                            ".mypy_cache", ".ruff_cache"})
+# The bundled Python runtime of an installation: ``<installation>/runtime`` (built by scripts/build_runtime.py). It is
+# not among the program files that are swapped one by one – it is replaced, and put back, as a whole folder.
+RUNTIME_DIR = "runtime"
+RUNTIME_INFO = "runtime.json"
+ROOT_EXCLUDED_DIRS = frozenset({RUNTIME_DIR})  # only at the top level of the installation
+RUNTIME_ID_RE = re.compile(r"^cp\d{2,3}-[0-9a-f]{12}$")
+RUNTIME_PLATFORM_RE = re.compile(r"^[a-z0-9]+-[a-z0-9_]+$")
 # Files of the old version that the new release no longer contains are removed only here (code that is
 # discovered dynamically, e.g. Alembic migrations, and the built UI). They stay in the code backup.
 STALE_CLEANUP_PREFIXES = ("backend/emneklar/", "backend/migrations/", "frontend/dist/", "scripts/")
 RELEASE_REQUIRED_FILES = ("VERSION", "install.json", "backend/pyproject.toml", "backend/emneklar/__init__.py",
                           "frontend/dist/index.html", "start.bat", "update.bat")
 MAX_DOWNLOAD_BYTES = 500 * 1024 * 1024
+# Signed releases (prepared): the checksum file of a release package may be signed with Ed25519 – the signature is
+# ``EmneKlar-<versjon>.zip.sha256.sig`` (base64, 64 bytes) over the exact bytes of ``EmneKlar-<versjon>.zip.sha256``,
+# verified against the public keys below (hex, 32 bytes each). No key yet: the signature is not checked (SHA-256 only).
+# SIGNATURE_REQUIRED stays False until releases are signed in the release workflow – otherwise every update would stop.
+RELEASE_SIGNING_KEYS: tuple[str, ...] = ()
+SIGNATURE_REQUIRED = False
+SIGNATURE_SUFFIX = ".sig"
 MAX_UNPACKED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_ZIP_ENTRIES = 50_000
 MIN_FREE_BYTES = 300 * 1024 * 1024
@@ -260,6 +289,37 @@ def venv_python_path(root: Path) -> Path:
     return venv / "Scripts" / "python.exe" if os.name == "nt" else venv / "bin" / "python"
 
 
+def runtime_interpreter(folder: Path, *, windowed: bool = False) -> Path:
+    """The interpreter inside a runtime folder. ``windowed``: the one that runs without a console window."""
+    if os.name == "nt":
+        return folder / ("pythonw.exe" if windowed else "python.exe")
+    return folder / "bin" / "python3"
+
+
+def bundled_python_path(root: Path, *, windowed: bool = False) -> Path:
+    """The interpreter of the installation's own runtime (``<installation>/runtime``)."""
+    return runtime_interpreter(root / RUNTIME_DIR, windowed=windowed)
+
+
+def has_bundled_runtime(root: Path) -> bool:
+    return bundled_python_path(root).is_file()
+
+
+def installation_python(root: Path) -> Path:
+    """The Python that runs this installation: its own runtime if it has one, else the venv made by setup."""
+    return bundled_python_path(root) if has_bundled_runtime(root) else venv_python_path(root)
+
+
+def installed_runtime_id(root: Path) -> str | None:
+    """The id of the runtime in ``runtime\\`` (None: no runtime, or one without a readable runtime.json)."""
+    try:
+        info = json.loads((root / RUNTIME_DIR / RUNTIME_INFO).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    identifier = info.get("id") if isinstance(info, dict) else None
+    return identifier if isinstance(identifier, str) and RUNTIME_ID_RE.match(identifier) else None
+
+
 def strict_pins() -> bool:
     return os.environ.get("EMNEKLAR_STRICT_PINS", "").strip().lower() in {"1", "true", "yes", "ja"}
 
@@ -270,49 +330,15 @@ def pins_unavailable(pip_output: str) -> bool:
             and not any(marker in pip_output for marker in NETWORK_ERROR_MARKERS))
 
 
-EXTRAS_FILE = "emneklar-extras.txt"  # in backend/.venv: optional parts the user chose to install (e.g. "rag")
-KNOWN_EXTRAS = {"rag": "lokale modeller for emnets kunnskapsbase"}
-
-
-def chosen_extras(root: Path) -> list[str]:
-    path = root / "backend" / ".venv" / EXTRAS_FILE
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return []
-    return [name for name in (line.strip() for line in lines) if name in KNOWN_EXTRAS]
-
-
-def remember_extra(root: Path, extra: str) -> None:
-    path = root / "backend" / ".venv" / EXTRAS_FILE
-    current = chosen_extras(root)
-    if extra not in current:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("\n".join([*current, extra]) + "\n", encoding="utf-8")
-
-
-def install_optional_extras(venv_python: Path, root: Path, reporter: Reporter) -> None:
-    """Optional parts (``backend[rag]``) the user chose earlier. Never fails setup or update: EmneKlar works
-    without them, so a failed install is reported as a warning."""
-    backend = root / "backend"
-    constraints = backend / "constraints.txt"
-    for extra in chosen_extras(root):
-        reporter.info(f"Installerer {KNOWN_EXTRAS[extra]} (kan ta lang tid første gang – flere GB) …")
-        base: list[str | Path] = [venv_python, "-m", "pip", "install", "--disable-pip-version-check", "--no-input"]
-        if constraints.is_file():
-            base += ["-c", constraints]
-        done = run([*base, "-e", f"{backend}[{extra}]"], cwd=root, reporter=reporter, check=False)
-        if done.returncode != 0:
-            reporter.warn(f"Klarte ikke å installere {KNOWN_EXTRAS[extra]}. EmneKlar virker likevel; kunnskapsbasen bruker "
-                          "da nøkkelordsøk. Se loggen, og kjør setup.bat på nytt senere.")
-
-
 def install_python_dependencies(venv_python: Path, root: Path, reporter: Reporter) -> None:
     """``pip install -c backend/constraints.txt -e backend`` – the tested versions.
 
     If the pinned versions do not exist for the venv's Python version (typically a Python release newer than
     the pins), the newest versions allowed by pyproject.toml are installed instead, with a warning – unless
     EMNEKLAR_STRICT_PINS=1 (used in CI). Network problems are never "solved" by dropping the pins.
+
+    Only the dependencies of backend/pyproject.toml: nothing optional (such as local models) is ever asked about,
+    downloaded or installed by setup or update.
     """
     backend = root / "backend"
     constraints = backend / "constraints.txt"
@@ -320,7 +346,6 @@ def install_python_dependencies(venv_python: Path, root: Path, reporter: Reporte
     if not constraints.is_file():
         reporter.warn("Fant ikke backend\\constraints.txt – installerer nyeste tillatte versjoner.")
         run([*base, "-e", backend], cwd=root, reporter=reporter)
-        install_optional_extras(venv_python, root, reporter)
         return
     try:
         run([*base, "-c", constraints, "-e", backend], cwd=root, reporter=reporter)
@@ -331,7 +356,6 @@ def install_python_dependencies(venv_python: Path, root: Path, reporter: Reporte
                       "backend\\.venv. Installerer de nyeste versjonene EmneKlar tillater i stedet. "
                       "Python 3.11–3.14 anbefales.")
         run([*base, "-e", backend], cwd=root, reporter=reporter)
-    install_optional_extras(venv_python, root, reporter)
 
 
 def npm_unsafe_character(path: Path) -> str | None:
@@ -575,6 +599,119 @@ def verify_checksum(path: Path, checksum_text: str) -> str:
     return actual
 
 
+# -- release signatures (Ed25519, RFC 8032) -----------------------------------------------------------
+# Verification only, in plain Python (no extra package – scripts/setup.py imports this file with the system Python).
+# The algorithm is the reference algorithm in RFC 8032 section 6; it is tested against the RFC's test vectors.
+
+_ED_P = 2**255 - 19
+_ED_L = 2**252 + 27742317777372353535851937790883648493
+_ED_D = -121665 * pow(121666, _ED_P - 2, _ED_P) % _ED_P
+_ED_SQRT_M1 = pow(2, (_ED_P - 1) // 4, _ED_P)
+_EdPoint = tuple[int, int, int, int]
+
+
+def _ed_add(a: _EdPoint, b: _EdPoint) -> _EdPoint:
+    p = _ED_P
+    k1 = (a[1] - a[0]) * (b[1] - b[0]) % p
+    k2 = (a[1] + a[0]) * (b[1] + b[0]) % p
+    k3 = 2 * a[3] * b[3] * _ED_D % p
+    k4 = 2 * a[2] * b[2] % p
+    e, f, g, h = k2 - k1, k4 - k3, k4 + k3, k2 + k1
+    return (e * f % p, g * h % p, f * g % p, e * h % p)
+
+
+def _ed_mul(scalar: int, point: _EdPoint) -> _EdPoint:
+    result: _EdPoint = (0, 1, 1, 0)
+    while scalar > 0:
+        if scalar & 1:
+            result = _ed_add(result, point)
+        point = _ed_add(point, point)
+        scalar >>= 1
+    return result
+
+
+def _ed_equal(a: _EdPoint, b: _EdPoint) -> bool:
+    p = _ED_P
+    return (a[0] * b[2] - b[0] * a[2]) % p == 0 and (a[1] * b[2] - b[1] * a[2]) % p == 0
+
+
+def _ed_recover_x(y: int, sign: int) -> int | None:
+    p = _ED_P
+    if y >= p:
+        return None
+    x2 = (y * y - 1) * pow(_ED_D * y * y + 1, p - 2, p) % p
+    if x2 == 0:
+        return None if sign else 0
+    x = pow(x2, (p + 3) // 8, p)
+    if (x * x - x2) % p != 0:
+        x = x * _ED_SQRT_M1 % p
+    if (x * x - x2) % p != 0:
+        return None
+    if (x & 1) != sign:
+        x = p - x
+    return x
+
+
+def _ed_decompress(data: bytes) -> _EdPoint | None:
+    if len(data) != 32:
+        return None
+    y = int.from_bytes(data, "little")
+    sign = y >> 255
+    y &= (1 << 255) - 1
+    x = _ed_recover_x(y, sign)
+    return None if x is None else (x, y, 1, x * y % _ED_P)
+
+
+_ED_GY = 4 * pow(5, _ED_P - 2, _ED_P) % _ED_P
+_ED_GX = _ed_recover_x(_ED_GY, 0)
+assert _ED_GX is not None
+_ED_BASE: _EdPoint = (_ED_GX, _ED_GY, 1, _ED_GX * _ED_GY % _ED_P)
+
+
+def ed25519_verify(public_key: bytes, message: bytes, signature: bytes) -> bool:
+    """True when ``signature`` is a valid Ed25519 signature of ``message`` by ``public_key`` (RFC 8032 5.1.7)."""
+    if len(public_key) != 32 or len(signature) != 64:
+        return False
+    a = _ed_decompress(public_key)
+    r = _ed_decompress(signature[:32])
+    if a is None or r is None:
+        return False
+    s = int.from_bytes(signature[32:], "little")
+    if s >= _ED_L:
+        return False
+    k = int.from_bytes(hashlib.sha512(signature[:32] + public_key + message).digest(), "little") % _ED_L
+    return _ed_equal(_ed_mul(s, _ED_BASE), _ed_add(r, _ed_mul(k, a)))
+
+
+def verify_release_signature(checksum_bytes: bytes, signature_text: str | None, *,
+                             keys: Sequence[str] | None = None, required: bool | None = None) -> str:
+    """Checks the signature of a release's checksum file; returns what was checked (for the log).
+
+    * No public key in this version: nothing to check against – SHA-256 only (the signature is prepared).
+    * A key, but no signature file: allowed while signing is not required; refused when it is.
+    * A signature that does not match any key: always refused – the release may have been tampered with.
+    """
+    keys = RELEASE_SIGNING_KEYS if keys is None else keys
+    required = SIGNATURE_REQUIRED if required is None else required
+    if not keys:
+        return "Signaturkontroll er forberedt, men ikke slått på i denne versjonen (bare SHA-256 er kontrollert)."
+    if signature_text is None:
+        if required:
+            raise UpdateError("Utgivelsen mangler signaturfilen. Oppdateringen er stoppet – kontroller utgivelsen på "
+                              "GitHub.")
+        return "Utgivelsen er ikke signert – bare SHA-256 er kontrollert."
+    try:
+        signature = base64.b64decode("".join(signature_text.split()), validate=True)
+    except (ValueError, binascii.Error):
+        signature = b""
+    if len(signature) != 64:
+        raise UpdateError("Signaturfilen har et ukjent format. Oppdateringen er stoppet.")
+    for key in keys:
+        if ed25519_verify(bytes.fromhex(key), checksum_bytes, signature):
+            return f"Signaturen er gyldig (nøkkel {key[:16]}…)."
+    raise UpdateError("Signaturen på utgivelsen er ugyldig. Pakken kan være endret, og blir ikke installert.")
+
+
 def _safe_member(name: str) -> PurePosixPath:
     if not name or "\\" in name or ":" in name or name.startswith("/"):
         raise UpdateError(f"Utgivelsespakken inneholder en ugyldig sti: {name!r}")
@@ -584,8 +721,8 @@ def _safe_member(name: str) -> PurePosixPath:
     return path
 
 
-def extract_release(zip_path: Path, staging: Path) -> Path:
-    """Unpack the release zip into ``staging`` (rejecting unsafe paths) and return the folder with VERSION."""
+def unpack(zip_path: Path, staging: Path) -> None:
+    """Unpack a zip from a release into the fresh folder ``staging``, rejecting unsafe paths, links and zip bombs."""
     remove_tree(staging)
     staging.mkdir(parents=True)
     try:
@@ -607,10 +744,86 @@ def extract_release(zip_path: Path, staging: Path) -> Path:
             target.parent.mkdir(parents=True, exist_ok=True)
             with archive.open(member) as source, target.open("wb") as out:
                 shutil.copyfileobj(source, out, 1024 * 1024)
+
+
+def extract_release(zip_path: Path, staging: Path) -> Path:
+    """Unpack the release zip into ``staging`` (rejecting unsafe paths) and return the folder with VERSION."""
+    unpack(zip_path, staging)
     entries = list(staging.iterdir())
     if not (staging / "VERSION").exists() and len(entries) == 1 and entries[0].is_dir():
         return entries[0]  # packaged as EmneKlar-<versjon>/...
     return staging
+
+
+# -- the bundled runtime of a release -------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RuntimeRef:
+    """One entry of ``runtimes`` in a release's install.json: the runtime the release needs on one platform."""
+
+    platform: str
+    id: str
+    python: str
+    asset: str
+    sha256: str
+    size: int
+
+
+def runtime_asset_name(platform: str, identifier: str) -> str:
+    return f"EmneKlar-runtime-{platform}-{identifier}.zip"
+
+
+def release_runtimes(install_info: object) -> dict[str, RuntimeRef]:
+    """``{platform: runtime}`` from the content of install.json. A malformed entry is an error – never a silent "no
+    runtime": the SHA-256 recorded here is the only thing that makes the runtime download trustworthy."""
+    section = install_info.get("runtimes") if isinstance(install_info, dict) else None
+    if section is None:
+        return {}
+    if not isinstance(section, dict):
+        raise UpdateError("install.json i utgivelsespakken har en ugyldig liste over kjøretider.")
+    found: dict[str, RuntimeRef] = {}
+    for platform, entry in section.items():
+        identifier, python = (entry.get("id"), entry.get("python")) if isinstance(entry, dict) else (None, None)
+        asset, digest, size = (entry.get("asset"), entry.get("sha256"), entry.get("size")) \
+            if isinstance(entry, dict) else (None, None, None)
+        if (not isinstance(platform, str) or not RUNTIME_PLATFORM_RE.match(platform)
+                or not isinstance(identifier, str) or not RUNTIME_ID_RE.match(identifier)
+                or not isinstance(python, str) or not re.fullmatch(r"\d+\.\d+\.\d+", python)
+                or asset != runtime_asset_name(platform, identifier)
+                or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)
+                or not isinstance(size, int) or isinstance(size, bool) or not 0 < size <= MAX_DOWNLOAD_BYTES):
+            raise UpdateError(f"install.json i utgivelsespakken har en ugyldig kjøretid for «{platform}».")
+        found[platform] = RuntimeRef(platform=platform, id=identifier, python=python, asset=asset, sha256=digest,
+                                     size=size)
+    return found
+
+
+def read_runtime_info(folder: Path) -> dict[str, Any]:
+    try:
+        info = json.loads((folder / RUNTIME_INFO).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise UpdateError("Kjøretiden i utgivelsen mangler en gyldig runtime.json.") from exc
+    if not isinstance(info, dict):
+        raise UpdateError("Kjøretiden i utgivelsen mangler en gyldig runtime.json.")
+    return info
+
+
+def verify_runtime_archive(path: Path, wanted: RuntimeRef) -> None:
+    """The size and SHA-256 recorded in install.json – which itself came out of the verified release package."""
+    if path.stat().st_size != wanted.size or not hmac.compare_digest(sha256_file(path), wanted.sha256):
+        raise UpdateError(f"{path.name} stemmer ikke med sjekksummen i utgivelsen. Filen kan være skadet eller endret, "
+                          "og blir ikke installert.")
+
+
+def extract_runtime(zip_path: Path, staging: Path, wanted: RuntimeRef) -> None:
+    """Unpack a verified runtime zip into ``staging`` and check that it is the runtime the release asked for."""
+    unpack(zip_path, staging)
+    info = read_runtime_info(staging)
+    if info.get("id") != wanted.id or info.get("platform") != wanted.platform:
+        raise UpdateError(f"Kjøretiden i {zip_path.name} er ikke den utgivelsen ber om ({wanted.id}).")
+    if not runtime_interpreter(staging).is_file():
+        raise UpdateError(f"Kjøretiden i {zip_path.name} mangler Python.")
 
 
 def validate_release_tree(tree: Path, expected: Version) -> None:
@@ -632,10 +845,13 @@ def validate_release_tree(tree: Path, expected: Version) -> None:
 
 
 def list_files(root: Path) -> set[str]:
-    """Relative POSIX paths of all files under ``root``, skipping EXCLUDED_DIRS (at any depth) and symlinks."""
+    """Relative POSIX paths of all files under ``root``, skipping EXCLUDED_DIRS (at any depth), the bundled runtime
+    (``runtime`` at the top level) and symlinks."""
     found: set[str] = set()
     for current, dirs, files in os.walk(root):
-        dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS and not Path(current, d).is_symlink()]
+        top = Path(current) == root
+        dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS and not (top and d in ROOT_EXCLUDED_DIRS)
+                   and not Path(current, d).is_symlink()]
         base = Path(current)
         for name in files:
             path = base / name
@@ -722,6 +938,19 @@ def rollback_release(record: SwapRecord) -> None:
             problems.append(f"{rel}: {exc}")
     if problems:
         raise UpdateError(f"{len(problems)} fil(er) kunne ikke settes tilbake, f.eks. {problems[0]}")
+
+
+def _rename_folder(source: Path, target: Path, *, attempts: int = 20) -> None:
+    """Rename a whole folder (the bundled runtime). A virus scanner may hold a file open for a moment right after it
+    was written, so a refused rename is tried again for a few seconds before it counts as a failure."""
+    for attempt in range(attempts):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(0.25)
 
 
 def prune_code_backups(work: Path, keep: int = KEEP_CODE_BACKUPS) -> None:
@@ -893,7 +1122,9 @@ class Updater:
         self.work = self.root / ".update"
         self.run_dir = data_dir / "run"
         self.db_path = data_dir / "database.db"
-        self.venv_python = venv_python_path(self.root)
+        # An installation with its own runtime never uses pip; one without it uses the venv made by setup.
+        self.bundled = has_bundled_runtime(self.root)
+        self.python = installation_python(self.root)
         self.kind = "source"
         self.current = Version(0, 0, 0)
         self.target: Version | None = None
@@ -911,6 +1142,24 @@ class Updater:
         self.migrations_started = False
         self.frontend_build_started = False
         self.health_proc: subprocess.Popen[bytes] | None = None
+        self.new_runtime: RuntimeRef | None = None  # set when the new version needs another runtime
+        self.runtime_swapped = False
+
+    @property
+    def runtime_staging(self) -> Path:
+        return self.work / "runtime-new"
+
+    @property
+    def runtime_previous(self) -> Path:
+        return self.work / "runtime-previous"
+
+    def start_hint(self) -> str:
+        return "Start EmneKlar fra Start-menyen." if self.bundled else "Start programmet med start.bat."
+
+    def repair_hint(self) -> str:
+        if self.bundled:
+            return "Installer EmneKlar på nytt med installasjonsprogrammet (dataene dine beholdes)"
+        return "Kjør setup.bat for å reparere installasjonen"
 
     # -- driver ------------------------------------------------------------------------------------
 
@@ -952,7 +1201,8 @@ class Updater:
         self.cleanup(success=True)
         self.r.info()
         self.r.info(f"EmneKlar er oppdatert fra {self.current} til {self.target}." +
-                    (" Programmet starter i et eget vindu." if started else ""))
+                    ((" Programmet starter nå." if self.bundled else " Programmet starter i et eget vindu.")
+                     if started else ""))
         if self.db_backup is not None:
             self.r.info(f"Sikkerhetskopi av databasen: {self.db_backup}")
         if self.code_backup is not None and self.kind != "git":
@@ -977,8 +1227,8 @@ class Updater:
                 return
             self.r.info("EmneKlar må være avsluttet mens oppdateringen pågår.")
             while True:
-                answer = ask("  Skriv S og trykk Enter for å avslutte EmneKlar nå, eller lukk EmneKlar-vinduet selv "
-                             "og trykk Enter.\n  Skriv A og trykk Enter for å avbryte: ").strip().upper()
+                answer = ask("  Skriv S og trykk Enter for å avslutte EmneKlar nå, eller avslutt EmneKlar selv og "
+                             "trykk Enter.\n  Skriv A og trykk Enter for å avbryte: ").strip().upper()
                 if answer == "A":
                     raise UpdateAborted("Oppdateringen ble avbrutt. Ingenting er endret.")
                 if answer not in ("", "S"):
@@ -988,7 +1238,7 @@ class Updater:
                     self._stop_running(info, watcher)
                     return
                 if running_instance(self.run_dir) is None:
-                    watcher.wait(15)  # the window was closed; let the process finish exiting
+                    watcher.wait(15)  # EmneKlar was closed; let the process finish exiting
                     self.restart_wanted = True
                     self.r.info("EmneKlar er avsluttet.")
                     return
@@ -996,11 +1246,11 @@ class Updater:
 
     def _stop_running(self, info: dict[str, Any], watcher: ProcessWatcher) -> None:
         if not request_shutdown(info):
-            raise UpdateAborted("EmneKlar svarte ikke på forespørselen om å avslutte. Lukk EmneKlar-vinduet og "
-                                "start oppdateringen på nytt.")
+            raise UpdateAborted("EmneKlar svarte ikke på forespørselen om å avslutte. Avslutt EmneKlar og start "
+                                "oppdateringen på nytt.")
         self.restart_wanted = True
         if not wait_until_stopped(info["origin"], watcher, STOP_TIMEOUT):
-            raise UpdateAborted(f"EmneKlar avsluttet ikke innen {STOP_TIMEOUT:g} sekunder. Lukk EmneKlar-vinduet og "
+            raise UpdateAborted(f"EmneKlar avsluttet ikke innen {STOP_TIMEOUT:g} sekunder. Avslutt EmneKlar og "
                                 "start oppdateringen på nytt.")
         self.r.info("EmneKlar er avsluttet.")
 
@@ -1012,19 +1262,21 @@ class Updater:
         if current is None:
             raise UpdateAborted(f"Fant ingen gyldig VERSION-fil i {self.root}. Er dette en EmneKlar-mappe?")
         self.current = current
-        if not self.venv_python.is_file():
+        if not self.python.is_file():
             raise UpdateAborted("Fant ikke Python-miljøet (backend\\.venv). Kjør setup.bat først.")
+        where = "Kjøretiden (runtime)" if self.bundled else "Python-miljøet (backend\\.venv)"
         try:
-            reported = run([self.venv_python, "-m", "emneklar.manage", "version"], cwd=self.root / "backend",
+            reported = run([self.python, "-m", "emneklar.manage", "version"], cwd=self.root / "backend",
                            reporter=self.r, capture=True).stdout.strip()
         except CommandFailed as exc:
-            raise UpdateAborted("Python-miljøet (backend\\.venv) virker ikke. Kjør setup.bat for å reparere "
-                                "installasjonen, og prøv igjen.") from exc
+            raise UpdateAborted(f"{where} virker ikke. {self.repair_hint()}, og prøv igjen.") from exc
         if reported != str(current):
-            raise UpdateAborted(f"Python-miljøet svarer med versjon {reported or '?'}, men VERSION sier {current}. "
-                                "Kjør setup.bat for å reparere installasjonen, og prøv igjen.")
+            raise UpdateAborted(f"{where} svarer med versjon {reported or '?'}, men VERSION sier {current}. "
+                                f"{self.repair_hint()}, og prøv igjen.")
         self.kind = install_kind(self.root)
         self.r.info(f"Installert versjon: {current} ({INSTALL_LABELS[self.kind]}) i {self.root}")
+        if self.bundled:
+            self.r.info(f"Innebygd kjøretid: {installed_runtime_id(self.root) or 'ukjent'}")
         problem = npm_path_problem(self.root) if self.kind == "git" else None
         if problem:
             raise UpdateAborted(problem)
@@ -1176,34 +1428,106 @@ class Updater:
         assert release is not None and self.code_backup is not None
         name = f"EmneKlar-{release.version}.zip"
         zip_url, sum_url = release.assets.get(name), release.assets.get(f"{name}.sha256")
+        sig_url = release.assets.get(f"{name}.sha256{SIGNATURE_SUFFIX}")
         if not zip_url or not sum_url:
             raise UpdateError(f"Utgivelsen {release.tag} mangler {name} eller sjekksumfilen {name}.sha256.")
         downloads = self.work / "download"
         remove_tree(downloads)
         self.r.info(f"Laster ned {name} …")
         download(sum_url, downloads / f"{name}.sha256", max_bytes=64 * 1024)
+        signature_text = None
+        if sig_url:
+            download(sig_url, downloads / f"{name}.sha256{SIGNATURE_SUFFIX}", max_bytes=4 * 1024)
+            signature_text = (downloads / f"{name}.sha256{SIGNATURE_SUFFIX}").read_text(encoding="ascii",
+                                                                                       errors="replace")
+        # The checksum file is trusted only after its signature is checked (when signing is in use).
+        self.r.info(verify_release_signature((downloads / f"{name}.sha256").read_bytes(), signature_text))
         download(zip_url, downloads / name, max_bytes=MAX_DOWNLOAD_BYTES)
         checksum_text = (downloads / f"{name}.sha256").read_text(encoding="utf-8", errors="replace")
         digest = verify_checksum(downloads / name, checksum_text)
         self.r.info(f"Sjekksummen stemmer (SHA-256 {digest[:16]}…).")
         tree = extract_release(downloads / name, self.work / "staging")
         validate_release_tree(tree, release.version)
+        self._stage_runtime(tree, release)  # fetched and checked before anything in the installation is changed
         self.r.info(f"Tar vare på gjeldende programfiler i {self.code_backup} …")
         self.swap = backup_program_files(self.root, tree, self.code_backup, old_version=str(self.current))
         apply_release(self.swap, tree)
         self.r.info(f"Programfilene er byttet ut ({len(self.swap.new_files)} filer).")
+        self._swap_runtime()
+
+    # -- the bundled runtime ---------------------------------------------------------------------
+
+    def _stage_runtime(self, tree: Path, release: Release) -> None:
+        """Fetch the runtime the new version needs into ``.update/runtime-new`` – unless it is the installed one."""
+        try:
+            info = json.loads((tree / "install.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise UpdateError("install.json i utgivelsespakken er ugyldig.") from exc
+        runtimes = release_runtimes(info)
+        if not self.bundled:
+            return  # this installation runs in the venv made by setup; step 6 installs the dependencies
+        tag = platform_tag()
+        wanted = runtimes.get(tag)
+        if wanted is None:
+            raise UpdateError(f"Utgivelsen {release.tag} har ingen innebygd kjøretid for denne maskinen ({tag}). "
+                              "Installasjonen er ikke endret.")
+        if installed_runtime_id(self.root) == wanted.id:
+            self.r.info(f"Kjøretiden er den samme som før ({wanted.id}) – ingenting å hente.")
+            return
+        url = release.assets.get(wanted.asset)
+        if not url:
+            raise UpdateError(f"Utgivelsen {release.tag} mangler kjøretidfilen {wanted.asset}.")
+        live = (self.root / RUNTIME_DIR).resolve()
+        if live in Path(sys.executable).resolve().parents:
+            raise UpdateError("Denne oppdateringen bytter den innebygde kjøretiden og må startes med update.bat "
+                              "(eller fra Innstillinger i EmneKlar). Ingenting er endret.")
+        ensure_free_space(self.root, 4 * wanted.size + MIN_FREE_BYTES, "den nye kjøretiden")
+        self.r.info(f"Laster ned ny kjøretid ({wanted.asset}, {wanted.size / 2**20:.0f} MB) …")
+        archive = self.work / "download" / wanted.asset
+        download(url, archive, max_bytes=wanted.size)
+        verify_runtime_archive(archive, wanted)
+        self.r.info(f"Sjekksummen for kjøretiden stemmer (SHA-256 {wanted.sha256[:16]}…).")
+        extract_runtime(archive, self.runtime_staging, wanted)
+        self.new_runtime = wanted
+
+    def _swap_runtime(self) -> None:
+        """Replace ``runtime\\`` with the staged one: two renames of whole folders. The old one waits in
+        ``.update/runtime-previous`` until the new version has passed its health check."""
+        if self.new_runtime is None:
+            return
+        live = self.root / RUNTIME_DIR
+        remove_tree(self.runtime_previous)
+        self.runtime_swapped = True  # from here on a failure puts the old folder back (see _rollback_runtime)
+        _rename_folder(live, self.runtime_previous)
+        _rename_folder(self.runtime_staging, live)
+        self.r.info(f"Kjøretiden er byttet ut ({self.new_runtime.id}, Python {self.new_runtime.python}).")
+
+    def _rollback_runtime(self) -> None:
+        live = self.root / RUNTIME_DIR
+        if self.runtime_swapped and self.runtime_previous.is_dir():
+            if live.exists():
+                failed = self.work / "runtime-failed"
+                remove_tree(failed)
+                _rename_folder(live, failed)
+            _rename_folder(self.runtime_previous, live)
+        for leftover in (self.runtime_staging, self.work / "runtime-failed"):
+            with contextlib.suppress(OSError):
+                remove_tree(leftover)
 
     # -- steps 6-9 -----------------------------------------------------------------------------
 
     def update_dependencies(self) -> None:
         self.step(6)
+        if self.bundled:
+            self.r.info("Avhengighetene følger med den innebygde kjøretiden – ingenting å installere.")
+            return
         self.deps_started = True
-        install_python_dependencies(self.venv_python, self.root, self.r)
+        install_python_dependencies(self.python, self.root, self.r)
 
     def migrate(self) -> None:
         self.step(7)
         self.migrations_started = True
-        run([self.venv_python, "-m", "emneklar.manage", "migrate"], cwd=self.root / "backend", reporter=self.r)
+        run([self.python, "-m", "emneklar.manage", "migrate"], cwd=self.root / "backend", reporter=self.r)
 
     def build_frontend(self) -> None:
         self.step(8)
@@ -1232,7 +1556,7 @@ class Updater:
         self.work.mkdir(parents=True, exist_ok=True)
         with output.open("wb") as out:
             self.health_proc = subprocess.Popen(
-                [str(self.venv_python), "-m", "emneklar", "--no-browser", "--port", str(port)],
+                [str(self.python), "-m", "emneklar", "--no-browser", "--port", str(port)],
                 cwd=self.root / "backend", stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
                 env=child_env(), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         self.r.info(f"Starter den nye versjonen på {origin} (venter opptil {HEALTH_TIMEOUT:g} sekunder) …")
@@ -1286,24 +1610,31 @@ class Updater:
     # -- step 10 and restarts ----------------------------------------------------------------------
 
     def start_app(self) -> bool:
-        """Start EmneKlar normally (own console window, opens the browser). True if it was started."""
+        """Start EmneKlar the way the user does: without a console window when the installation has its own runtime
+        (as the shortcut does), else with start.bat in its own window. True if it was started."""
         if self.o.no_start:
-            self.r.info("EmneKlar startes ikke automatisk (--no-start). Start programmet med start.bat.")
+            self.r.info(f"EmneKlar startes ikke automatisk (--no-start). {self.start_hint()}")
             return False
         try:
-            if os.name == "nt":
+            if self.bundled:
+                flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                subprocess.Popen([str(bundled_python_path(self.root, windowed=True)), "-m", "emneklar"],
+                                 cwd=self.root, close_fds=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL, creationflags=flags, start_new_session=os.name != "nt")
+            elif os.name == "nt":
                 start_bat = self.root / "start.bat"
                 comspec = os.environ.get("COMSPEC") or "cmd.exe"
                 # /s + outer quotes: the path may contain spaces, parentheses, & or Norwegian letters.
                 subprocess.Popen(f'"{comspec}" /d /s /c ""{start_bat}""', cwd=self.root, close_fds=True,
                                  creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
             else:
-                subprocess.Popen([str(self.venv_python), "-m", "emneklar"], cwd=self.root / "backend",
+                subprocess.Popen([str(self.python), "-m", "emneklar"], cwd=self.root / "backend",
                                  start_new_session=True, stdin=subprocess.DEVNULL)
         except OSError as exc:
-            self.r.warn(f"Klarte ikke å starte EmneKlar automatisk ({exc}). Start programmet med start.bat.")
+            self.r.warn(f"Klarte ikke å starte EmneKlar automatisk ({exc}). {self.start_hint()}")
             return False
-        self.r.info("EmneKlar starter i et eget vindu, og nettleseren åpnes automatisk.")
+        self.r.info("EmneKlar starter, og nettleseren åpnes automatisk." if self.bundled else
+                    "EmneKlar starter i et eget vindu, og nettleseren åpnes automatisk.")
         return True
 
     def start_app_again(self) -> None:
@@ -1329,6 +1660,11 @@ class Updater:
             elif self.swap is not None:
                 rollback_release(self.swap)
             results.append((True, f"Programfilene er satt tilbake til versjon {self.current}."))
+            if self.new_runtime is not None:
+                swapped = self.runtime_swapped
+                self._rollback_runtime()
+                if swapped:
+                    results.append((True, "Den forrige kjøretiden er satt tilbake."))
         except (Exception, KeyboardInterrupt) as exc:  # noqa: BLE001 - report and continue with the rest
             code_ok = False
             where = f" Kopien av forrige versjon ligger i {self.code_backup}." if self.code_backup else ""
@@ -1336,7 +1672,7 @@ class Updater:
 
         if self.deps_started:
             try:
-                install_python_dependencies(self.venv_python, self.root, self.r)
+                install_python_dependencies(self.python, self.root, self.r)
                 results.append((True, f"Avhengighetene er installert på nytt for versjon {self.current}."))
             except (Exception, KeyboardInterrupt) as exc:  # noqa: BLE001
                 results.append((False, f"Avhengighetene kunne ikke installeres på nytt ({describe_error(exc)}). Kjør "
@@ -1365,10 +1701,10 @@ class Updater:
         elif code_ok:
             started = self.start_app()
             results.append((started, f"EmneKlar {self.current} er startet igjen." if started else
-                            f"EmneKlar {self.current} ble ikke startet. Start programmet med start.bat."))
+                            f"EmneKlar {self.current} ble ikke startet. {self.start_hint()}"))
         else:
-            results.append((False, "EmneKlar ble ikke startet fordi programfilene ikke kunne settes tilbake. Kjør "
-                                   "update.bat på nytt, eller kontakt den som har installert EmneKlar."))
+            results.append((False, "EmneKlar ble ikke startet fordi programfilene ikke kunne settes tilbake. "
+                                   f"{self.repair_hint()}, eller kontakt den som har installert EmneKlar."))
         self.cleanup(success=False)
 
         self.r.info()
@@ -1393,7 +1729,10 @@ class Updater:
                 shutil.copytree(self.dist_backup, dist)
 
     def cleanup(self, *, success: bool) -> None:
-        for leftover in (self.work / "staging", self.work / "download"):
+        leftovers = [self.work / "staging", self.work / "download", self.runtime_staging]
+        if success:
+            leftovers.append(self.runtime_previous)  # the new version passed its health check: not needed any more
+        for leftover in leftovers:
             with contextlib.suppress(OSError):
                 remove_tree(leftover)
         if success:

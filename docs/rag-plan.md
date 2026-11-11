@@ -69,13 +69,13 @@ backend/tests/test_course_rag_*.py         enhetstester + integrasjonstest mot f
   `av` (PyAV med FFmpeg innebygd: henter ut lyden for transkripsjon via KI-leverandør og nøkkelbilder),
   `youtube-transcript-api` (teksting til YouTube-videoer; ren Python, MIT, sender bare video-id-en).
   Låses i `backend/constraints.txt`.
-* **Valgfritt, «lokale modeller»** (`pip install -e "backend[rag]"`): `sentence-transformers` (BGE-M3,
-  bge-reranker-v2-m3; drar med PyTorch), `faster-whisper` (CTranslate2 + PyAV, som har FFmpeg innebygd – ingen
-  egen ffmpeg-installasjon). `setup.bat` spør om dem under oppsettet (standard nei, bare når noen kan svare);
-  `setup.bat --rag` velger dem uten å spørre. Valget huskes i `backend\.venv\emneklar-extras.txt`, så `update.bat`
-  beholder det.
-  Grunnen til at dette er valgfritt: PyTorch og modellene er flere GB; resten av EmneKlar skal fortsatt
-  installeres raskt.
+* **Bare for utviklere, «lokale modeller»** (`pip install -e "backend[rag]"` i et eget utviklingsmiljø):
+  `sentence-transformers` (BGE-M3, bge-reranker-v2-m3; drar med PyTorch) og `faster-whisper` (CTranslate2 + PyAV, som
+  har FFmpeg innebygd – ingen egen ffmpeg-installasjon). Verken `setup.bat`, `update.bat`, installasjonsprogrammet
+  eller utgivelsespakkene spør om, laster ned eller installerer dem, og de er ikke med i Windows-pakken. Støtten i
+  programkoden (`core/ai/local/`) er beholdt, så den kan prøves i et utviklingsmiljø. I en vanlig installasjon bruker
+  kunnskapsbasen nøkkelordsøk, eksisterende teksting og – hvis læreren velger det – en KI-leverandør.
+  Grunnen: PyTorch og modellene er flere GB, og en installasjon skal være liten, rask og lik for alle.
 * **Ikke valgt:** Docling (drar med PyTorch og egne layoutmodeller, og kjører ikke i de isolerte
   parserprosessene) og PyMuPDF (AGPL-lisens). LanceDB/sqlite-vec trengs ikke: et emne har sjelden over noen
   titusen chunks, og eksakt vektorsøk med numpy over vektorer lagret i SQLite er raskt nok, krever ingen
@@ -86,11 +86,11 @@ backend/tests/test_course_rag_*.py         enhetstester + integrasjonstest mot f
 
 * Hoveddatabasen får tabellen `rag_indexes` (én rad per emne: status, valg, modell, statistikk, hoppede elementer,
   evaluering, sist bygget) via Alembic-migrering `0002`.
-* Selve indeksen ligger i `%LOCALAPPDATA%\EmneKlar-Claude\rag\course-<id>.sqlite` (én fil per emne), merket med
+* Selve indeksen ligger i `%LOCALAPPDATA%\EmneKlar\rag\course-<id>.sqlite` (én fil per emne), merket med
   egen `PRAGMA application_id` og skjemaversjon. Den er avledet data som kan bygges på nytt; ved ny skjemaversjon
   bes brukeren bygge indeksen på nytt.
 * Buffer: `cache\rag\transcripts\<sha256>.json` (nøkkel = filhash), `cache\rag\images\<sha256>.json`.
-* Modeller: `%LOCALAPPDATA%\EmneKlar-Claude\models` (Hugging Face-buffer), aldri delt med andre programmer.
+* Modeller: `%LOCALAPPDATA%\EmneKlar\models` (Hugging Face-buffer), aldri delt med andre programmer.
 
 ## Faser (én commit per fase)
 
@@ -188,10 +188,10 @@ Valget lagres som innstilling og gjelder alle emner.
 
 ## GPU
 
-`setup.bat --rag` installerer PyTorch fra PyPI, som på Windows er CPU-utgaven. EmneKlar oppdager CUDA automatisk
-(`torch.cuda.is_available()` for embedding og rerangering, `ctranslate2.get_cuda_device_count()` for Whisper), så
-GPU brukes når CUDA-utgaven av PyTorch og CUDA-bibliotekene er installert i `backend\.venv`. Valget kan overstyres
-(Automatisk / Bare CPU / NVIDIA-GPU).
+Gjelder bare utviklingsmiljøer der `backend[rag]` er installert for hånd. PyTorch fra PyPI er CPU-utgaven på
+Windows. EmneKlar oppdager CUDA automatisk (`torch.cuda.is_available()` for embedding og rerangering,
+`ctranslate2.get_cuda_device_count()` for Whisper), så GPU brukes når CUDA-utgaven av PyTorch og CUDA-bibliotekene
+er installert i miljøet. Valget kan overstyres (Automatisk / Bare CPU / NVIDIA-GPU).
 
 ## Testing
 
