@@ -59,7 +59,8 @@ def test_structure_descends_into_wrapper_and_finds_sections() -> None:
 
 
 @pytest.mark.parametrize(("placement", "after_text"), [
-    ("after_intro", "Andre linje"), ("under_heading", "Samarbeidslæring"),
+    # «under_heading» keeps the heading and its first paragraph together: the image comes after that paragraph.
+    ("after_intro", "Andre linje"), ("under_heading", "Studenter lærer sammen i grupper."),
     ("after_explanation", "Mer forklaring om roller."), ("end_of_section", "b"), ("before_task", "b"),
 ])
 def test_placements_insert_between_blocks_without_touching_text(placement: str, after_text: str) -> None:
@@ -124,10 +125,112 @@ def test_scanner_flags_html_it_cannot_splice_safely() -> None:
 
 
 def test_candidate_anchors_list_every_placement_once() -> None:
-    anchors = P.candidate_anchors(parse_page(PAGE))
+    s = parse_page(PAGE)
+    anchors = P.candidate_anchors(s)
     indices = [a["block_index"] for a in anchors]
     assert indices[0] == -1 and len(indices) == len(set(indices))
-    assert {a["placement"] for a in anchors} >= {"page_start", "after_intro", "under_heading", "after_explanation"}
+    assert {a["placement"] for a in anchors} >= {"page_start", "after_intro", "after_explanation", "before_task"}
+    assert all(s.blocks[i].kind != "heading" for i in indices if i >= 0), "never right under a heading"
+    labels = [a["placement_label"] for a in anchors]
+    assert labels[0] == "Øverst på siden"
+    assert "Etter tabellen «a b», før «Oppgave 1»" in labels, labels
+    assert "Etter videoen, nederst på siden" in labels, labels
+
+
+# A page like «Å kjenne igjen er ikke det samme som å kunne»: an introduction, three ideas introduced by a sentence
+# ending in a colon, a list, and a paragraph that sums the list up – then the next part.
+RECOGNISE = """<h2>Introduksjon</h2>
+<p>Har du lest en tekst flere ganger og kjent deg igjen i innholdet, men likevel ikke klart å forklare det etterpå?</p>
+<p>Det er forskjell på å oppleve at vi forstår noe, og å faktisk kunne bruke det vi har lært.</p>
+<p>I denne delen skal vi se nærmere på tre sentrale begreper:</p>
+<ul><li>Gjenkjenning: å kjenne igjen noe man ser.</li><li>Gjenkalling: å hente fram uten å se.</li>
+<li>Anvendelse: å forklare og bruke kunnskapen.</li></ul>
+<p>Disse begrepene henger tett sammen og forklarer hvorfor noen arbeidsmåter gir bedre læring enn andre.</p>
+<h2>2.1.1 Metakognisjon</h2>
+<p>Metakognisjon er å tenke om egen tenkning.</p>
+<p>Eksempel: En student leser kapittelet på nytt før eksamen.</p>
+<p>Her ser vi at gjentatt lesing gir en følelse av mestring uten at kunnskapen er hentet fram.</p>
+<p><img src="/courses/1/files/9/preview" alt="Graf"></p>
+<p><em>Figur 1: Glemselskurven.</em></p>
+<p>Avslutning.</p>"""
+
+
+def test_units_keep_text_that_belongs_together() -> None:
+    s = parse_page(RECOGNISE)
+    units = [(s.blocks[u.first].text[:24], s.blocks[u.last].kind, u.reasons) for u in s.units]
+    assert units == [
+        ("Introduksjon", "paragraph", ["heading"]),
+        ("Det er forskjell på å op", "paragraph", []),
+        ("I denne delen skal vi se", "paragraph", ["lead_in", "summary"]),
+        ("2.1.1 Metakognisjon", "paragraph", ["heading"]),
+        ("Eksempel: En student les", "paragraph", ["example"]),
+        ("", "paragraph", ["caption"]),
+        ("Avslutning.", "paragraph", []),
+    ], units
+
+
+def test_insertion_points_lie_only_between_units() -> None:
+    s = parse_page(RECOGNISE)
+    points = P.insertion_points(s)
+    after = {p.id: s.blocks[p.after].text[:30] if p.after >= 0 else "TOP" for p in points}
+    assert list(after.values()) == ["TOP", "Har du lest en tekst flere gan", "Det er forskjell på å oppleve ",
+                                    "Disse begrepene henger tett sa", "Metakognisjon er å tenke om eg",
+                                    "Her ser vi at gjentatt lesing ", "Figur 1: Glemselskurven.", "Avslutning."]
+    forbidden = {"I denne delen skal vi se nærmere på tre sentrale begreper:", "Introduksjon",
+                 "Eksempel: En student leser kapittelet på nytt før eksamen."}
+    assert not {s.blocks[p.after].text for p in points if p.after >= 0} & forbidden
+    summary = points[3]
+    assert summary.label == "Etter avsnittet «Disse begrepene henger tett sammen og forklarer hvorfor …», før " \
+                            "«2.1.1 Metakognisjon»"
+    assert summary.placement == "end_of_section" and summary.next_heading == "2.1.1 Metakognisjon"
+    assert summary.before_text.endswith("gir bedre læring enn andre.")
+    assert summary.after_text.startswith("2.1.1 Metakognisjon Metakognisjon er")
+    ai = summary.for_ai()
+    assert ai["next"] == "Neste deloverskrift: «2.1.1 Metakognisjon»" and ai["section_id"] == "s1"
+    near = [p.id for p in points if p.near_image]
+    assert near == ["p5", "p6"], "next to the existing image and caption"
+    assert [p.id for p in P.planner_points(s)] == ["p0", "p1", "p2", "p3", "p4", "p7"]
+
+
+def test_a_point_that_would_now_split_a_unit_is_refused() -> None:
+    page = "<h2>Tittel</h2><p>Første avsnitt.</p><p>Tre ting å huske.</p><p>Neste avsnitt.</p>"
+    s = parse_page(page)
+    anchor = next(p for p in P.insertion_points(s) if s.blocks[p.after].text == "Tre ting å huske.").anchor(s)
+    assert "<figure" in P.insert(page, [P.Insertion("m", anchor, figure("m"))])
+    # The teacher turns the paragraph into a lead-in with a list after it: the image would now split them.
+    changed = page.replace("<p>Tre ting å huske.</p>", "<p>Tre ting å huske.</p>").replace(
+        "<p>Neste avsnitt.</p>", "<ul><li>a</li></ul><p>Neste avsnitt.</p>")
+    changed = changed.replace("Tre ting å huske.</p><ul>", "Tre ting å huske.</p><ul>")
+    lead_in = changed.replace("Tre ting å huske.", "Tre ting å huske:")
+    anchor_lead = P.Anchor.from_dict({**anchor.as_dict(), "block_hash": parse_page(lead_in).blocks[2].fingerprint})
+    with pytest.raises(P.PlacementError, match="delt opp tekst som hører sammen"):
+        P.insert(lead_in, [P.Insertion("m", anchor_lead, figure("m"))])
+
+
+def test_emnedesign_front_page_points_are_inside_the_body() -> None:
+    page = ('<div class="ek-design ek-design--akademisk" style="max-width: 860px"><div class="ek-design-banner">'
+            '<p>Emnenavn</p></div><div class="ek-design-body"><h2>Velkommen</h2><p>Første.</p><p>Andre.</p></div></div>')
+    s = parse_page(page)
+    assert [b.text for b in s.blocks] == ["Velkommen", "Første.", "Andre."]
+    out = P.insert(page, [P.Insertion("m", P.insertion_points(s)[1].anchor(s), figure("m"))])
+    assert out.index("<figure") > out.index("Første.") and out.index("<figure") < out.index("Andre.")
+
+
+def test_excerpt_shows_the_figure_with_the_text_around_it() -> None:
+    s = parse_page(RECOGNISE)
+    out = P.insert(RECOGNISE, [P.Insertion("m", P.insertion_points(s)[3].anchor(s), figure("m"))])
+    excerpt = P.excerpt_around(out, "m")
+    assert excerpt is not None
+    assert excerpt.startswith("<p>I denne delen") and "<ul>" in excerpt and "Disse begrepene" in excerpt
+    assert "<figure" in excerpt and excerpt.rstrip().endswith("Metakognisjon er å tenke om egen tenkning.</p>")
+    assert "Har du lest" not in excerpt and P.excerpt_around(out, "finnes-ikke") is None
+
+
+@pytest.mark.parametrize(("size", "shown"), [((1536, 864), 900), ((1536, 1024), 840), ((1024, 1024), 560),
+                                             ((1024, 1536), 373), ((None, None), 900)])
+def test_display_width_keeps_images_in_the_column_and_below_a_screen_height(size: tuple[int | None, int | None],
+                                                                            shown: int) -> None:
+    assert P.display_width(900, *size) == shown
 
 
 # ------------------------------------------------------------------------------------------- privacy
@@ -366,7 +469,7 @@ class FakeAI:
         schema = self.schema_of(body)
         self.calls.append({"kind": "text", "host": request.url.host, "model": body["model"], "text": text,
                            "system": body.get("system") or body["messages"][0].get("content"),
-                           "images": json.dumps(body).count('"image')})
+                           "images": json.dumps(body).count('"image'), "schema": schema})
         data = self.answer(schema, text)
         if request.url.host == "api.anthropic.com":
             return httpx.Response(200, json={"content": [{"type": "text", "text": json.dumps(data)}],
@@ -414,6 +517,41 @@ def start(client: TestClient, scope: dict, **extra: object) -> dict:
     job = wait_for_job(client, response.json()["job"]["id"])
     assert job["status"] == "completed", job
     return client.get(f"/api/illustrations/runs/{response.json()['run']['id']}").json()
+
+
+def test_the_plan_places_the_image_after_a_finished_explanation_with_a_precise_motif(  # type: ignore[no-untyped-def]
+        canvas_container, canvas_client: TestClient, ai: FakeAI) -> None:
+    fake_state(canvas_container).courses[COURSE_ID].pages["bildeformater"]["body"] = RECOGNISE
+    scenes = ["She glances over a highlighted textbook page and nods: it looks familiar.",
+              "She closes the book and writes down what she remembers on a blank sheet.",
+              "She explains the idea to a fellow student, pointing at a sketch she made."]
+    ai.plans = {"Bildeformater": [proposal(
+        insertion_point="p3", image_type="comparison", aspect_ratio="16:9", scenes=scenes, shows_sequence=False,
+        people="The same adult part-time student in her forties in all three scenes.",
+        placement_reason="Etter listen over de tre begrepene og avsnittet som oppsummerer dem, før neste deloverskrift.",
+        pedagogical_purpose="Vise forskjellen på å kjenne igjen, hente fram og forklare.")]}
+    run = start(canvas_client, {"type": "page", "page_url": "bildeformater"})
+
+    planning = next(c for c in ai.calls if c["kind"] == "text" and "INNSETTINGSPUNKTER" in c["text"])
+    assert '"id": "p3"' in planning["text"] and "Neste deloverskrift: «2.1.1 Metakognisjon»" in planning["text"]
+    point = planning["schema"]["properties"]["illustrations"]["items"]["properties"]["insertion_point"]
+    assert point["enum"] == ["p0", "p1", "p2", "p3", "p4", "p7"], "only between units, not next to the existing image"
+    system = json.dumps(planning["system"], ensure_ascii=False)
+    assert "generiske" in system and "anbefale å la være" in system and "trapper" in system
+
+    ill = next(i for i in run["illustrations"] if i["page_url"] == "bildeformater")
+    assert ill["placement_label"] == ("Etter avsnittet «Disse begrepene henger tett sammen og forklarer hvorfor …», "
+                                      "før «2.1.1 Metakognisjon»")
+    assert ill["section"]["title"] == "Introduksjon" and ill["image_type"] == "comparison"
+    assert ill["plan"]["placement_reason"].startswith("Etter listen") and len(ill["plan"]["scenes"]) == 3
+    assert ill["plan"]["suggested_placement"] == {"block_index": ill["anchor"]["block_index"],
+                                                  "block_hash": ill["anchor"]["block_hash"],
+                                                  "label": ill["placement_label"]}
+    prompt = next(c for c in ai.calls if c["kind"] == "image")["prompt"]
+    assert "Layout: 3 equal panels side by side" in prompt and f"Panel 2: {scenes[1]}" in prompt
+    assert "same fictional person" in prompt and "no arrows, numbers or connecting lines" in prompt
+    assert "People (fictional, matching the course's students and setting): The same adult" in prompt
+    assert "Do not use staircases, ladders, arrows" in prompt
 
 
 def test_status_and_catalog(canvas_client: TestClient) -> None:
@@ -475,7 +613,11 @@ def test_full_flow_publish_rerun_and_undo(canvas_container, canvas_client: TestC
 
     ill = next(i for i in run["illustrations"] if i["page_url"] == "bildeformater")
     assert ill["status"] == "generated" and ill["alt_text"].startswith("Fire studenter") and ill["caption"]
-    assert ill["anchor"]["placement"] == "after_explanation" and ill["review"]["verdict"] == "pass"
+    # The end of the explanation is also the end of the section, right before «Oppgave».
+    assert ill["anchor"]["placement"] == "before_task" and ill["review"]["verdict"] == "pass"
+    assert ill["placement_label"] == "Etter avsnittet «JPEG passer for foto, SVG for logoer.», før «Oppgave»"
+    assert ill["anchor"]["before_text"].endswith("JPEG passer for foto, SVG for logoer.")
+    assert ill["anchor"]["after_text"].startswith("Oppgave")
     assert run["run"]["usage"]["cost_usd"] > 0 and run["run"]["usage"]["calls"] >= 5
     overview = run["overview"]
     assert [g["name"] for g in overview] == ["Modul 2 – Bildebehandling"]
@@ -485,7 +627,8 @@ def test_full_flow_publish_rerun_and_undo(canvas_container, canvas_client: TestC
     assert canvas_client.post("/api/illustrations/bulk", json={"run_id": run["run"]["id"], "level": "page",
                                                                "page_url": "bildeformater"}).json()["changed"] == [ill["id"]]
     preview = canvas_client.post(f"/api/illustrations/runs/{run['run']['id']}/publish/preview", json={}).json()
-    assert preview["pages"][0]["ok"] and preview["pages"][0]["illustrations"][0]["placement"] == "after_explanation"
+    assert preview["pages"][0]["ok"] and preview["pages"][0]["illustrations"][0]["placement"] == "before_task"
+    assert preview["pages"][0]["illustrations"][0]["placement_label"] == ill["placement_label"]
     original = page["body"]
     published = page["published"]
     result = canvas_client.post(f"/api/illustrations/runs/{run['run']['id']}/publish", json={}).json()
@@ -602,7 +745,8 @@ def test_published_figure_is_responsive_credited_and_checked(canvas_container, c
     assert wait_for_job(canvas_client, result["job"]["id"])["result"]["summary"] == {"applied": 1}
     body = page_body(canvas_client, "bildeformater")["body"]
     figure_html = re.search(r"<figure.*?</figure>", body, re.DOTALL).group(0)
-    assert "max-width:900px" in figure_html.replace(" ", "") and "width:100%" in figure_html.replace(" ", "")
+    # The test image is 64 × 40: as wide as it can be without being taller than 560 px (896 px, within 900).
+    assert "max-width:896px" in figure_html.replace(" ", "") and "width:100%" in figure_html.replace(" ", "")
     assert "text-align:left" in figure_html.replace(" ", "")
     assert '<small class="emneklar-credit"' in figure_html and "KI-generert illustrasjon</small>" in figure_html
     caption = re.search(r"<figcaption[^>]*>(.*?)<small", figure_html, re.DOTALL).group(1)
@@ -617,7 +761,7 @@ def test_lazy_loading_only_below_the_top_of_the_page() -> None:
     top, lower = P.anchor_for(s, "s0", "after_intro"), P.anchor_for(s, "s1", "end_of_section")
     assert not P.lazy_for(top) and P.lazy_for(lower)
     portrait = P.figure_html(marker="m", src="/x", alt="a", caption=None, width=1024, height=1536, decorative=False)
-    assert "max-width: 560px" in portrait, "tall images are shown narrower"
+    assert "max-width: 373px" in portrait, "tall images are shown narrower (no taller than 560 px)"
 
 
 def test_page_preview_shows_the_image_in_the_page(canvas_client: TestClient, ai: FakeAI) -> None:
@@ -626,6 +770,30 @@ def test_page_preview_shows_the_image_in_the_page(canvas_client: TestClient, ai:
     preview = canvas_client.get(f"/api/illustrations/{run['illustrations'][0]['id']}/page-preview").json()
     assert preview["skipped"] == [] and 'src="data:image/webp;base64,' in preview["html"]
     assert "Lys grå tekst på hvit bakgrunn." in preview["html"] and "<figure" in preview["html"]
+
+
+def test_the_placement_is_previewed_in_its_surroundings_and_can_be_moved(  # type: ignore[no-untyped-def]
+        canvas_container, canvas_client: TestClient, ai: FakeAI) -> None:
+    fake_state(canvas_container).courses[COURSE_ID].pages["bildeformater"]["body"] = RECOGNISE
+    ai.plans = {"Bildeformater": [proposal(insertion_point="p3")]}
+    run = start(canvas_client, {"type": "page", "page_url": "bildeformater"})
+    ill = next(i for i in run["illustrations"] if i["page_url"] == "bildeformater")
+    url = f"/api/illustrations/{ill['id']}"
+    around = canvas_client.get(f"{url}/page-preview?around=true").json()
+    html = around["html"]
+    assert "<figure" in html and "data:image/" in html
+    assert html.index("tre sentrale begreper") < html.index("<figure") < html.index("Metakognisjon er å tenke")
+    assert "Har du lest en tekst" not in html and "Avslutning." not in html, "only the text right around the image"
+
+    anchors = canvas_client.get(f"{url}/anchors").json()["anchors"]
+    labels = [a["placement_label"] for a in anchors]
+    current = next(i for i, a in enumerate(anchors) if a["block_index"] == ill["anchor"]["block_index"])
+    assert labels[current] == ill["placement_label"]
+    moved = canvas_client.patch(url, json={"anchor": anchors[current + 1]}).json()
+    assert moved["placement_label"] == labels[current + 1] == "Etter avsnittet «Metakognisjon er å tenke om egen tenkning.»"
+    assert moved["anchor"]["before_text"] == "2.1.1 Metakognisjon Metakognisjon er å tenke om egen tenkning."
+    html = canvas_client.get(f"{url}/page-preview?around=true").json()["html"]
+    assert html.index("Metakognisjon er å tenke") < html.index("<figure") < html.index("Eksempel: En student")
 
 
 def test_queueing_publishes_nothing(canvas_container, canvas_client: TestClient, ai: FakeAI) -> None:

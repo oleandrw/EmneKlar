@@ -227,8 +227,7 @@ export function CourseDesign() {
         <div className="ek-stack" data-gap="4">
           {step === "omfang" ? (
             <ScopeStep courseId={courseId} scope={scope} setScope={setScope} moduleId={moduleId} setModuleId={setModuleId}
-              courseInventory={courseInventory} inventory={inventory}
-              sample={profiles.data?.profiles.find((p) => p.default)} onNext={() => setStep("design")} />
+              courseInventory={courseInventory} inventory={inventory} onNext={() => setStep("design")} />
           ) : null}
 
           {step === "design" ? (

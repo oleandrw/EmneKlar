@@ -221,6 +221,32 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   resultat eller årsak. Panelet lenker hit.
 
 ### Endret
+- **Innstillinger → KI-assistenter, OpenAI og Anthropic:** én handling, «Koble til», erstatter «Lagre», «Test
+  tilkobling» og «Hent modelliste». EmneKlar kontrollerer nøkkelen hos leverandøren og lagrer den i Windows
+  Legitimasjonsbehandling bare når kontrollen lykkes; en nøkkel som avvises, lagres ikke, og en lagret nøkkel beholdes.
+  Underveis står det «Kobler til …», og knappen kan ikke trykkes to ganger. Feilmeldingene sier hva som er galt (avvist
+  nøkkel, nøkkel fra feil leverandør, mellomrom i nøkkelen, ingen kreditt, ingen nettforbindelse) – uten å vise
+  nøkkelen eller leverandørens svar. Tilkoblet viser kortet «Nøkkel lagret sikkert», status «Tilkoblet» og «Bytt
+  nøkkel» og «Fjern». Modellisten hentes ved tilkobling og i bakgrunnen når den er over et døgn gammel. Endepunkt og
+  «Kontroller tilkoblingen» ligger under «Avansert», og kortet har lenke til leverandørens side for API-nøkler. Én
+  status per kort: de grønne bekreftelsesboksene, den doble statuslinjen og antallet modeller er fjernet. Å slå
+  leverandøren av og på nullstiller ikke lenger statusen, og «Fjern» slår leverandøren av.
+- **Emnedesign:** «Eksempel på design» ved siden av omfangsvalget er fjernet; designene vises når du velger design.
+- **KI-bildeassistent – plassering:** bilder settes bare inn mellom tekst som kan deles. En innledende setning og
+  listen eller tabellen etter den, en liste og avsnittet som oppsummerer den, en overskrift og første avsnitt, et
+  eksempel og forklaringen og et bilde og bildeteksten holdes sammen (`structure.py`). KI-en velger blant sidens
+  faktiske innsettingspunkter – med teksten før og etter hvert punkt – i stedet for en plasseringstype, og stedet
+  kontrolleres på nytt mot siden slik den er før innsetting; ville bildet nå dele opp tekst som hører sammen, må det
+  plasseres på nytt. Emnedesigns forside (banner og innhold) får innsettingspunkter i innholdet.
+- **KI-bildeassistent – plan og motiv:** bildeplanen sier for hvert bilde hvilket faglig poeng det skal gjøre lettere
+  å forstå, hva det konkret viser og hvor det står og hvorfor, og samme plan brukes til bildeprompten og plasseringen.
+  Assistenten anbefaler å la være når et bilde ikke tilfører noe, og unngår generiske læringsbilder. Personer og
+  situasjoner tilpasses målgruppen; en ny bildetype, sammenligning, viser samme oppdiktede person i to til fire
+  scener. Trapper, piler og trinn brukes ikke når teksten ikke beskriver en rekkefølge, og høyst seks korte etiketter.
+- **KI-bildeassistent – gjennomgang:** detaljvisningen viser bildet i et utdrag av siden med teksten rett før og
+  etter, stedet med sidens egne ord («Etter punktlisten …, før «…»») og begrunnelsen, og bildet kan flyttes («Flytt
+  opp», «Flytt ned» eller et annet sted) før det godkjennes. Bildene er høyst 560 piksler høye: brede bilder bruker
+  tekstkolonnen, kvadratiske og høye bilder vises smalere.
 - **Utgivelsen brukes før den publiseres:** når en tag `v*` pushes, bygger arbeidsflyten kjøretiden, programpakken og
   installasjonsprogrammet på en ren Windows-maskin, installerer, starter, oppdaterer (også med tilbakerulling) og
   avinstallerer dem – og oppretter utgivelsen først når alt har bestått. Alle filnavn får versjonen fra `VERSION`.

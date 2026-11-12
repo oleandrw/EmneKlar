@@ -30,7 +30,7 @@ function pageLine(page: OverviewPage): string {
   const n = page.proposed;
   if (page.status === "failed") return `Feilet: ${page.reason ?? ""}`;
   if (page.status === "pending") return "Ikke analysert ennå";
-  if (n === 0) return "Ingen bilder nødvendig";
+  if (n === 0) return "Ingen illustrasjon anbefalt";
   return `${n} foreslått${n === 1 ? "" : "e"} bilde${n === 1 ? "" : "r"}`;
 }
 

@@ -3362,19 +3362,49 @@ span.ek-steps__button--static:hover {
   }
 }
 
-/* Emnedesign, first step: the choice beside a sample of a designed page on wide screens; the sample after the
-   controls on narrow ones. */
-.ek-design-start {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
-  gap: var(--space-6);
-  align-items: start;
+/* Innstillinger → KI-assistenter: a stored key (the key itself is never shown) and the last check's error. */
+.ek-provider-key {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
 }
-@container content (max-width: 56rem) {
-  .ek-design-start {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.ek-provider-key svg { flex: none; color: var(--tone-success-text); }
+.ek-provider-error {
+  margin: 0;
+  color: var(--tone-danger-text);
 }
+
+/* KI-bildeassistent: where an image goes, in text form – the end of the text before, the slot, the start of what
+   follows. */
+.ek-placement-context {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+.ek-placement-context__text {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+.ek-placement-context__edge {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+.ek-placement-context__slot {
+  margin: 0;
+  padding: var(--space-4);
+  border: 2px dashed var(--color-border-strong);
+  border-radius: var(--radius);
+  text-align: center;
+  font-weight: var(--weight-semibold);
+}
+
 /* The next action stays at hand at the bottom of the window while the choices are long; focused elements are
    scrolled clear of it (scroll-padding), so it never hides what has focus. */
 .ek-action-bar {
@@ -3394,15 +3424,6 @@ span.ek-steps__button--static:hover {
 }
 html:has(.ek-action-bar) {
   scroll-padding-bottom: 6rem;
-}
-.ek-design-start__example {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.ek-design-start__example h2 {
-  font-size: var(--text-base);
-  margin: 0;
 }
 /* Module picker: one box with the search field, the number of modules or hits, and the list of rows. */
 .ek-module-picker {

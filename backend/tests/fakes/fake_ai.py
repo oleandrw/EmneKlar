@@ -18,6 +18,14 @@ DELAY_SECONDS = 1.2
 
 def fake_ai_transport(delay: float = DELAY_SECONDS) -> httpx.MockTransport:
     async def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.path.endswith("/models"):
+            # «Koble til» in Innstillinger → KI-assistenter: a key containing "ugyldig" is rejected, others accepted.
+            await asyncio.sleep(delay / 2)
+            key = request.headers.get("x-api-key") or request.headers.get("authorization") or ""
+            if "ugyldig" in key:
+                return httpx.Response(401, json={"type": "error", "error": {
+                    "type": "authentication_error", "message": "invalid x-api-key"}})
+            return httpx.Response(200, json={"data": [{"id": "testmodell-1", "display_name": "Testmodell 1"}]})
         data = json.loads(request.content or b"{}")
         system = json.dumps(data.get("system") or "", ensure_ascii=False)
         if "alt-tekst" not in system:

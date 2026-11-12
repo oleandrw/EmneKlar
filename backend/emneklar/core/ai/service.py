@@ -23,6 +23,7 @@ from emneklar.core.ai.base import (
     AIProvider,
     AIRequest,
     AIResult,
+    DiscoveredModel,
     EmbeddingResult,
     ImageGenerationRequest,
     ImageGenerationResult,
@@ -103,24 +104,34 @@ class AIService:
         cached = self._providers.get(config.id)
         if cached and cached[0] == cache_key:
             return cached[1]
-        transport = self.c.ai_transport
-        provider: AIProvider
-        if config.type == "anthropic":
-            provider = AnthropicProvider(config.id, api_key=key, base_url=config.endpoint or "https://api.anthropic.com",
-                                         transport=transport)
-        elif config.type == "azure_openai":
-            provider = AzureOpenAIProvider(config.id, endpoint=config.endpoint or "", api_key=key,
-                                           api_version=config.api_version, transport=transport)
-        elif config.type == "openai":
-            provider = OpenAICompatibleProvider(config.id, base_url=config.endpoint or "https://api.openai.com/v1",
-                                                api_key=key, local=False, transport=transport)
-        else:
-            provider = OpenAICompatibleProvider(config.id, base_url=config.endpoint or "http://127.0.0.1:11434/v1",
-                                                api_key=key, local=is_local(config), transport=transport)
+        provider = self._build(config, key)
         if cached:
             self._providers.pop(config.id, None)
         self._providers[config.id] = (cache_key, provider)
         return provider
+
+    def _build(self, config: ProviderConfig, key: str | None) -> AIProvider:
+        transport = self.c.ai_transport
+        if config.type == "anthropic":
+            return AnthropicProvider(config.id, api_key=key, base_url=config.endpoint or "https://api.anthropic.com",
+                                     transport=transport)
+        if config.type == "azure_openai":
+            return AzureOpenAIProvider(config.id, endpoint=config.endpoint or "", api_key=key,
+                                       api_version=config.api_version, transport=transport)
+        if config.type == "openai":
+            return OpenAICompatibleProvider(config.id, base_url=config.endpoint or "https://api.openai.com/v1",
+                                            api_key=key, local=False, transport=transport)
+        return OpenAICompatibleProvider(config.id, base_url=config.endpoint or "http://127.0.0.1:11434/v1",
+                                        api_key=key, local=is_local(config), transport=transport)
+
+    async def check_key(self, config: ProviderConfig, key: str | None) -> list[DiscoveredModel]:
+        """List the provider's models with ``key`` – before it is stored («Koble til»). The key is only sent to this
+        provider's own endpoint; the throwaway client is closed again."""
+        provider = self._build(config, key)
+        try:
+            return await provider.list_models()
+        finally:
+            await provider.aclose()
 
     # -- planning --------------------------------------------------------------------------------
 

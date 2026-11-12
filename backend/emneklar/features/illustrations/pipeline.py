@@ -46,8 +46,8 @@ from emneklar.features.illustrations.context import (
 from emneklar.features.illustrations.costs import CostLimitReached, CostMeter, image_call_cost, text_call_cost
 from emneklar.features.illustrations.design import DesignData, DesignProfiles, style_block
 from emneklar.features.illustrations.inventory import OUTSIDE_MODULES, Inventory, Scope, build_inventory
-from emneklar.features.illustrations.placement import PLACEMENTS, anchor_for, candidate_anchors
-from emneklar.features.illustrations.privacy import wrap
+from emneklar.features.illustrations.placement import anchor_for, candidate_anchors, insertion_points, planner_points
+from emneklar.features.illustrations.privacy import scrub, wrap
 from emneklar.features.illustrations.store import EXISTING, Store, fingerprint
 from emneklar.features.illustrations.structure import parse_page
 
@@ -220,10 +220,17 @@ async def plan_page(state: RunState, url: str, module_id: str, planned_in_module
                 "people": state.design["data"].get("people")},
         placement=None,
         requirements={"amount": amount, "max_per_page": prompts.AMOUNT_CAP[amount], "text_free": True,
-                      "placements": list(PLACEMENTS)},
+                      "placement": "Ett av INNSETTINGSPUNKTER (id) per illustrasjon."},
         language=language)
+    # The concrete places an image may go: only between units of text that belong together (see structure.py).
+    all_points = {p.id: p for p in insertion_points(structure)}
+    points = planner_points(structure)
+    point_list = [{k: scrub(v) if isinstance(v, str) and k != "id" else v for k, v in p.for_ai().items()}
+                  for p in points]
     text = (wrap("KONTEKSTPAKKE (emne, modul, side)", json.dumps(package, ensure_ascii=False, indent=1)) + "\n\n"
             + wrap("SIDENS SEKSJONER (fulltekst)", json.dumps(data["sections"], ensure_ascii=False, indent=1)) + "\n\n"
+            + wrap("INNSETTINGSPUNKTER (velg ett per illustrasjon; teksten bildet kommer etter, og det som følger)",
+                   json.dumps(point_list, ensure_ascii=False, indent=1)) + "\n\n"
             + wrap("ILLUSTRASJONER SOM ALLEREDE FINNES PÅ SIDEN (fra EmneKlar)", json.dumps(
                 [{"section": i["section"].get("title"), "concept": i["plan"].get("concept"),
                   "status": i["status_label"]} for i in existing], ensure_ascii=False)) + "\n\n"
@@ -231,27 +238,37 @@ async def plan_page(state: RunState, url: str, module_id: str, planned_in_module
             + f"\n\nMengde: {prompts.AMOUNT_RULES[amount]}\nLag bildeplanen. Feltene skrives på norsk bokmål, "
               "unntatt image_prompt (engelsk).")
     plan, _model = await ask(state, "illustration_planning", system=prompts.PLANNING_SYSTEM, text=text,
-                             schema=prompts.PLANNING_SCHEMA, schema_name="bildeplan", max_tokens=8000,
-                             summary=f"Bildeplan «{page.title}» ({len(text)} tegn)")
+                             schema=prompts.planning_schema([p.id for p in points]), schema_name="bildeplan",
+                             max_tokens=8000, summary=f"Bildeplan «{page.title}» ({len(text)} tegn)")
     proposals = list(plan.get("illustrations") or [])[: prompts.AMOUNT_CAP[amount]]
     known = {i["fingerprint"] for i in state.store.for_page(state.course_id, url, statuses=(
         *EXISTING, "proposed", "queued", "generating", "failed", "rejected", "skipped"))}
     created = 0
     module_info = state.inv.module_of(url) if module_id == OUTSIDE_MODULES else state.inv.module(module_id)
     for index, proposal in enumerate(proposals):
-        section_id = str(proposal.get("section_id") or "")
-        if structure.section(section_id) is None:
-            section_id = structure.sections[0].id if structure.sections else "s0"
-        anchor = anchor_for(structure, section_id, str(proposal.get("placement") or "end_of_section"))
+        point = all_points.get(str(proposal.get("insertion_point") or ""))
+        if point is not None:
+            anchor = point.anchor(structure)
+            section_id = anchor.section_id or (structure.sections[0].id if structure.sections else "s0")
+        else:  # a plan without a point (older plans): a placement type in a section, still only between units
+            section_id = str(proposal.get("section_id") or "")
+            if structure.section(section_id) is None:
+                section_id = structure.sections[0].id if structure.sections else "s0"
+            anchor = anchor_for(structure, section_id, str(proposal.get("placement") or "end_of_section"))
         section = section_context(structure, section_id)
         fp = fingerprint(state.course_id, url, section["title"], str(proposal.get("concept") or ""))
         if fp in known:
             continue  # the same illustration already exists or was rejected before – no duplicates on re-runs
         known.add(fp)
         plan_data = {k: proposal.get(k) for k in (
-            "placement_reason", "pedagogical_purpose", "concept", "learning_goal", "motif", "composition",
+            "placement_reason", "pedagogical_purpose", "concept", "learning_goal", "motif", "people", "composition",
             "relevant_context", "must_show", "must_not_show", "accuracy_risk", "accuracy_notes", "adds_value",
-            "decorative")}
+            "decorative", "shows_sequence")}
+        plan_data["scenes"] = [" ".join(str(s).split())[:400] for s in (proposal.get("scenes") or [])
+                               if str(s).strip()][: prompts.MAX_SCENES]
+        # Where the plan put the image – placement_reason is about this spot, also after the teacher moves it.
+        plan_data["suggested_placement"] = {"block_index": anchor.block_index, "block_hash": anchor.block_hash,
+                                            "label": anchor.as_dict()["placement_label"]}
         plan_data["page_summary"] = analysis.get("page_summary")
         plan_data["content_language"] = language
         image_type = str(proposal.get("image_type") or "illustration")
@@ -328,12 +345,19 @@ def compose_prompt(ill: dict[str, Any], design: dict[str, Any], *, extra: str = 
     parts = [ill.get("prompt") or plan.get("motif") or ""]
     if plan.get("relevant_context"):
         parts.append(f"Educational context the image must reflect accurately: {clip(str(plan['relevant_context']), 1500)}")
+    if plan.get("people"):
+        parts.append(f"People (fictional, matching the course's students and setting): {clip(str(plan['people']), 600)}")
+    scenes = [str(s) for s in plan.get("scenes") or [] if str(s).strip()]
+    if len(scenes) >= 2:
+        parts.append(prompts.layout_rules(scenes[: prompts.MAX_SCENES], sequence=bool(plan.get("shows_sequence"))))
     if plan.get("composition"):
         parts.append(f"Composition: {plan['composition']}")
     if plan.get("must_show"):
         parts.append("Must show: " + "; ".join(str(x) for x in plan["must_show"]))
     if plan.get("must_not_show"):
         parts.append("Must not show or misrepresent: " + "; ".join(str(x) for x in plan["must_not_show"]))
+    if plan.get("shows_sequence") is False:
+        parts.append(prompts.NO_SEQUENCE)
     if extra:
         parts.append(extra)
     parts.append(style_block(data, version=design.get("version"), labels=bool(ill.get("labels"))))

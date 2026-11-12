@@ -93,6 +93,8 @@ class ProviderConfig(_Section):
     last_status: Literal["unknown", "ok", "error"] = "unknown"
     last_message: str | None = None
     last_checked_at: datetime | None = None
+    #: When the provider's model list was last fetched into the registry (on «Koble til» and in the background).
+    models_fetched_at: datetime | None = None
 
 
 def default_providers() -> list[ProviderConfig]:

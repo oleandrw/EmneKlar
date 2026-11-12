@@ -300,3 +300,143 @@ def test_fallbacks_include_another_provider_when_one_provider_has_many_models() 
     decision = route("text_standard", settings(), many, READY)
     assert decision.primary["provider_id"] == "openai"
     assert any(m["provider_id"] == "anthropic" for m in decision.fallbacks), "an outage at one provider is survivable"
+
+
+# ---------------------------------------------------------------- «Koble til» (Innstillinger → KI-assistenter)
+
+OPENAI_KEY = "sk-proj-connecttest1234567890"
+NEW_KEY = "sk-proj-anotherkey0987654321"
+
+
+def models_handler(seen: list[httpx.Request], *, status: int = 200, body: object = None):  # type: ignore[no-untyped-def]
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if status != 200:
+            return httpx.Response(status, json=body or {"error": {"message": "Incorrect API key provided: "
+                                                                             "sk-proj-********************4321."}})
+        return httpx.Response(200, json={"data": [{"id": "gpt-test-a"}, {"id": "gpt-test-b"}]})
+
+    return handler
+
+
+def test_connect_checks_the_key_then_stores_it_and_caches_the_model_list(canvas_container,  # type: ignore[no-untyped-def]
+                                                                         canvas_client: TestClient) -> None:
+    seen: list[httpx.Request] = []
+    canvas_container.ai_transport = ai_transport(models_handler(seen))
+    response = canvas_client.post("/api/ai/providers/openai/connect", json={"api_key": f"  {OPENAI_KEY}\n"})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["key_configured"] and body["enabled"] and body["last_status"] == "ok"
+    assert body["last_message"] == "Tilkoblet.", "no model count on the card"
+    assert body["key_page"] == "https://platform.openai.com/api-keys" and body["models_stale"] is False
+    assert OPENAI_KEY not in response.text
+    assert [r.url.path for r in seen] == ["/v1/models"] and seen[0].headers["authorization"] == f"Bearer {OPENAI_KEY}"
+    assert canvas_container.secrets.get("ai_key:openai") == OPENAI_KEY, "stored trimmed, only after the check"
+    models = {m["model_id"] for m in canvas_client.get("/api/ai/models").json()["models"] if m["provider_id"] == "openai"}
+    assert {"gpt-test-a", "gpt-test-b"} <= models, "the model list from the check is cached"
+    anthropic = next(p for p in canvas_client.get("/api/ai/providers").json()["providers"] if p["id"] == "anthropic")
+    assert anthropic["key_page"] == "https://platform.claude.com/settings/keys"
+
+
+def test_a_rejected_key_is_not_stored_and_the_old_key_is_kept(canvas_container, canvas_client: TestClient) -> None:  # type: ignore[no-untyped-def]
+    seen: list[httpx.Request] = []
+    canvas_container.ai_transport = ai_transport(models_handler(seen))
+    assert canvas_client.post("/api/ai/providers/openai/connect", json={"api_key": OPENAI_KEY}).status_code == 200
+    canvas_container.ai_transport = ai_transport(models_handler(seen, status=401))
+    response = canvas_client.post("/api/ai/providers/openai/connect", json={"api_key": NEW_KEY})
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "ai_key_invalid"
+    assert error["message"].startswith("OpenAI avviste nøkkelen.") and error["message"].endswith(
+        "Den lagrede nøkkelen er beholdt."), error["message"]
+    assert NEW_KEY not in response.text and "4321" not in response.text and "details" not in error, \
+        "neither the key nor the provider's answer (which repeats part of it) is shown"
+    assert canvas_container.secrets.get("ai_key:openai") == OPENAI_KEY
+    provider = next(p for p in canvas_client.get("/api/ai/providers").json()["providers"] if p["id"] == "openai")
+    assert provider["last_status"] == "ok", "the stored key still works – its status is not changed by a failed new key"
+
+    response = canvas_client.post("/api/ai/providers/anthropic/connect",
+                                  json={"api_key": "sk-ant-api03-rejected0123456789"})
+    assert response.json()["error"]["message"].endswith(
+        "Nøkler fra Anthropic starter med «sk-ant-». Nøkkelen er ikke lagret."), response.json()
+    assert not canvas_container.secrets.has("ai_key:anthropic")
+
+
+@pytest.mark.parametrize(("provider", "key", "message"), [
+    ("openai", "", "Lim inn API-nøkkelen først."),
+    ("openai", "sk-proj-abc def1234567890123",
+     "Nøkkelen inneholder mellomrom eller linjeskift. Kopier den på nytt fra OpenAI."),
+    ("openai", "sk-ant-api03-abcdefghijklmnop", "Dette er en nøkkel fra Anthropic. Lim den inn under Anthropic."),
+    ("anthropic", "sk-proj-abcdefghijklmnopqrst",
+     "Dette ser ut som en nøkkel fra OpenAI. Nøkler fra Anthropic starter med «sk-ant-»."),
+    ("openai", "sk-kort", "Nøkkelen er for kort til å være en API-nøkkel. Kopier hele nøkkelen fra OpenAI."),
+])
+def test_obvious_key_mistakes_are_named_before_anything_is_sent(canvas_container, canvas_client: TestClient,  # type: ignore[no-untyped-def]
+                                                                provider: str, key: str, message: str) -> None:
+    seen: list[httpx.Request] = []
+    canvas_container.ai_transport = ai_transport(models_handler(seen))
+    response = canvas_client.post(f"/api/ai/providers/{provider}/connect", json={"api_key": key})
+    assert response.status_code == 422 and response.json()["error"]["message"] == message
+    assert seen == [], "an Anthropic key is never sent to OpenAI (or the other way round)"
+
+
+@pytest.mark.parametrize(("status", "body", "start"), [
+    (429, {"error": {"code": "insufficient_quota"}}, "Kontoen hos OpenAI har ikke mer kreditt"),
+    (503, {"error": "overloaded"}, "OpenAI er midlertidig utilgjengelig."),
+    (404, {"error": "not found"}, "Endepunktet svarte ikke som OpenAIs API."),
+])
+def test_provider_failures_are_explained(canvas_container, canvas_client: TestClient, status: int, body: object,  # type: ignore[no-untyped-def]
+                                         start: str) -> None:
+    canvas_container.ai_transport = ai_transport(models_handler([], status=status, body=body))
+    response = canvas_client.post("/api/ai/providers/openai/connect", json={"api_key": OPENAI_KEY})
+    assert response.json()["error"]["message"].startswith(start), response.json()
+    assert not canvas_container.secrets.has("ai_key:openai")
+
+
+def test_no_connection_is_explained(canvas_container, canvas_client: TestClient) -> None:  # type: ignore[no-untyped-def]
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("no route", request=request)
+
+    canvas_container.ai_transport = ai_transport(handler)
+    response = canvas_client.post("/api/ai/providers/openai/connect", json={"api_key": OPENAI_KEY})
+    assert response.json()["error"]["message"].startswith("Fikk ikke kontakt med OpenAI."), response.json()
+
+
+def test_checking_the_stored_key_again_and_removing_it(canvas_container, canvas_client: TestClient) -> None:  # type: ignore[no-untyped-def]
+    seen: list[httpx.Request] = []
+    canvas_container.ai_transport = ai_transport(models_handler(seen))
+    canvas_client.post("/api/ai/providers/openai/connect", json={"api_key": OPENAI_KEY})
+    canvas_container.ai_transport = ai_transport(models_handler(seen, status=401))
+    again = canvas_client.post("/api/ai/providers/openai/connect", json={})
+    assert again.status_code == 400
+    provider = next(p for p in canvas_client.get("/api/ai/providers").json()["providers"] if p["id"] == "openai")
+    assert provider["last_status"] == "error" and provider["last_message"].startswith("OpenAI avviste nøkkelen.")
+    assert canvas_client.delete("/api/ai/providers/openai/key").json() == {"ok": True}
+    provider = next(p for p in canvas_client.get("/api/ai/providers").json()["providers"] if p["id"] == "openai")
+    assert not provider["key_configured"] and not provider["enabled"] and provider["last_status"] == "unknown"
+    assert provider["last_message"] is None
+
+
+def test_the_model_list_is_refreshed_in_the_background_when_it_is_old(canvas_container,  # type: ignore[no-untyped-def]
+                                                                      canvas_client: TestClient) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    seen: list[httpx.Request] = []
+    canvas_container.ai_transport = ai_transport(models_handler(seen))
+    canvas_client.post("/api/ai/providers/openai/connect", json={"api_key": OPENAI_KEY})
+
+    def age(s: AppSettings) -> None:
+        provider = s.provider("openai")
+        assert provider is not None
+        provider.models_fetched_at = datetime.now(UTC) - timedelta(days=2)
+
+    canvas_container.settings.update(age)
+    provider = next(p for p in canvas_client.get("/api/ai/providers").json()["providers"] if p["id"] == "openai")
+    assert provider["models_stale"] is True
+    assert canvas_client.post("/api/ai/providers/openai/refresh-models").json() == {"refreshed": True, "added": 0}
+    provider = next(p for p in canvas_client.get("/api/ai/providers").json()["providers"] if p["id"] == "openai")
+    assert provider["models_stale"] is False
+    canvas_container.ai_transport = ai_transport(models_handler(seen, status=401))
+    assert canvas_client.post("/api/ai/providers/openai/refresh-models").json()["refreshed"] is False
+    provider = next(p for p in canvas_client.get("/api/ai/providers").json()["providers"] if p["id"] == "openai")
+    assert provider["last_status"] == "error", "a key the provider no longer accepts shows on the card"
