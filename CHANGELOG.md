@@ -564,6 +564,9 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   krav. Migrering 0006 (`media_assessments`, `finding_decisions.reason`).
 
 ### Sikkerhet
+- **`soupsieve` 3.0.4 → 4.1.3** (CVE-2026-126190): CSS-velgere med etterkommer-kombinator kunne bli svært trege
+  på dypt nestet HTML. EmneKlar bruker ingen slike velgere, men pakken følger med i kjøretiden og er oppgradert.
+  Låsefilen `packaging/runtime-win-amd64.txt` er laget på nytt, så neste utgivelse har en ny kjøretid.
 - **Hash-låste pakker i Windows-pakken:** kjøretiden bygges fra en Python-nedlasting med låst SHA-256
   (`packaging/runtime.json`) og fra `packaging/runtime-win-amd64.txt`, der hver pakke har nøyaktig versjon og
   SHA-256 for den ene filen som installeres (`pip --require-hashes`, ingen bygging fra kildekode). Bygget er

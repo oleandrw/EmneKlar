@@ -72,8 +72,8 @@ pywin32-ctypes==0.2.3 \
     --hash=sha256:8a1513379d709975552d202d942d9837758905c8d01eb82b8bcc30918929e7b8  # pywin32_ctypes-0.2.3-py3-none-any.whl
 requests==2.34.2 \
     --hash=sha256:2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0  # requests-2.34.2-py3-none-any.whl
-soupsieve==3.0.4 \
-    --hash=sha256:8412826614f9c632227067d0985aeb9f584bd15efc852955430e097a9fe7afbf  # soupsieve-3.0.4-py3-none-any.whl
+soupsieve==4.1.3 \
+    --hash=sha256:7a390d1a57d1ab7bb228531e9b8a750a5ebf87db774e0ef6faeeac057d22a5bf  # soupsieve-4.1.3-py3-none-any.whl
 sqlalchemy==2.1.6 \
     --hash=sha256:fd1154c6394892e727ff234273f5eb2b4319e5714917b016602435d77add8dcb  # sqlalchemy-2.1.6-cp314-cp314-win_amd64.whl
 starlette==1.10.0 \
