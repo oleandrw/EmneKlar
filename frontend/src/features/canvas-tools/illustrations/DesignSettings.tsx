@@ -1,4 +1,5 @@
-// The course's design profile inside «Bildeinnstillinger»: a style choice for everyone, details for those who want them.
+// The course's design profile inside «Bildeinnstillinger»: a ready-made profile, or «Egendefinert» with one text box
+// for a whole prompt. A profile is one prompt that is used in every image of the course.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ImagePlus, Save, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -21,26 +22,8 @@ import {
 } from "../../../design-system";
 import type { Catalog, DesignData, DesignProfile, ImageFormat, Status } from "./api";
 
-const FIELDS: { key: keyof DesignData; label: string }[] = [
-  { key: "illustration_style", label: "Illustrasjonsstil" },
-  { key: "palette_description", label: "Fargepalett (beskrivelse)" },
-  { key: "contrast", label: "Kontrast" },
-  { key: "lighting", label: "Lyssetting" },
-  { key: "composition", label: "Komposisjonsprinsipper" },
-  { key: "background", label: "Bakgrunn" },
-  { key: "detail_level", label: "Detaljnivå" },
-  { key: "visual_traits", label: "Visuelle kjennetegn" },
-  { key: "people", label: "Personer" },
-];
-
-function Swatches({ colours }: { colours: string[] }) {
-  if (!colours.length) return null;
-  return (
-    <span className="ek-swatches" aria-label={`Fargepalett: ${colours.join(", ")}`} role="img">
-      {colours.map((c) => <span key={c} className="ek-swatch" style={{ background: c }} />)}
-    </span>
-  );
-}
+const CUSTOM = "custom";
+const MAX_PROMPT = 8000;
 
 export function DesignSettings({ courseId, status, catalog }: { courseId: string; status: Status; catalog: Catalog }) {
   const client = useQueryClient();
@@ -106,6 +89,8 @@ export function DesignSettings({ courseId, status, catalog }: { courseId: string
   };
   const refs = active?.reference_assets ?? [];
   const changed = draft && active ? JSON.stringify(draft) !== JSON.stringify(active.data) : Boolean(draft);
+  const custom = draft?.style_key === CUSTOM;
+  const missingPrompt = Boolean(draft) && !draft?.prompt.trim();
   const error = save.error ?? suggest.error ?? fromStyle.error ?? makeSample.error ?? references.error;
 
   return (
@@ -113,7 +98,7 @@ export function DesignSettings({ courseId, status, catalog }: { courseId: string
       <div className="ek-stack" data-gap="1">
         <h3>Designprofil</h3>
         <p className="ek-small ek-muted">
-          Alle bildene i emnet får samme stil, fargepalett og visuelle uttrykk – tilpasset innholdet, men aldri like.
+          Alle bildene i emnet lages med samme prompt for stilen – tilpasset innholdet, men aldri like.
           {active ? ` I bruk: ${active.name}, versjon ${active.version}.` : ""}
         </p>
       </div>
@@ -123,39 +108,42 @@ export function DesignSettings({ courseId, status, catalog }: { courseId: string
         legend="Stil"
         name="illustration-style"
         variant="card"
-        columns={3}
-        value={draft?.style_key ?? "modern_3d"}
+        columns={2}
+        value={draft?.style_key ?? ""}
         onChange={(key) => fromStyle.mutate(key)}
         options={catalog.styles.map((s) => ({ value: s.key, label: s.label, hint: s.description }))}
       />
-      {draft ? (
+      {draft && custom ? (
+        <TextArea label="Prompt" rows={14} maxLength={MAX_PROMPT} value={draft.prompt}
+          onChange={(e) => set({ prompt: e.target.value })}
+          hint="Lim inn hele prompten, for eksempel en du har fått fra ChatGPT. Den brukes i alle bildene i emnet. Skriv {tema} der temaet for hvert bilde skal settes inn. Uten {tema} står temaet foran prompten." />
+      ) : null}
+      {draft && !custom && draft.prompt ? (
+        <Disclosure summary="Vis prompten">
+          <pre className="ek-code-block">{draft.prompt}</pre>
+        </Disclosure>
+      ) : null}
+      {draft && (origin === "ai" || draft.rationale) ? (
         <div className="ek-cluster" data-gap="2">
           {origin === "ai" ? <AiBadge /> : null}
-          <Swatches colours={draft.palette} />
           {draft.rationale ? <span className="ek-small ek-muted">{draft.rationale}</span> : null}
         </div>
       ) : null}
       <div className="ek-cluster" data-gap="2">
         <Button icon={<Sparkles aria-hidden="true" />} onClick={() => prepare.mutate()} loading={prepare.isPending} disabled={!status.ai.available}>
-          Foreslå stil ut fra emnet
+          Foreslå prompt ut fra emnet
         </Button>
-        <Button variant="primary" icon={<Save aria-hidden="true" />} onClick={() => save.mutate()} loading={save.isPending} disabled={!changed}>
+        <Button variant="primary" icon={<Save aria-hidden="true" />} onClick={() => save.mutate()} loading={save.isPending}
+          disabled={!changed || missingPrompt}>
           Lagre designprofilen
         </Button>
-        {changed ? <Badge tone="warning">Ikke lagret</Badge> : null}
+        {changed && !missingPrompt ? <Badge tone="warning">Ikke lagret</Badge> : null}
+        {missingPrompt ? <span className="ek-small ek-muted">Lim inn en prompt for å lagre.</span> : null}
       </div>
-      <Disclosure summary="Tilpass designprofilen">
+      <Disclosure summary="Flere valg">
         {draft ? (
           <div className="ek-stack" data-gap="4">
             <TextField label="Navn" value={draft.name} onChange={(e) => set({ name: e.target.value })} />
-            <TextField label="Farger (hex, kommaseparert)" value={draft.palette.join(", ")}
-              onChange={(e) => set({ palette: e.target.value.split(",").map((v) => v.trim()).filter(Boolean) })} />
-            {FIELDS.map((f) => (
-              <TextArea key={f.key} label={f.label} rows={2} value={String(draft[f.key] ?? "")}
-                onChange={(e) => set({ [f.key]: e.target.value } as Partial<DesignData>)} />
-            ))}
-            <TextField label="Skal ikke være med (kommaseparert)" value={draft.avoid.join(", ")}
-              onChange={(e) => set({ avoid: e.target.value.split(",").map((v) => v.trim()).filter(Boolean) })} />
             <SelectField label="Bildeformat for emnet" value={draft.aspect_ratio}
               hint="«Automatisk» lar KI velge format per bilde (for eksempel 16:9 for prosesser og 4:3 for modeller)."
               onChange={(e) => set({ aspect_ratio: e.target.value as ImageFormat })}

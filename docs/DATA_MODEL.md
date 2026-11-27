@@ -63,7 +63,7 @@ Leverandøroppsett (endepunkt, API-versjon, aktivert) ligger i innstillingene; n
 
 | Tabell | Innhold |
 |---|---|
-| `illustration_profiles` | Designprofil per emne, versjonert (stil, palett, kontrast, lys, komposisjon, bakgrunn, detaljnivå, format, kjennetegn, hva som ikke skal med), aktiv versjon, opphav (forhåndsvalg/KI/egen) og referansebilder (asset-id-er) |
+| `illustration_profiles` | Designprofil per emne, versjonert: én prompt for stilen (`data.prompt`, med `{tema}` der bildets tema settes inn), navn og bildeformat. Profiler lagret før 0.2.0-alpha.3 hadde egne felt (stil, palett, lys …) og leses som «Egendefinert» med de samme opplysningene som én prompt; raden skrives ikke om. Aktiv versjon, opphav (forhåndsvalg/KI/egen) og referansebilder (asset-id-er) |
 | `illustration_runs` | Én kjøring over et omfang: status, omfang, valg (kvalitetsprofil, mengde, modeller, kostnadsgrense, automatisk innsetting), designprofil, jobb, kartlegging og sidestatus, kostnadsanslag, faktisk forbruk, emne- og modulkontekst (sammendrag), begrensninger |
 | `illustration_analyses` | Hurtigbuffer for KI-analyse av emne, modul og side (nøkkel: objekt + hash av inndata + analyseversjon) |
 | `illustrations` | Ett forslag: modul, side, seksjon (tekst før/etter), anker, pedagogisk plan (formål, begrep, læringsmål, motiv, må vise / må ikke vise, risiko, merverdi), bildetype, format, korte etiketter, bildeprompt, stil, bildeversjoner med kontrollresultat, alt-tekst, dekorativ, bildetekst, kreditering, status, endring i køen, publiseringsinfo (med kontroll av hva Canvas beholdt), fingeravtrykk (mot dubletter) |

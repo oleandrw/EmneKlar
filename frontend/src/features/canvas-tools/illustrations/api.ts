@@ -93,17 +93,8 @@ export interface DesignData {
   style_key: string;
   name: string;
   rationale: string;
-  illustration_style: string;
-  palette: string[];
-  palette_description: string;
-  contrast: string;
-  lighting: string;
-  composition: string;
-  background: string;
-  detail_level: string;
-  visual_traits: string;
-  avoid: string[];
-  people: string;
+  /** The whole style description (English). `{tema}` is where the topic of each image is put. */
+  prompt: string;
   aspect_ratio: ImageFormat;
 }
 

@@ -445,11 +445,9 @@ class FakeAI:
                     "image_description": "Studenter", "alt_text": "Fire studenter sammenligner et fotografi og en logo.",
                     "decorative": False, "caption": "Valg av format avhenger av bildets innhold.",
                     "caption_adds_value": self.caption_adds_value}
-        if "style_key" in props:
-            return {"style_key": "academic", "name": "Akademisk", "rationale": "Passer faget",
-                    "illustration_style": "academic", "palette": ["#112233", "nope"], "palette_description": "",
-                    "contrast": "", "lighting": "", "composition": "", "background": "", "detail_level": "",
-                    "visual_traits": "", "avoid": ["text"], "people": ""}
+        if set(props) == {"name", "rationale", "prompt"}:
+            return {"name": "Akademisk", "rationale": "Passer faget",
+                    "prompt": "Academic textbook illustration, fine linework, restrained navy and terracotta."}
         raise AssertionError(f"unexpected schema {list(props)}")
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
@@ -561,8 +559,8 @@ def test_status_and_catalog(canvas_client: TestClient) -> None:
     catalog = canvas_client.get("/api/illustrations/catalog").json()
     assert [p["id"] for p in catalog["quality_profiles"]] == ["max", "balanced", "fast"]
     assert {m["id"] for m in catalog["image_models"]} == {"gpt-image-2.5-sunburst", "gpt-image-2.5-flare"}
-    assert {s["key"] for s in catalog["styles"]} >= {"modern_3d", "flat_minimal", "photo_realistic", "academic",
-                                                     "isometric", "infographic", "custom"}
+    assert [(s["key"], s["label"]) for s in catalog["styles"]] == [("happy_pixar", "Happy Pixar"),
+                                                                   ("custom", "Egendefinert")]
     index = canvas_client.get(f"/api/courses/{COURSE_ID}/illustrations/scope-index").json()
     assert [m["id"] for m in index["modules"]] == ["201", "202", "203"]
 
@@ -691,6 +689,9 @@ def test_short_labels_in_diagrams_are_requested_exactly_and_checked(canvas_conta
     ai.plans = {"Fargelære": [proposal(concept="Fargemodell", image_type="diagram", aspect_ratio="4:3",
                                        labels=labels)]}
     ai.text_statuses = ["errors", "correct"]
+    # A profile without a fixed format: the planner's 4:3 is used (Happy Pixar fixes 16:9 for the whole course).
+    canvas_client.put(f"/api/courses/{COURSE_ID}/illustrations/design", json={"data": {
+        "style_key": "custom", "name": "Diagrammer", "prompt": "Clean flat diagram style.", "aspect_ratio": "auto"}})
     run = start(canvas_client, {"type": "page", "page_url": "fargelaere"})
     ill = run["illustrations"][0]
     assert ill["labels"] == ["Rød", "Grønn", "Blå"], "short, unique labels only"
@@ -719,12 +720,24 @@ def test_text_free_when_text_in_images_is_off(canvas_client: TestClient, ai: Fak
 def test_image_format_is_chosen_per_illustration_unless_fixed(canvas_client: TestClient, ai: FakeAI, setting: str,
                                                               planned: str, size: str) -> None:
     ai.plans = {"Fargelære": [proposal(aspect_ratio=planned)]}
+    canvas_client.put(f"/api/courses/{COURSE_ID}/illustrations/design", json={"data": {
+        "style_key": "custom", "name": "Uten fast format", "prompt": "Clean flat style.", "aspect_ratio": "auto"}})
     settings = {**canvas_client.get(f"/api/courses/{COURSE_ID}/illustrations").json()["settings"],
                 "image_format": setting}
     run = start(canvas_client, {"type": "page", "page_url": "fargelaere"}, settings=settings)
     image = next(c for c in ai.calls if c["kind"] == "image")
     assert size in image["body"] and run["illustrations"][0]["aspect_ratio"] == (planned if setting == "auto"
                                                                                   else setting)
+
+
+def test_happy_pixar_is_the_first_profile_and_fixes_the_wide_format(canvas_client: TestClient, ai: FakeAI) -> None:
+    ai.plans = {"Fargelære": [proposal(aspect_ratio="2:3")]}
+    run = start(canvas_client, {"type": "page", "page_url": "fargelaere"})
+    design = canvas_client.get(f"/api/courses/{COURSE_ID}/illustrations").json()["design"]
+    assert (design["style_key"], design["name"], design["origin"]) == ("happy_pixar", "Happy Pixar", "preset")
+    image = next(c for c in ai.calls if c["kind"] == "image")
+    assert "1536x864" in image["body"] and run["illustrations"][0]["aspect_ratio"] == "16:9"
+    assert "happy Pixar-inspired 3D educational illustration" in image["body"]
 
 
 def test_caption_is_off_when_it_adds_nothing(canvas_client: TestClient, ai: FakeAI) -> None:
@@ -865,13 +878,14 @@ def test_design_profile_versions_suggestion_and_references(canvas_container, can
                                                            ai: FakeAI) -> None:
     suggestion = canvas_client.post(f"/api/courses/{COURSE_ID}/illustrations/design/suggest",
                                     json={"confirmed": True}).json()
-    assert suggestion["data"]["style_key"] == "academic" and suggestion["data"]["palette"] == ["#112233"]
+    assert suggestion["data"]["style_key"] == "custom", "a suggestion is a prompt in «Egendefinert»"
+    assert suggestion["data"]["prompt"].startswith("Academic textbook illustration")
     first = canvas_client.put(f"/api/courses/{COURSE_ID}/illustrations/design",
                               json={"data": suggestion["data"], "origin": "ai"}).json()
     second = canvas_client.put(f"/api/courses/{COURSE_ID}/illustrations/design",
-                               json={"data": {**suggestion["data"], "lighting": "soft"}}).json()
+                               json={"data": {**suggestion["data"], "prompt": "Soft watercolour, calm light."}}).json()
     assert (first["version"], second["version"]) == (first["version"], first["version"] + 1)
-    assert "soft" in second["style_prompt"]
+    assert "Soft watercolour" in second["style_prompt"] and second["style_label"] == "Egendefinert"
     ai.plans = {"Fargelære": [proposal(section="s0", placement="after_intro")]}
     run = start(canvas_client, {"type": "page", "page_url": "fargelaere"})
     ill = run["illustrations"][0]
@@ -884,6 +898,68 @@ def test_design_profile_versions_suggestion_and_references(canvas_container, can
     assert last["path"].endswith("/images/edits") and 'name="image[]"' in last["body"]
     review = [c for c in ai.calls if c["kind"] == "text" and "kvalitetssikrer" in str(c["system"])][-1]
     assert "referansebilde" in review["text"]
+
+
+def test_a_design_profile_is_one_prompt(canvas_client: TestClient) -> None:
+    from emneklar.features.illustrations import design
+    from emneklar.features.illustrations.pipeline import compose_prompt
+
+    # A new course starts with the first ready-made profile; its prompt says where the topic belongs.
+    status = canvas_client.get(f"/api/courses/{COURSE_ID}/illustrations").json()
+    assert status["design"] is None
+    pixar = canvas_client.post(f"/api/courses/{COURSE_ID}/illustrations/design/from-style",
+                               json={"style_key": "happy_pixar"}).json()["data"]
+    assert pixar["name"] == "Happy Pixar" and pixar["aspect_ratio"] == "16:9" and "{tema}" in pixar["prompt"]
+    assert pixar["prompt"].startswith("Create a high-quality, happy Pixar-inspired 3D educational illustration")
+    assert set(pixar) == {"style_key", "name", "rationale", "prompt", "aspect_ratio"}, "no separate style fields"
+    saved = canvas_client.put(f"/api/courses/{COURSE_ID}/illustrations/design",
+                              json={"data": pixar, "origin": "preset"}).json()
+    ill = {"prompt": "Two students compare a photograph and a logo.", "plan": {"must_show": ["a photograph"]}}
+    prompt = compose_prompt(ill, saved)
+    topic = prompt.index("Two students compare")
+    assert prompt.index("communicates the following topic:") < topic < prompt.index("Must show: a photograph") \
+        < prompt.index("Visual style:\n"), "the topic and its requirements stand where the prompt asks for them"
+    assert "{tema}" not in prompt and "{tema}" not in saved["style_prompt"]
+    assert prompt.count("Two students compare") == 1 and "no text of any kind" in prompt
+
+    # «Egendefinert»: one text box. Without {tema} the topic comes first, then the pasted prompt, unchanged.
+    custom = canvas_client.post(f"/api/courses/{COURSE_ID}/illustrations/design/from-style",
+                                json={"style_key": "custom"}).json()["data"]
+    assert custom["prompt"] == "" and custom["name"] == "Egendefinert"
+    empty = canvas_client.put(f"/api/courses/{COURSE_ID}/illustrations/design", json={"data": custom})
+    assert empty.status_code == 400 and "Lim inn en prompt" in empty.json()["error"]["message"]
+    pasted = "Paper cut-out collage in warm earth tones.\n\n* Visible paper texture.\n* No gradients."
+    mine = canvas_client.put(f"/api/courses/{COURSE_ID}/illustrations/design",
+                             json={"data": {**custom, "prompt": pasted}}).json()
+    assert mine["data"]["prompt"] == pasted and mine["version"] == saved["version"] + 1
+    prompt = compose_prompt(ill, mine)
+    assert prompt.index("Two students compare") < prompt.index(pasted)
+    too_long = canvas_client.put(f"/api/courses/{COURSE_ID}/illustrations/design",
+                                 json={"data": {**custom, "prompt": "x" * (design.MAX_PROMPT + 1)}})
+    assert too_long.status_code == 422
+
+    # A ready-made style can be chosen for one image; a style that no longer exists is not an override.
+    assert "Paper cut-out" not in compose_prompt({**ill, "style_override": "happy_pixar"}, mine)
+    assert pasted in compose_prompt({**ill, "style_override": "isometric"}, mine)
+    assert design.ready_made() == {"happy_pixar"}
+
+
+def test_a_profile_from_an_earlier_version_becomes_a_prompt() -> None:
+    from emneklar.features.illustrations.design import DesignData, style_block
+
+    earlier = {"style_key": "modern_3d", "name": "Moderne 3D-illustrasjoner", "illustration_style": "soft 3D shapes",
+               "palette": ["#1F4E79", "#F2A541"], "palette_description": "calm blue with a warm accent",
+               "lighting": "soft studio light", "people": "diverse adult students", "avoid": ["text", "logos"],
+               "contrast": "", "composition": "", "background": "", "detail_level": "", "visual_traits": "",
+               "aspect_ratio": "4:3", "rationale": ""}
+    data = DesignData.model_validate(earlier)
+    assert data.style_key == "custom" and data.name == "Moderne 3D-illustrasjoner" and data.aspect_ratio == "4:3"
+    assert data.prompt == ("Visual style: soft 3D shapes.\nColour palette: #1F4E79, #F2A541 (calm blue with a warm "
+                           "accent).\nLighting: soft studio light.\nPeople: diverse adult students.\n"
+                           "Never include: text, logos.")
+    assert data.prompt in style_block(data, version=3)
+    assert DesignData.model_validate(data.model_dump()) == data, "reading it again changes nothing"
+    assert DesignData.model_validate({"style_key": "custom", "avoid": ["text", "logos", "watermarks"]}).prompt == ""
 
 
 def test_conflicted_illustration_can_be_published_again_on_the_current_page(canvas_container, canvas_client: TestClient,

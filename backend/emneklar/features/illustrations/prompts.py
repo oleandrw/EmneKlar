@@ -173,17 +173,12 @@ PLANNING_SCHEMA = planning_schema(["p0"])
 DESIGN_SYSTEM = (
     "Du er art director for undervisningsillustrasjoner i høyere utdanning. Foreslå én gjennomgående visuell stil "
     "for alle illustrasjonene i emnet, ut fra fagområde, målgruppe og pedagogisk uttrykk. Stilen skal gi et "
-    "helhetlig, profesjonelt uttrykk uten at bildene blir like. Skriv feltene på engelsk (de brukes i bildeprompter), "
-    "unntatt name og rationale som skrives på norsk bokmål. Fargene oppgis som hex-koder med god kontrast. " + DATA_RULE
+    "helhetlig, profesjonelt uttrykk uten at bildene blir like. Skriv prompt på engelsk: én komplett "
+    "stilbeskrivelse som kan stå i hver bildeprompt (illustrasjonsstil, farger, lys, komposisjon, bakgrunn, "
+    "detaljnivå, personer og hva som skal unngås) – uten å beskrive ett bestemt motiv. Skriv name og rationale på "
+    "norsk bokmål. " + DATA_RULE
 )
-DESIGN_SCHEMA = _obj({
-    "style_key": {"type": "string", "enum": ["modern_3d", "flat_minimal", "photo_realistic", "academic", "isometric",
-                                             "infographic", "custom"]},
-    "name": STR, "rationale": STR,
-    "illustration_style": STR, "palette": STRS, "palette_description": STR, "contrast": STR, "lighting": STR,
-    "composition": STR, "background": STR, "detail_level": STR, "visual_traits": STR, "avoid": STRS,
-    "people": STR,
-})
+DESIGN_SCHEMA = _obj({"name": STR, "rationale": STR, "prompt": STR})
 
 # -------------------------------------------------------------------------------- review (multimodal)
 

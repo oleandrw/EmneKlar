@@ -44,7 +44,15 @@ from emneklar.features.illustrations.context import (
     section_context,
 )
 from emneklar.features.illustrations.costs import CostLimitReached, CostMeter, image_call_cost, text_call_cost
-from emneklar.features.illustrations.design import DesignData, DesignProfiles, style_block
+from emneklar.features.illustrations.design import (
+    TOPIC_SLOT,
+    DesignData,
+    DesignProfiles,
+    from_style,
+    has_topic_slot,
+    ready_made,
+    style_block,
+)
 from emneklar.features.illustrations.inventory import OUTSIDE_MODULES, Inventory, Scope, build_inventory
 from emneklar.features.illustrations.placement import anchor_for, candidate_anchors, insertion_points, planner_points
 from emneklar.features.illustrations.privacy import scrub, wrap
@@ -216,8 +224,8 @@ async def plan_page(state: RunState, url: str, module_id: str, planned_in_module
                     "existing_images": data["existing_images"]}
     package = context_package(
         course=_course_summary(course), module=_module_summary(module), page=page_context, section=None,
-        design={"name": state.design["name"], "style": state.design["data"].get("illustration_style"),
-                "people": state.design["data"].get("people")},
+        design={"name": state.design["name"],
+                "style": clip(str(state.design["data"].get("prompt") or "").replace(TOPIC_SLOT, ""), 1500)},
         placement=None,
         requirements={"amount": amount, "max_per_page": prompts.AMOUNT_CAP[amount], "text_free": True,
                       "placement": "Ett av INNSETTINGSPUNKTER (id) per illustrasjon."},
@@ -338,9 +346,7 @@ def _review_copy(data: bytes, max_side: int = 1280) -> ImagePart:
 def compose_prompt(ill: dict[str, Any], design: dict[str, Any], *, extra: str = "") -> str:
     plan = ill.get("plan") or {}
     data = DesignData.model_validate(design["data"])
-    if ill.get("style_override"):
-        from emneklar.features.illustrations.design import from_style
-
+    if str(ill.get("style_override") or "") in ready_made():  # a style that no longer exists is not an override
         data = from_style(str(ill["style_override"]))
     parts = [ill.get("prompt") or plan.get("motif") or ""]
     if plan.get("relevant_context"):
@@ -360,8 +366,12 @@ def compose_prompt(ill: dict[str, Any], design: dict[str, Any], *, extra: str = 
         parts.append(prompts.NO_SEQUENCE)
     if extra:
         parts.append(extra)
-    parts.append(style_block(data, version=design.get("version"), labels=bool(ill.get("labels"))))
     labels = list(ill.get("labels") or [])
+    if has_topic_slot(data):  # the profile's prompt says where the topic belongs
+        topic = "\n\n".join(str(p) for p in parts if p)
+        parts = [style_block(data, version=design.get("version"), labels=bool(labels), topic=topic)]
+    else:
+        parts.append(style_block(data, version=design.get("version"), labels=bool(labels)))
     language = str(plan.get("content_language") or "nb")
     parts.append(prompts.label_rules(labels, language) if labels else prompts.IMAGE_RULES)
     return "\n\n".join(p for p in parts if p)[:30_000]

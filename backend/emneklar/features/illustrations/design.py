@@ -1,15 +1,20 @@
 """Course design profiles: one visual universe for every illustration in a course – versioned.
 
-A profile holds the style, palette, contrast, lighting, composition, background, detail level, size/format, visual
-traits and what must not appear. Consistency comes from three things together, not from repeating a description:
+A profile is one **prompt**: the whole style description, written by the teacher (or pasted from another tool) or
+taken from a ready-made profile in ``styles.json``. Consistency comes from three things together:
 
-1. the same style block in every image prompt (:func:`style_block`);
+1. the same prompt in every image prompt (:func:`style_block`); ``{tema}`` in the prompt is where the topic of the
+   image is put – without it the topic comes before the prompt;
 2. approved images of the course used as **reference images** when the image model supports them (the OpenAI Image
    API takes them in ``/images/edits``), so new images inherit the look;
 3. a visual check of every new image against the profile and a reference image (review step).
 
 Every saved change creates a new version; a run records which version it used, so later modules can continue the
 same style, and a changed style is visible.
+
+Until 0.2.0-alpha.2 a profile was a set of fields (style, palette, lighting …) and there were seven ready-made styles.
+A profile saved then is read as «Egendefinert» with the same description as one prompt (:func:`legacy_prompt`);
+nothing in the database is rewritten.
 """
 
 from __future__ import annotations
@@ -19,7 +24,7 @@ from functools import cache
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 
 from emneklar.core.errors import AppError, NotFoundError
@@ -30,6 +35,10 @@ STYLES_PATH = Path(__file__).resolve().parent / "styles.json"
 #: «auto» = the planner picks the best format for each illustration; the others fix the format for the course.
 ASPECT_CHOICES = ("auto", "16:9", "3:2", "4:3", "1:1", "2:3")
 MAX_REFERENCES = 4
+MAX_PROMPT = 8000
+#: Where the topic of the image is put into the prompt of a profile.
+TOPIC_SLOT = "{tema}"
+CUSTOM = "custom"
 
 
 @cache
@@ -41,29 +50,59 @@ def style(key: str) -> dict[str, Any]:
     return next((s for s in styles() if s["key"] == key), styles()[-1])
 
 
+def default_style() -> str:
+    """The profile a course gets until the teacher chooses: the first ready-made one."""
+    return str(styles()[0]["key"])
+
+
+def ready_made() -> set[str]:
+    """The styles that carry their own prompt (everything except «Egendefinert»)."""
+    return {str(s["key"]) for s in styles() if str(s.get("prompt") or "").strip()}
+
+
+_LEGACY_TRAITS = (("Contrast", "contrast"), ("Lighting", "lighting"), ("Composition", "composition"),
+                  ("Background", "background"), ("Level of detail", "detail_level"),
+                  ("Recurring visual traits", "visual_traits"), ("People", "people"))
+
+
+def legacy_prompt(raw: dict[str, Any]) -> str:
+    """One prompt that says what a profile from before 0.2.0-alpha.3 said with its separate fields."""
+    def text(key: str) -> str:
+        return str(raw.get(key) or "").strip()
+
+    parts: list[str] = []
+    if text("illustration_style"):
+        parts.append(f"Visual style: {text('illustration_style')}.")
+    palette = [str(v).strip() for v in raw.get("palette") or [] if str(v).strip()]
+    if palette:
+        parts.append(f"Colour palette: {', '.join(palette)}"
+                     + (f" ({text('palette_description')})." if text("palette_description") else "."))
+    parts += [f"{label}: {text(key)}." for label, key in _LEGACY_TRAITS if text(key)]
+    avoid = [str(v).strip() for v in raw.get("avoid") or [] if str(v).strip()]
+    if parts and avoid:
+        parts.append(f"Never include: {', '.join(dict.fromkeys(avoid))}.")
+    return "\n".join(parts)
+
+
 class DesignData(BaseModel):
-    style_key: str = "modern_3d"
+    style_key: str = CUSTOM
     name: str = Field("", max_length=200)
     rationale: str = Field("", max_length=2000)
-    illustration_style: str = Field("", max_length=1000)
-    palette: list[str] = Field(default_factory=list, max_length=10)
-    palette_description: str = Field("", max_length=500)
-    contrast: str = Field("", max_length=500)
-    lighting: str = Field("", max_length=500)
-    composition: str = Field("", max_length=800)
-    background: str = Field("", max_length=500)
-    detail_level: str = Field("", max_length=500)
-    visual_traits: str = Field("", max_length=800)
-    avoid: list[str] = Field(default_factory=list, max_length=30)
-    people: str = Field("", max_length=500)
+    prompt: str = Field("", max_length=MAX_PROMPT)
     aspect_ratio: str = "auto"
 
-    @field_validator("style_key")
+    @model_validator(mode="before")
     @classmethod
-    def _key(cls, value: str) -> str:
-        if value not in {s["key"] for s in styles()}:
-            raise ValueError("Ukjent stil")
-        return value
+    def _earlier_profile(cls, value: Any) -> Any:
+        """A style that no longer exists is «Egendefinert», and its fields become the prompt."""
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        if data.get("style_key") not in {s["key"] for s in styles()}:
+            data["style_key"] = CUSTOM
+        if data["style_key"] == CUSTOM and not str(data.get("prompt") or "").strip():
+            data["prompt"] = legacy_prompt(data)[:MAX_PROMPT]
+        return data
 
     @field_validator("aspect_ratio")
     @classmethod
@@ -72,39 +111,29 @@ class DesignData(BaseModel):
             raise ValueError("Ukjent bildeformat")
         return value
 
-    @field_validator("palette")
-    @classmethod
-    def _palette(cls, value: list[str]) -> list[str]:
-        import re
-
-        return [v.strip() for v in value if re.fullmatch(r"#[0-9A-Fa-f]{6}", v.strip())]
-
-
 
 def from_style(key: str) -> DesignData:
     base = style(key)
-    fields = {k: v for k, v in base.items() if k in DesignData.model_fields}
-    return DesignData(**{**fields, "style_key": base["key"], "name": base["label"]})
+    return DesignData(style_key=base["key"], name=base["label"], prompt=str(base.get("prompt") or ""),
+                      aspect_ratio=str(base.get("aspect_ratio") or "auto"))
 
 
-def style_block(data: DesignData, *, version: int | None = None, labels: bool = False) -> str:
-    """The course-wide style description added to every image prompt (English)."""
-    parts = [f"Visual style (course design profile{f' v{version}' if version else ''}, keep consistent across all "
-             f"images of the course): {data.illustration_style or style(data.style_key)['illustration_style']}."]
-    if data.palette:
-        parts.append(f"Colour palette: {', '.join(data.palette)}" + (f" ({data.palette_description})."
-                                                                      if data.palette_description else "."))
-    for label, value in (("Contrast", data.contrast), ("Lighting", data.lighting), ("Composition", data.composition),
-                         ("Background", data.background), ("Level of detail", data.detail_level),
-                         ("Recurring visual traits", data.visual_traits), ("People", data.people)):
-        if value:
-            parts.append(f"{label}: {value}.")
-    avoid = [a for a in dict.fromkeys([*data.avoid, "text", "logos", "watermarks"])
-             if not (labels and a.strip().lower() in ("text", "labels", "tekst", "numbers"))]
-    parts.append(f"Never include: {', '.join(avoid)}." + (" Only the short labels listed below may appear as text."
-                                                          if labels else ""))
-    parts.append("Same visual universe as the other illustrations of the course, but a distinct motif – not a copy.")
-    return " ".join(parts)
+def has_topic_slot(data: DesignData) -> bool:
+    return TOPIC_SLOT in data.prompt
+
+
+def style_block(data: DesignData, *, version: int | None = None, labels: bool = False, topic: str = "") -> str:
+    """The profile's prompt as it is added to every image prompt, with ``topic`` where the prompt asks for it."""
+    prompt = data.prompt.strip()
+    if not prompt:
+        return ""
+    head = (f"Visual style (course design profile{f' v{version}' if version else ''}, keep consistent across all "
+            "images of the course):")
+    tail = "Same visual universe as the other illustrations of the course, but a distinct motif – not a copy."
+    if labels:
+        tail += (" The short labels listed below must appear as text, even where the style description prefers an "
+                 "image without text.")
+    return f"{head}\n{prompt.replace(TOPIC_SLOT, topic.strip())}\n\n{tail}"
 
 
 def profile_dict(row: IllustrationProfile) -> dict[str, Any]:
@@ -149,6 +178,9 @@ class DesignProfiles:
             previous = max(rows, key=lambda r: r.version) if rows else None
             for row in rows:
                 row.active = False
+            if not data.prompt.strip():
+                raise AppError("validation_error", message="Designprofilen mangler prompt. Lim inn en prompt i "
+                                                           "tekstboksen før du lagrer.")
             refs = list(reference_assets if reference_assets is not None else (
                 previous.reference_assets if previous else []))[:MAX_REFERENCES]
             row = IllustrationProfile(course_id=course_id, version=(previous.version + 1) if previous else 1,
@@ -159,7 +191,7 @@ class DesignProfiles:
             return profile_dict(row)
 
     def ensure(self, course_id: str) -> dict[str, Any]:
-        return self.active(course_id) or self.save(course_id, from_style("modern_3d"), origin="preset")
+        return self.active(course_id) or self.save(course_id, from_style(default_style()), origin="preset")
 
     def set_references(self, course_id: str, asset_ids: list[str]) -> dict[str, Any]:
         """Change the reference images of the active profile in place (they are not part of the style text)."""
