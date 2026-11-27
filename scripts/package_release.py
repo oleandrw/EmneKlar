@@ -66,7 +66,7 @@ PACKAGED_PREFIXES = ("backend/emneklar/", "backend/migrations/")
 DEVELOPMENT_FILES = frozenset({
     "CLAUDE.md", ".gitignore", ".gitattributes", "scripts/package_release.py", "scripts/bump_version.py",
     "scripts/build_runtime.py", "scripts/build_installer.py", "scripts/local_update_test.py",
-    "scripts/sign_release.py", "scripts/verify_windows_installer.py",
+    "scripts/sign_release.py", "scripts/verify_windows_installer.py", "scripts/dev.py",
 })
 DEVELOPMENT_PREFIXES = (".claude/", ".github/", "backend/tests/", "docs/", "frontend/", "packaging/")
 

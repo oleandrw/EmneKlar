@@ -7,6 +7,13 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
 ## [Unreleased]
 
 ### Lagt til
+- **Utvikling på en ny maskin – `scripts/dev.py`:** `setup` lager Python-miljøet med utviklingsverktøyene (som i CI),
+  kjører `npm ci` og bygger grensesnittet. `start` kjører EmneKlar fra kildekoden mot ekte Canvas som en egen
+  utviklingsinstans: datamappe `%LOCALAPPDATA%\EmneKlar-dev`, port 8771 og tjenesten «EmneKlar-dev» i Windows
+  Legitimasjonsbehandling, så den vanlige EmneKlar ikke berøres. `stop` stopper den, `demo` starter falsk Canvas med
+  testdata, og `check` kjører det CI sjekker. Se `docs/DEVELOPMENT.md`.
+- **`EMNEKLAR_KEYRING_SERVICE`** velger tjenesten i Legitimasjonsbehandling (går foran `emneklar.local.json`). Et
+  ugyldig navn stopper oppstarten i stedet for å bruke den vanlige installasjonens token.
 - **Installasjonsprogram for Windows:** `EmneKlar-<versjon>-setup.exe` installerer EmneKlar for én bruker, uten
   administratorrettigheter, med snarvei i Start-menyen og på skrivebordet og avinstallering fra Windows-innstillingene.
   Du trenger ikke lenger å installere Python eller andre verktøy: en ferdig Python-kjøretid med alle avhengighetene

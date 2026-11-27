@@ -27,7 +27,7 @@ def program_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     folder = tmp_path / "Programs" / "EmneKlar-test"
     folder.mkdir(parents=True)
     monkeypatch.setattr(config_module, "REPO_DIR", folder)
-    for name in ("EMNEKLAR_DATA_DIR", "EMNEKLAR_PORT", "EMNEKLAR_HOST", "EMNEKLAR_DEV"):
+    for name in ("EMNEKLAR_DATA_DIR", "EMNEKLAR_PORT", "EMNEKLAR_HOST", "EMNEKLAR_DEV", "EMNEKLAR_KEYRING_SERVICE"):
         monkeypatch.delenv(name, raising=False)
     # The "standard" folder of this test – never the real one.
     monkeypatch.setattr(system, "user_data_dir", lambda name: tmp_path / "Local" / name)
@@ -97,6 +97,23 @@ def test_an_installation_can_keep_its_secrets_apart(program_folder: Path, monkey
     for bad in ("", "   ", "../annet", "a" * 80, 5, None):
         write_local(program_folder, {"keyring_service": bad})
         assert secrets.keyring_service() == "EmneKlar", bad
+
+
+def test_a_development_instance_chooses_its_own_service(program_folder: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """scripts/dev.py starts EmneKlar from the source against a real Canvas with «EmneKlar-dev»: the variable wins over
+    the file, and an invalid name stops the start instead of reaching the ordinary installation's token."""
+    from emneklar.config import ConfigError
+    from emneklar.core.auth import secrets
+
+    write_local(program_folder, {"keyring_service": "EmneKlar-test"})
+    monkeypatch.setenv("EMNEKLAR_KEYRING_SERVICE", "EmneKlar-dev")
+    assert secrets.keyring_service() == "EmneKlar-dev"
+    RuntimeConfig.from_env()  # valid
+    for bad in ("", "../annet", "a" * 80, "nøkkel"):
+        monkeypatch.setenv("EMNEKLAR_KEYRING_SERVICE", bad)
+        assert secrets.keyring_service() == "EmneKlar-test", "an invalid name is never used"
+        with pytest.raises(ConfigError, match="EMNEKLAR_KEYRING_SERVICE"):
+            RuntimeConfig.from_env()
 
 
 def test_the_file_is_never_part_of_a_release() -> None:

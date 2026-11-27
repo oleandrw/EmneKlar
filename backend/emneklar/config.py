@@ -28,6 +28,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -51,8 +52,10 @@ class ConfigError(RuntimeError):
 #: service whatever starts it (the shortcut, start.bat, update.bat, setup.bat) – it can never open the user's real
 #: data, or replace the real Canvas token, by accident.
 #: ``{"data_dir": "<absolute path>", "port": 8791, "keyring_service": "EmneKlar-test"}``. Environment variables
-#: (EMNEKLAR_DATA_DIR, EMNEKLAR_PORT) win; the service name is read in core/auth/secrets.py.
+#: (EMNEKLAR_DATA_DIR, EMNEKLAR_PORT, EMNEKLAR_KEYRING_SERVICE) win; the service name is read in core/auth/secrets.py.
 LOCAL_FILE = "emneklar.local.json"
+#: A credential-store service name (``keyring_service`` in LOCAL_FILE, or EMNEKLAR_KEYRING_SERVICE).
+KEYRING_SERVICE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._-]{0,60}")
 
 
 def installation_defaults() -> dict[str, Any]:
@@ -207,6 +210,11 @@ class RuntimeConfig:
             raise ConfigError(f"Ugyldig port: {self.port}")
         if self.secret_backend not in {"keyring", "memory"}:
             raise ConfigError(f"Ukjent lagring for hemmeligheter: {self.secret_backend!r}")
+        service = os.environ.get("EMNEKLAR_KEYRING_SERVICE")
+        if service is not None and not KEYRING_SERVICE_NAME.fullmatch(service):
+            # Never fall back to the ordinary installation's service: a typo must not reach its Canvas token.
+            raise ConfigError("EMNEKLAR_KEYRING_SERVICE må være et navn på 1–61 tegn: bokstaver, tall, mellomrom, "
+                              "punktum, understrek eller bindestrek.")
 
     @classmethod
     def from_env(cls) -> RuntimeConfig:
