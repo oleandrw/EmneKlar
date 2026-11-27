@@ -3,6 +3,41 @@
 EmneKlar er én modulær monolitt: FastAPI-backend (`backend/`, Python ≥ 3.11) som serverer et React/TypeScript-
 grensesnitt (`frontend/`, Vite). Les [CLAUDE.md](../CLAUDE.md) for prosjektets faste regler.
 
+## Kom i gang på en ny maskin
+
+Installer Git, Python (3.11–3.14), Node.js LTS (22 eller nyere) og GitHub CLI, for eksempel med
+`winget install Git.Git Python.Python.3.14 OpenJS.NodeJS.LTS GitHub.cli`, og åpne et nytt terminalvindu. Deretter:
+
+```bat
+gh auth login
+git clone https://github.com/oleandrw/EmneKlar.git
+cd EmneKlar
+py scripts\dev.py setup
+```
+
+`scripts/dev.py` (bare standardbiblioteket) samler det en utvikler trenger:
+
+| Kommando | Hva den gjør |
+|---|---|
+| `py scripts\dev.py setup` | Lager `backend\.venv` med utviklingsverktøyene (`pip install -c backend/constraints.txt -e "backend[dev]"`, som i CI), kjører `npm ci` og bygger grensesnittet. `--playwright` laster også ned Chromium til ende-til-ende-testene. Kan kjøres på nytt. |
+| `py scripts\dev.py start` | EmneKlar fra kildekoden **mot ekte Canvas**, i eget vindu. Første gang spør oppsettet etter Canvas-adressen og et tilgangstoken. Bygger grensesnittet først (`--no-build` hopper over). |
+| `py scripts\dev.py stop` | Stopper utviklingsinstansen. |
+| `py scripts\dev.py demo` | Falsk Canvas med testemner og falsk KI (port 8769). Data og nøkler kastes når den stopper. |
+| `py scripts\dev.py check` | Det CI sjekker: ruff, mypy for Windows og Linux, pytest, typesjekk, lint og enhetstester. `--backend` eller `--frontend` for bare den ene delen, `--e2e` for ende-til-ende-testene i tillegg. |
+
+Alle kommandoene har `--dry-run`, som viser hva som ville blitt kjørt.
+
+**Utviklingsinstansen er adskilt fra en installert EmneKlar.** `start` bruker egen datamappe (`%LOCALAPPDATA%\EmneKlar-dev`),
+port 8771 og en egen tjeneste i Windows Legitimasjonsbehandling, «EmneKlar-dev» (`EMNEKLAR_DATA_DIR`, `EMNEKLAR_PORT` og
+`EMNEKLAR_KEYRING_SERVICE`). Tokenet huskes mellom oppstartene, men erstatter aldri det den vanlige EmneKlar bruker.
+Den vanlige datamappen og port 8770 avvises (`--data-dir` og `--port` velger noe annet). Mot ekte Canvas gjelder de
+samme reglene som ellers: analyser leser bare, og ingenting skrives før du publiserer fra endringskøen.
+
+Minnenotatene til Claude Code ligger utenfor repoet (`%USERPROFILE%\.claude\projects\…\memory`) og følger ikke med
+en ny klone; prosjektreglene står i CLAUDE.md.
+
+## Kommandoene hver for seg
+
 ```bat
 :: Backend
 cd backend
@@ -71,6 +106,7 @@ Nyttige miljøvariabler når du starter EmneKlar selv:
 | `EMNEKLAR_PORT` | porten (standard 8770) |
 | `EMNEKLAR_NO_BROWSER=1` | ikke åpne noe vindu (som `--no-browser`); EmneKlar avslutter seg da heller ikke når vinduer lukkes |
 | `EMNEKLAR_SECRET_BACKEND=memory` | hemmeligheter bare i minnet – ingenting skrives til Legitimasjonsbehandling |
+| `EMNEKLAR_KEYRING_SERVICE` | tjenesten i Legitimasjonsbehandling (standard «EmneKlar»). `scripts/dev.py start` bruker «EmneKlar-dev». Et ugyldig navn stopper oppstarten i stedet for å falle tilbake til «EmneKlar» |
 
 En installasjon kan også ha egne standardverdier i filen `emneklar.local.json` i programmappen
 (`{"data_dir": "<full sti>", "port": 8791, "keyring_service": "EmneKlar-test"}`). Testutgaven av

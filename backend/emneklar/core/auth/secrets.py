@@ -13,6 +13,7 @@ Secrets (the Canvas API token and AI provider keys) are:
 from __future__ import annotations
 
 import logging
+import os
 import re
 import threading
 from abc import ABC, abstractmethod
@@ -153,14 +154,17 @@ class MemorySecretStore(SecretStore):
 
 
 def keyring_service() -> str:
-    """The credential-store service of this installation: «EmneKlar» – or the name in ``emneklar.local.json``
-    (config.py). The test build of the installer has its own, so a token saved in «EmneKlar (test)» never replaces
-    the one an ordinary installation uses."""
-    from emneklar.config import installation_defaults  # local import: config is not needed to load this module
+    """The credential-store service of this installation: «EmneKlar» – or the name in EMNEKLAR_KEYRING_SERVICE, or
+    else in ``emneklar.local.json`` (config.py). The test build of the installer has its own, and so does a
+    development instance started with ``scripts/dev.py start`` («EmneKlar-dev»), so a token saved there never
+    replaces the one an ordinary installation uses. An invalid EMNEKLAR_KEYRING_SERVICE stops the start-up
+    (RuntimeConfig.validate) instead of falling back to «EmneKlar»."""
+    # local import: config is not needed to load this module
+    from emneklar.config import KEYRING_SERVICE_NAME, installation_defaults
 
-    name = installation_defaults().get("keyring_service")
-    if isinstance(name, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 ._-]{0,60}", name):
-        return name
+    for name in (os.environ.get("EMNEKLAR_KEYRING_SERVICE"), installation_defaults().get("keyring_service")):
+        if isinstance(name, str) and KEYRING_SERVICE_NAME.fullmatch(name):
+            return name
     return KEYRING_SERVICE
 
 
