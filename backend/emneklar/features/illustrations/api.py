@@ -267,9 +267,9 @@ async def suggest_design(course_id: str, body: ConsentBody, c: AppContainer = De
         f"Forslag til designprofil ({len(text)} tegn)"), confirmed=body.confirmed, course_id=course_id,
         preferred=choice.models or None, preferred_reason=choice.reason)
     answer = result.data or {}
-    base = design_mod.from_style(str(answer.get("style_key") or "modern_3d")).model_dump()
-    merged = {**base, **{k: v for k, v in answer.items() if k in DesignData.model_fields and v not in ("", [], None)}}
-    data = DesignData.model_validate(merged)
+    data = DesignData(style_key=design_mod.CUSTOM, name=str(answer.get("name") or "")[:200],
+                      rationale=str(answer.get("rationale") or "")[:2000],
+                      prompt=str(answer.get("prompt") or "")[: design_mod.MAX_PROMPT])
     return {"data": data.model_dump(), "style_prompt": design_mod.style_block(data), "label": "KI-forslag – må vurderes",
             "model": result.model, "route_reason": decision.reason}
 
@@ -614,7 +614,7 @@ async def edit(illustration_id: int, body: IllustrationPatch, c: AppContainer = 
     fields: dict[str, Any] = {k: v for k, v in body.model_dump(exclude_unset=True).items()
                               if k in ("prompt", "alt_text", "caption", "caption_enabled", "decorative", "credit")}
     if "style_override" in body.model_fields_set:
-        if body.style_override and body.style_override not in {s["key"] for s in design_mod.styles()}:
+        if body.style_override and body.style_override not in design_mod.ready_made():
             raise AppError("validation_error", detail="Ukjent stil")
         fields["style_override"] = body.style_override or None
     if body.asset_id is not None:

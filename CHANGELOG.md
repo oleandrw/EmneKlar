@@ -228,6 +228,16 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   resultat eller årsak. Panelet lenker hit.
 
 ### Endret
+- **KI-bildeassistent – nye designprofiler:** de sju stilene (Moderne 3D, Minimalistisk flat design, Realistisk
+  fotografisk stil, Akademiske illustrasjoner, Isometriske illustrasjoner, Infografisk stil og Egendefinert
+  designprofil) er fjernet. En designprofil er nå én prompt som brukes i alle bildene i emnet. To profiler finnes:
+  **Happy Pixar** (ferdig prompt, fast bildeformat 16:9, standard for nye emner) og **Egendefinert**, som er én
+  tekstboks der du limer inn en hel prompt, for eksempel fra ChatGPT. `{tema}` i prompten er stedet der temaet for
+  hvert bilde settes inn; uten `{tema}` står temaet foran prompten. Feltene for fargepalett, kontrast, lys,
+  komposisjon, bakgrunn, detaljnivå, kjennetegn, personer og «skal ikke være med» er borte. «Foreslå prompt ut fra
+  emnet» (KI) skriver nå et forslag til prompt i Egendefinert. En designprofil som er lagret fra før, vises som
+  Egendefinert med den gamle beskrivelsen som prompt, og en stil som var valgt for ett enkelt bilde og ikke finnes
+  lenger, erstattes av emnets designprofil.
 - **Innstillinger → KI-assistenter, OpenAI og Anthropic:** én handling, «Koble til», erstatter «Lagre», «Test
   tilkobling» og «Hent modelliste». EmneKlar kontrollerer nøkkelen hos leverandøren og lagrer den i Windows
   Legitimasjonsbehandling bare når kontrollen lykkes; en nøkkel som avvises, lagres ikke, og en lagret nøkkel beholdes.

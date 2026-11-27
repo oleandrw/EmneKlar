@@ -2563,16 +2563,6 @@ button.ek-metric-card[aria-pressed="true"] {
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   font-size: var(--text-sm);
 }
-.ek-swatches {
-  display: inline-flex;
-  gap: var(--space-1);
-}
-.ek-swatch {
-  width: 1.25rem;
-  height: 1.25rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border-strong);
-}
 
 /* Sidebar layout with a vertical sub-navigation (Innstillinger, Hjelp). */
 .ek-sidebar-layout {

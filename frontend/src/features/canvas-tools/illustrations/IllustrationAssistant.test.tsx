@@ -49,7 +49,7 @@ const settings: IllustrationSettings = {
 };
 
 const catalog: Catalog = {
-  styles: [{ key: "modern_3d", label: "Moderne 3D-illustrasjoner", description: "" }, { key: "academic", label: "Akademiske illustrasjoner", description: "" }],
+  styles: [{ key: "happy_pixar", label: "Happy Pixar", description: "Lys 3D-stil." }, { key: "custom", label: "Egendefinert", description: "Lim inn en hel prompt." }],
   quality_profiles: [
     { id: "max", label: "Maksimal kvalitet", description: "Mest avanserte modeller.", default: true, review_rounds: 2 },
     { id: "balanced", label: "Balansert", description: "Balanse.", default: false, review_rounds: 1 },
@@ -121,7 +121,9 @@ describe("ImageSettingsStep", () => {
     expect(screen.getByRole("heading", { name: "2. Bildeinnstillinger" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Maksimal kvalitet \(standard\)/ })).toBeChecked();
     expect(screen.getByRole("radio", { name: /Balansert \(standard\)/ })).toBeChecked();
-    expect(screen.getByRole("radio", { name: /Moderne 3D-illustrasjoner/ })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Happy Pixar/ })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Egendefinert/ })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Prompt" })).not.toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /Korte etiketter i diagrammer/ })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: /Merk bildene med «KI-generert illustrasjon»/ })).toBeChecked();
     expect(screen.queryByText(/Claude Fable 5.1/)).not.toBeInTheDocument();
@@ -281,5 +283,33 @@ describe("IllustrationDetail: placement", () => {
     await waitFor(() => expect(within(screen.getByRole("region", { name: "Plassering i teksten" }))
       .getByRole("button", { name: "Flytt ned" })).toBeDisabled());
     expect(calls.some((c) => c.url.includes("page-preview")), "nothing to preview without an image").toBe(false);
+  });
+});
+
+describe("Designprofil", () => {
+  it("«Egendefinert» is one text box for a whole prompt, and a profile without a prompt cannot be saved", async () => {
+    const user = userEvent.setup();
+    const custom = { style_key: "custom", name: "Egendefinert", rationale: "", prompt: "", aspect_ratio: "auto" };
+    const calls = mockApi({
+      "/illustrations/assets": { items: [] },
+      "/design/from-style": { data: custom },
+      "/illustrations/design": { id: 1, version: 1, name: "Egendefinert", data: custom },
+    });
+    const { container } = render(wrap(<ImageSettingsStep courseId="101" settings={settings} onChange={() => {}} status={status} catalog={catalog} />));
+    expect(screen.queryByRole("textbox", { name: "Prompt" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: /Egendefinert/ }));
+    const box = await screen.findByRole("textbox", { name: "Prompt" });
+    expect(box).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Lagre designprofilen" })).toBeDisabled();
+    expect(screen.getByText("Lim inn en prompt for å lagre.")).toBeInTheDocument();
+    // The earlier fields (palette, lighting …) are gone: the prompt is the profile.
+    expect(screen.queryByText("Lyssetting")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Farger \(hex/)).not.toBeInTheDocument();
+    await user.click(box);
+    await user.paste("Paper cut-out collage in warm earth tones.");
+    await user.click(screen.getByRole("button", { name: "Lagre designprofilen" }));
+    const saved = calls.find((c) => c.method === "PUT" && c.url.endsWith("/illustrations/design"));
+    expect(saved?.body).toMatchObject({ origin: "custom", data: { style_key: "custom", prompt: "Paper cut-out collage in warm earth tones." } });
+    expect(await axeViolations(container)).toEqual([]);
   });
 });
