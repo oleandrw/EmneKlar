@@ -15,6 +15,7 @@ from __future__ import annotations
 import ipaddress
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
@@ -30,7 +31,7 @@ from emneklar.core.ai.base import (
     SearchHit,
     TranscriptionResult,
 )
-from emneklar.core.ai.catalog import ModelRegistry
+from emneklar.core.ai.catalog import KIND_LABELS, ModelRegistry, ordered, usable
 from emneklar.core.ai.providers.anthropic import AnthropicProvider
 from emneklar.core.ai.providers.openai_compat import AzureOpenAIProvider, OpenAICompatibleProvider
 from emneklar.core.ai.router import TASKS, RouteDecision, estimate_tokens, route
@@ -49,6 +50,23 @@ SEARCH_UNAVAILABLE = ("Nettsøk krever en KI-tjeneste med søk (Anthropic eller 
                       "tillatt. Du kan søke selv i nettleseren.")
 MESSAGES_SHARING_OFF = ("Sending av emneinnhold til ekstern KI er slått av. Slå det på under Innstillinger → "
                         "Sikkerhet og personvern, eller bruk en lokal modell.")
+
+
+#: Providers where the model is a name the user decides (an Azure deployment, a model on an own server): a name that is
+#: not in the registry is accepted as typed.
+NAMED_PROVIDER_TYPES = ("azure_openai", "openai_compatible")
+_KIND_NOUN = {"image": "Bildemodellen", "transcription": "Transkripsjonsmodellen", "embedding": "Embedding-modellen",
+              "text": "Modellen"}
+
+
+@dataclass(frozen=True)
+class ModelPick:
+    """The registry's answer to «which model of this kind at this provider?»."""
+
+    row: dict[str, Any] | None  # the registry row (for a typed name: a catalog model with the same name, or None)
+    model_id: str  # "" when no model can be used
+    how: str  # manual | auto | typed | none
+    note: str | None = None  # the chosen model is no longer available – what happened instead
 
 
 def _and(parts: list[str]) -> str:
@@ -132,6 +150,42 @@ class AIService:
             return await provider.list_models()
         finally:
             await provider.aclose()
+
+    # -- one model of a kind at a provider (image generation, transcription) ---------------------
+
+    def pick_model(self, kind: str, provider_id: str, model_id: str = "", *, strategy: str = "auto") -> ModelPick:
+        """The model of ``kind`` to use at a provider, from the registry.
+
+        ``model_id`` is the teacher's own choice ("" = choose automatically). A choice that is enabled and classified
+        is used as it is. A choice that has been switched off or removed is not used: an enabled model is chosen
+        automatically instead, and ``note`` says so. At providers where the model is a name the user decides, a name
+        that is not in the registry is accepted as typed. The automatic choice follows ``strategy`` and the teacher's
+        default and priority (:func:`emneklar.core.ai.catalog.ordered`)."""
+        config = self.c.settings.get().provider(provider_id)
+        rows = self.registry.list(kind=kind)
+        here = [m for m in rows if m["provider_id"] == provider_id]
+        candidates = ordered(usable(here), strategy)
+        note: str | None = None
+        if model_id:
+            row = next((m for m in here if m["model_id"] == model_id), None)
+            if row is not None and row in candidates:
+                return ModelPick(row, model_id, "manual")
+            if row is None and config is not None and config.type in NAMED_PROVIDER_TYPES:
+                twin = next((m for m in rows if m["model_id"] == model_id and m["source"] == "catalog"), None)
+                return ModelPick(twin, model_id, "typed")
+            state = "er slått av" if row is not None and not row["enabled"] else (
+                "er ikke klassifisert" if row is not None else "finnes ikke lenger i modellregisteret")
+            note = f"{_KIND_NOUN.get(kind, 'Modellen')} du valgte ({model_id}) {state}."
+        if candidates:
+            return ModelPick(candidates[0], candidates[0]["model_id"], "auto",
+                             note and f"{note} {candidates[0]['display_name']} brukes i stedet.")
+        return ModelPick(None, "", "none", note)
+
+    def missing_model_reason(self, kind: str, pick: ModelPick) -> str:
+        label = KIND_LABELS.get(kind, kind).lower()
+        return ((pick.note + " ") if pick.note else "") + (
+            f"Ingen modell for {label} er aktivert for leverandøren. Aktiver eller legg til en under Innstillinger → "
+            "KI-assistenter.")
 
     # -- planning --------------------------------------------------------------------------------
 
@@ -329,11 +383,13 @@ class AIService:
     # -- transcription (Emne-RAG, when a video has no captions and local transcription is not used) -----------
 
     def transcription_plan(self, provider_id: str, model_id: str, *, summary: str) -> dict[str, Any]:
-        from emneklar.core.ai.transcription import resolve
+        from emneklar.core.ai.transcription import describe
 
         settings = self.c.settings.get()
         config = settings.provider(provider_id)
-        model = resolve(config.type, model_id) if config is not None else None
+        pick = self.pick_model("transcription", provider_id, model_id)
+        model = describe(pick.row, model_id=pick.model_id, provider_type=config.type) \
+            if config is not None and pick.model_id else None
         reason: str | None = None
         if config is None or not self.configured(config):
             reason = ("Leverandøren som er valgt for transkripsjon, er ikke satt opp. Se Innstillinger → "
@@ -341,15 +397,17 @@ class AIService:
         elif config.type == "anthropic":
             reason = "Anthropic tilbyr ikke transkripsjon. Velg OpenAI, Azure OpenAI eller en egen server."
         elif model is None:
-            reason = "Ingen transkripsjonsmodell er valgt for leverandøren (Emnets kunnskapsbase → Innstillinger)."
+            reason = self.missing_model_reason("transcription", pick)
         elif not is_local(config) and not settings.privacy.allow_external_ai:
             reason = MESSAGES_SHARING_OFF
         external = config is not None and not is_local(config)
         return {"available": reason is None, "reason": reason, "payload_summary": summary, "external": external,
                 "needs_confirmation": external and settings.privacy.confirm_before_send,
-                "model": model.as_dict() if model else None,
+                "model": model, "note": pick.note, "chosen": pick.how,
                 "route": None if config is None or model is None else {
-                    "provider": config.id, "model": model.id, "reason": "Valgt under Emnets kunnskapsbase → Innstillinger."}}
+                    "provider": config.id, "model": model["id"],
+                    "reason": pick.note or ("Valgt under Emnets kunnskapsbase → Innstillinger." if pick.how != "auto"
+                                            else "Valgt automatisk blant aktiverte transkripsjonsmodeller.")}}
 
     async def transcribe(self, provider_id: str, model_id: str, audio: bytes, filename: str, *, segments: bool,
                          summary: str, confirmed: bool, seconds: float, language: str | None = None,
@@ -390,12 +448,18 @@ class AIService:
 
     # -- image generation (KI-bildeassistent; the model is chosen by a quality profile or the user) ------------
 
-    def image_plan(self, provider_id: str, model_id: str, *, summary: str) -> dict[str, Any]:
-        from emneklar.core.ai.images import resolve
+    def image_plan(self, provider_id: str, model_id: str, *, summary: str, strategy: str = "auto") -> dict[str, Any]:
+        """The image model to use at a provider – the teacher's choice, or an automatic one among the enabled image
+        models in the registry (``strategy`` from the quality profile)."""
+        from emneklar.core.ai.images import IMAGE_PROVIDER_TYPES, describe
 
         settings = self.c.settings.get()
         config = settings.provider(provider_id)
-        model = resolve(config.type, model_id) if config is not None else None
+        can_generate = config is not None and config.type in IMAGE_PROVIDER_TYPES
+        pick = self.pick_model("image", provider_id, model_id, strategy=strategy) if can_generate \
+            else ModelPick(None, "", "none")
+        model = describe(pick.row, model_id=pick.model_id, provider_type=config.type, known=pick.row is not None) \
+            if config is not None and pick.model_id else None
         reason: str | None = None
         if config is None or not self.configured(config):
             reason = "Leverandøren som er valgt for bildegenerering, er ikke satt opp. Se Innstillinger → KI-assistenter."
@@ -403,15 +467,15 @@ class AIService:
             reason = ("Anthropic-modeller kan analysere bilder, men ikke lage dem. Velg OpenAI, Azure OpenAI eller en "
                       "egen OpenAI-kompatibel server for bildegenerering.")
         elif model is None:
-            reason = "Ingen bildemodell er valgt for leverandøren."
+            reason = self.missing_model_reason("image", pick)
         elif not is_local(config) and not settings.privacy.allow_external_ai:
             reason = MESSAGES_SHARING_OFF
         external = config is not None and not is_local(config)
         return {"available": reason is None, "reason": reason, "payload_summary": summary, "external": external,
                 "needs_confirmation": external and settings.privacy.confirm_before_send,
-                "model": model.as_dict() if model else None,
+                "model": model, "note": pick.note, "chosen": pick.how,
                 "route": None if config is None or model is None else {
-                    "provider": config.id, "model": model.label, "reason": "Valgt i KI-bildeassistenten."}}
+                    "provider": config.id, "model": model["label"], "reason": "Valgt i KI-bildeassistenten."}}
 
     async def generate_image(self, provider_id: str, model_id: str, request: ImageGenerationRequest, *, summary: str,
                              confirmed: bool, course_id: str | None = None, task: str = "illustration_image",
@@ -424,9 +488,16 @@ class AIService:
         settings = self.c.settings.get()
         config = settings.provider(provider_id)
         assert config is not None and plan["model"] is not None
+        if model_id and plan["model"]["id"] != model_id:
+            # The model was switched off or removed after it was chosen: never generate with another one unasked.
+            raise AIError("ai_not_configured", status=409, message=plan["note"] or "Bildemodellen er ikke tilgjengelig.")
+        from emneklar.core.ai.images import fit
+
         model = str(plan["model"]["id"])
         try:
-            result = await self.provider(config).generate_image(request.model_copy(update={"model": model}))
+            # Only what the model supports is sent (quality levels, complexity, reference images …).
+            result = await self.provider(config).generate_image(
+                fit(request, plan["model"]).model_copy(update={"model": model}))
         except AIError as exc:
             self._log_usage(task, provider_id, model, settings, success=False, error=exc.code, tokens=0,
                             summary=summary, course_id=course_id, reason=reason)

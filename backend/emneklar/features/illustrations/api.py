@@ -21,6 +21,7 @@ from emneklar.core import flags
 from emneklar.core.ai import images as image_catalog
 from emneklar.core.ai import pricing, profiles
 from emneklar.core.ai.base import ImageGenerationRequest
+from emneklar.core.ai.router import TASKS
 from emneklar.core.canvas.api import USE_JUSTIFICATIONS, CanvasAPI
 from emneklar.core.container import AppContainer
 from emneklar.core.errors import AppError, NotFoundError
@@ -30,7 +31,7 @@ from emneklar.core.storage.settings import AppSettings, IllustrationSettings
 from emneklar.features.illustrations import design as design_mod
 from emneklar.features.illustrations import prompts
 from emneklar.features.illustrations.assets import AssetStore
-from emneklar.features.illustrations.choices import image_providers, resolve
+from emneklar.features.illustrations.choices import ROLES, image_providers, resolve
 from emneklar.features.illustrations.costs import estimate as estimate_costs
 from emneklar.features.illustrations.design import DesignData, DesignProfiles
 from emneklar.features.illustrations.inventory import OUTSIDE_MODULES, Scope, build_inventory, html_text
@@ -116,8 +117,8 @@ async def catalog(c: AppContainer = Depends(get_container)) -> dict[str, Any]:
     return {
         "styles": [{"key": s["key"], "label": s["label"], "description": s["description"]} for s in design_mod.styles()],
         "quality_profiles": [p.as_dict() for p in profiles.profiles()], "roles": profiles.role_labels(),
-        "image_models": [m.as_dict() for m in image_catalog.catalog()], "image_catalog_note":
-            image_catalog.catalog_data()["note"],
+        "image_catalog_note": image_catalog.note(),
+        "role_requires": {role: list(TASKS[role].requires) for role in ROLES},
         "placements": PLACEMENTS, "amounts": AMOUNT_LABELS, "statuses": STATUS_LABELS,
         "formats": FORMAT_LABELS, "image_types": IMAGE_TYPE_LABELS,
         "run_statuses": RUN_STATUS_LABELS, "pricing": pricing.summary(),
@@ -140,9 +141,6 @@ async def status(course_id: str, c: AppContainer = Depends(get_container)) -> di
         "image_providers": image_providers(c),
         "design": profiles_store.active(course_id), "design_versions": profiles_store.versions(course_id)[:10],
         "runs": [_truthful(c, r) for r in _store(c).runs(course_id, limit=10)], "busy_job": _busy(c, course_id),
-        "text_models": [{"ref": f"{m['provider_id']}/{m['model_id']}", "display_name": m["display_name"],
-                         "provider_id": m["provider_id"], "vision": m["vision"]}
-                        for m in c.ai.registry.list() if m["enabled"] and m["capabilities_known"]],
     }
 
 
@@ -276,9 +274,7 @@ async def suggest_design(course_id: str, body: ConsentBody, c: AppContainer = De
 
 def _sample_size(c: AppContainer, choices: Any, design: dict[str, Any]) -> str:
     aspect = str((design.get("data") or {}).get("aspect_ratio") or "auto")
-    config = c.settings.get().provider(choices.image.provider_id)
-    model = image_catalog.resolve(config.type, choices.image.model["id"]) if config and choices.image.model else None
-    return model.size_for(aspect if aspect != "auto" else "3:2") if model else "1536x1024"
+    return image_catalog.size_for(choices.image.model, aspect if aspect != "auto" else "3:2")
 
 
 @router.post("/courses/{course_id}/illustrations/design/sample/prepare")
@@ -308,7 +304,7 @@ async def design_sample(course_id: str, body: ConsentBody, c: AppContainer = Dep
     result = await c.ai.generate_image(
         choices.image.provider_id, choices.image.model["id"],
         ImageGenerationRequest(model=choices.image.model["id"], prompt=prompt, size=_sample_size(c, choices, design),
-                               quality=choices.image.quality),
+                               quality=choices.image.quality, complexity=choices.image.complexity or None),
         summary="Eksempelbilde for designprofilen", confirmed=body.confirmed, course_id=course_id)
     image = result.images[0]
     asset = _assets(c).save(course_id=course_id, data=image.data, media_type=image.media_type, kind="sample",

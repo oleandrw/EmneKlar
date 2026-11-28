@@ -1,89 +1,73 @@
-"""Catalog of image generation models (``image_models.json``) – no model names in features.
+"""Image generation models as features see them – built from the model registry, never from a list of its own.
 
-Image generation is a separate capability from text models: the router's registry (``ai_models``) describes models
-that *read* text and images; this catalog describes models that *create* images. Adding another image generator later
-means adding an entry here (and, for a new API family, implementing :meth:`AIProvider.generate_image`).
+Image generation is a kind of model in the registry (``ai_models.kind == "image"``, :mod:`emneklar.core.ai.catalog`).
+This module turns a registry row into the description the KI-bildeassistent works with (which qualities, sizes,
+reference images and other parameters the model supports) and makes a request fit the model: a parameter the model
+does not support is never sent.
 """
 
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass
-from functools import cache
-from pathlib import Path
 from typing import Any
 
-CATALOG_PATH = Path(__file__).resolve().parent / "image_models.json"
+from emneklar.core.ai.base import ImageGenerationRequest
+from emneklar.core.ai.catalog import ASPECT_RATIOS, DEFAULT_PARAMS, STANDARD_SIZES, load_catalog
+
+__all__ = ["ASPECT_RATIOS", "IMAGE_PROVIDER_TYPES", "NAMED_PROVIDER_TYPES", "describe", "fit", "note", "size_for"]
+
 #: Provider types whose API has an image generation endpoint (OpenAI Image API or a compatible one).
 IMAGE_PROVIDER_TYPES = ("openai", "azure_openai", "openai_compatible")
-DEFAULT_QUALITIES = ("low", "medium", "high")
-DEFAULT_SIZES = ("1536x1024", "1024x1024", "1024x1536")
-ASPECT_RATIOS = ("16:9", "3:2", "4:3", "1:1", "2:3")
+#: Providers where the model is a name the user decides (an Azure deployment, a model on an own server): a name that
+#: is not in the registry is accepted, with the capabilities every OpenAI-compatible image API has.
+NAMED_PROVIDER_TYPES = ("azure_openai", "openai_compatible")
 #: Models without arbitrary sizes (unknown deployments, own servers) get the nearest standard size.
 STANDARD_FOR_ASPECT = {"16:9": "1536x1024", "3:2": "1536x1024", "4:3": "1536x1024", "1:1": "1024x1024",
                        "2:3": "1024x1536"}
 
 
-@dataclass(frozen=True)
-class ImageModel:
-    id: str
-    label: str
-    provider_type: str
-    description: str = ""
-    quality_class: int = 3
-    speed_class: int = 2
-    reference_images: bool = False
-    max_reference_images: int = 0
-    qualities: tuple[str, ...] = DEFAULT_QUALITIES
-    sizes: tuple[str, ...] = DEFAULT_SIZES
-    input_fidelity: bool = False
-    default: bool = False
-    known: bool = True  # False for a deployment/model name the user typed (capabilities unknown)
-    aspect_sizes: tuple[tuple[str, str], ...] = ()
-
-    def size_for(self, aspect_ratio: str) -> str:
-        """The request size for an aspect ratio (exact when the model supports it, else the nearest standard)."""
-        sizes = dict(self.aspect_sizes)
-        return sizes.get(aspect_ratio) or STANDARD_FOR_ASPECT.get(aspect_ratio, DEFAULT_SIZES[0])
-
-    def as_dict(self) -> dict[str, Any]:
-        return {"id": self.id, "label": self.label, "provider_type": self.provider_type,
-                "description": self.description, "quality_class": self.quality_class,
-                "speed_class": self.speed_class, "reference_images": self.reference_images,
-                "max_reference_images": self.max_reference_images, "qualities": list(self.qualities),
-                "sizes": list(self.sizes), "default": self.default, "known": self.known,
-                "aspect_sizes": dict(self.aspect_sizes)}
+def note() -> str:
+    return str(load_catalog().get("image_note") or "")
 
 
-@cache
-def catalog_data() -> dict[str, Any]:
-    return json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+def describe(row: dict[str, Any] | None, *, model_id: str = "", provider_type: str = "",
+             known: bool = True) -> dict[str, Any]:
+    """An image model as the assistant uses it. ``row`` is a registry row; without one (a typed name) the model gets
+    the conservative defaults and ``known`` False."""
+    params = dict(DEFAULT_PARAMS["image"]) if row is None else dict(row["params"])
+    name = model_id or (row["model_id"] if row else "")
+    return {"id": name, "label": (row["display_name"] if row and known else name) or name,
+            "provider_id": row["provider_id"] if row else "", "provider_type": provider_type,
+            "description": (row.get("description") or "") if row else "",
+            "quality_class": row["quality_class"] if row else 3, "speed_class": row["speed_class"] if row else 2,
+            "reference_images": bool(params["reference_images"]),
+            "max_reference_images": int(params["max_reference_images"]), "qualities": list(params["qualities"]),
+            "sizes": list(params["sizes"]), "aspect_sizes": dict(params["aspect_sizes"]),
+            "complexities": list(params["complexities"]), "input_fidelity": bool(params["input_fidelity"]),
+            "default": bool(row.get("is_default")) if row else False, "known": known and row is not None}
 
 
-@cache
-def catalog() -> tuple[ImageModel, ...]:
-    return tuple(ImageModel(id=m["id"], label=m["label"], provider_type=m["provider_type"],
-                            description=m.get("description", ""), quality_class=int(m.get("quality_class", 3)),
-                            speed_class=int(m.get("speed_class", 2)), reference_images=bool(m.get("reference_images")),
-                            max_reference_images=int(m.get("max_reference_images", 0)),
-                            qualities=tuple(m.get("qualities") or DEFAULT_QUALITIES),
-                            sizes=tuple(m.get("sizes") or DEFAULT_SIZES), input_fidelity=bool(m.get("input_fidelity")),
-                            default=bool(m.get("default")),
-                            aspect_sizes=tuple((m.get("aspect_sizes") or {}).items())) for m in catalog_data()["models"])
+def size_for(model: dict[str, Any] | None, aspect_ratio: str) -> str:
+    """The request size for an aspect ratio: exact when the model supports it, else the nearest standard size."""
+    exact = ((model or {}).get("aspect_sizes") or {}).get(aspect_ratio)
+    return str(exact) if exact else STANDARD_FOR_ASPECT.get(aspect_ratio, STANDARD_SIZES[0])
 
 
-def resolve(provider_type: str, model_id: str) -> ImageModel | None:
-    """The chosen model, or the catalog default for the provider type. A name the user typed (Azure deployment,
-    own server) is accepted with conservative capabilities: no reference images, standard sizes and qualities."""
-    if provider_type not in IMAGE_PROVIDER_TYPES:
-        return None
-    options = [m for m in catalog() if m.provider_type == provider_type]
-    if model_id:
-        known = next((m for m in options if m.id == model_id), None)
-        if known is not None:
-            return known
-        same_id = next((m for m in catalog() if m.id == model_id), None)  # e.g. an Azure deployment named like the model
-        if same_id is not None:
-            return ImageModel(**{**same_id.__dict__, "provider_type": provider_type})
-        return ImageModel(id=model_id, label=model_id, provider_type=provider_type, known=False)
-    return next((m for m in options if m.default), None)
+def quality_for(model: dict[str, Any] | None, wanted: str) -> str:
+    """The wanted quality when the model has it, else the best one it has up to «high»."""
+    qualities = list((model or {}).get("qualities") or DEFAULT_PARAMS["image"]["qualities"])
+    if wanted in qualities:
+        return wanted
+    return "high" if "high" in qualities else qualities[-1]
+
+
+def fit(request: ImageGenerationRequest, model: dict[str, Any]) -> ImageGenerationRequest:
+    """The request with only what ``model`` supports: quality within its levels, complexity and input fidelity only
+    when it has them, reference images only when it takes them (and never more than it takes)."""
+    references = list(request.reference_images[: int(model.get("max_reference_images") or 0)]) \
+        if model.get("reference_images") else []
+    return request.model_copy(update={
+        "quality": quality_for(model, request.quality),
+        "complexity": request.complexity if request.complexity in (model.get("complexities") or ()) else None,
+        "input_fidelity": request.input_fidelity if model.get("input_fidelity") and references else None,
+        "reference_images": references,
+    })

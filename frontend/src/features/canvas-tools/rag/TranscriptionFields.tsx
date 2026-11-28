@@ -1,6 +1,8 @@
 // Emne-RAG: choice of transcription (used under «Tilpass kilder → Avansert» and under «Innstillinger»). A saved setting
 // that applies to all courses. Provider, model and language appear only for an external service, with the privacy
-// note right where that decision is made.
+// note right where that decision is made. The models offered are the enabled transcription models in the model
+// registry (core/models.ts).
+import { modelOptions, selectableModels, useModelRegistry } from "../../../core/models";
 import { Alert, Badge, Disclosure, RadioGroup, SelectField, TextField } from "../../../design-system";
 import type { RagSettings, RagStatus } from "./api";
 
@@ -31,8 +33,10 @@ export function TranscriptionFields({ status, value, onChange, name }: {
   onChange: (patch: Partial<TranscriptionValue>) => void;
   name: string;
 }) {
-  const providerType = status.providers.find((p) => p.id === value.transcription_provider_id)?.type ?? "";
-  const models = status.transcription_models.filter((m) => m.provider_type === providerType);
+  const registry = useModelRegistry();
+  const need = { requires: ["transcription"], providerId: value.transcription_provider_id };
+  const models = selectableModels(registry.data?.models, need);
+  const automatic = models.find((m) => m.is_default) ?? [...models].sort((a, b) => b.priority - a.priority)[0];
   const plan = status.transcription.plan;
   const showPlan = value.transcription === "provider" && status.transcription.mode === "provider" &&
     status.settings.transcription_provider_id === value.transcription_provider_id;
@@ -65,8 +69,8 @@ export function TranscriptionFields({ status, value, onChange, name }: {
             {models.length ? (
               <SelectField label="Modell" value={value.transcription_model}
                 onChange={(e) => onChange({ transcription_model: e.target.value })} options={[
-                  { value: "", label: `Standard (${models.find((m) => m.default)?.label ?? "katalogen"})` },
-                  ...models.map((m) => ({ value: m.id, label: m.label })),
+                  { value: "", label: `Velges automatisk (${automatic?.display_name ?? "første aktiverte modell"})` },
+                  ...modelOptions(registry.data?.models, need, { value: "model_id", current: value.transcription_model }),
                 ]} />
             ) : (
               <TextField label="Modell eller deployment" value={value.transcription_model}

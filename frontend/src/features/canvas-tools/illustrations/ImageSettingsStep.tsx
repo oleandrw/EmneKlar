@@ -1,11 +1,14 @@
 // Step 2 – Bildeinnstillinger: quality, number of images and design profile. The system picks the best available
 // models for the quality profile; model names, image formats, widths and costs live under «Avanserte innstillinger».
+// Every model selector here reads the model registry (core/models.ts), and the image settings shown are the ones the
+// chosen image model supports.
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Gauge, Rocket, Scale } from "lucide-react";
 import type { ReactElement } from "react";
 import { Link } from "react-router";
 
 import { api } from "../../../core/api/client";
+import { modelOptions, selectableModels, useModelRegistry } from "../../../core/models";
 import {
   Alert,
   Badge,
@@ -47,11 +50,27 @@ export function ImageSettingsStep({ courseId, settings, onChange, status, catalo
     },
   });
   const choices = status.choices;
+  const registry = useModelRegistry();
+  const models = registry.data?.models;
   const provider = status.image_providers.find((p) => p.id === settings.image_provider_id);
-  const textOptions = (vision: boolean) => [
-    { value: "", label: "Velges automatisk ut fra kvalitet" },
-    ...status.text_models.filter((m) => !vision || m.vision).map((m) => ({ value: m.ref, label: `${m.display_name} (${m.provider_id})` })),
+  const AUTO = { value: "", label: "Velges automatisk ut fra kvalitet" };
+  const textOptions = (role: string, current: string) => [
+    AUTO,
+    ...modelOptions(models, { requires: catalog.role_requires?.[role] ?? ["text"] }, { value: "ref", current }),
   ];
+  const imageNeed = { requires: ["image_generation"], providerId: settings.image_provider_id };
+  const imageModels = selectableModels(models, imageNeed);
+  // The image model whose parameters decide which settings are shown: the one chosen here, else the automatic choice.
+  const chosenImage = imageModels.find((m) => m.model_id === settings.image_model);
+  const automatic = !settings.image_model && choices.image.provider_id === settings.image_provider_id ? choices.image.model : null;
+  const imageParams = chosenImage?.params ?? automatic ?? null;
+  const qualities = imageParams?.qualities ?? registry.data?.image_qualities ?? ["low", "medium", "high"];
+  const complexities = imageParams?.complexities ?? [];
+  const takesReferences = imageParams ? Boolean(imageParams.reference_images) : true;
+  const exactFormat = settings.image_format === "auto" || !imageParams || Boolean(imageParams.aspect_sizes?.[settings.image_format])
+    || ["3:2", "1:1", "2:3"].includes(settings.image_format);
+  const notes = [choices.image.note, ...Object.values(choices.roles).map((r) => (r.note ? `${r.label}: ${r.note}` : null))]
+    .filter((n): n is string => Boolean(n));
   const missing = ["illustration_analysis", "illustration_planning", "illustration_review"].some((r) => !choices.roles[r]?.primary)
     || !choices.image.available;
 
@@ -64,6 +83,13 @@ export function ImageSettingsStep({ courseId, settings, onChange, status, catalo
           </Alert>
         ) : missing ? (
           <Alert tone="warning">Noen KI-oppgaver mangler en tilgjengelig modell. Se «Avanserte innstillinger» nederst.</Alert>
+        ) : null}
+        {notes.length ? (
+          <Alert tone="warning" title="Et modellvalg er ikke lenger tilgjengelig">
+            {notes.map((n) => <p key={n}>{n}</p>)}
+            <p>Velg en annen modell under «Avanserte innstillinger», eller slå modellen på igjen under{" "}
+              <Link to="/innstillinger/ki-assistenter">Innstillinger → KI-assistenter</Link>.</p>
+          </Alert>
         ) : null}
         <RadioGroup<QualityProfileId>
           legend="Kvalitet"
@@ -114,30 +140,40 @@ export function ImageSettingsStep({ courseId, settings, onChange, status, catalo
                     : <Badge key={role} tone="warning">Ingen modell tilgjengelig</Badge>] as [string, ReactElement];
                 }),
                 ["Bildegenerering", choices.image.model
-                  ? <span>{choices.image.model.label}, kvalitet {choices.image.quality}</span>
+                  ? <span>{choices.image.model.label}, kvalitet {choices.image.quality}{choices.image.complexity ? `, kompleksitet ${choices.image.complexity}` : ""} <span className="ek-small ek-muted">– {choices.image.reason}</span></span>
                   : <Badge tone="warning">{choices.image.unavailable_reason ?? "Ingen bildemodell"}</Badge>],
               ]} />
-              <p className="ek-small ek-muted">Claude brukes til analyse, bildeplan og kvalitetskontroll. Bildene lages av OpenAIs bildemodeller (eller en annen OpenAI-kompatibel tjeneste du setter opp).</p>
+              <p className="ek-small ek-muted">Modellene her er de som er aktivert under <Link to="/innstillinger/ki-assistenter">Innstillinger → KI-assistenter</Link>. Bilder kan lages av OpenAIs bildemodeller eller en annen OpenAI-kompatibel tjeneste du setter opp.</p>
             </div>
             <div className="ek-grid" data-cols="3" data-gap="4">
               {Object.entries(ROLE_FIELD).map(([role, field]) => (
                 <SelectField key={role} label={catalog.roles[role] ?? role} value={String(settings[field] ?? "")}
                   onChange={(e) => set({ [field]: e.target.value } as Partial<IllustrationSettings>)}
-                  options={textOptions(role === "illustration_review")} />
+                  options={textOptions(role, String(settings[field] ?? ""))} />
               ))}
               <SelectField label="Leverandør for bilder" value={settings.image_provider_id}
                 onChange={(e) => set({ image_provider_id: e.target.value, image_model: "" })}
                 options={status.image_providers.map((p) => ({ value: p.id, label: `${p.name}${p.configured ? "" : " (ikke satt opp)"}` }))} />
-              {provider?.needs_model_name ? (
-                <TextField label="Bildemodell / deployment" value={settings.image_model} onChange={(e) => set({ image_model: e.target.value })} />
+              {provider?.needs_model_name && !imageModels.length ? (
+                <TextField label="Bildemodell / deployment" value={settings.image_model} onChange={(e) => set({ image_model: e.target.value })}
+                  hint="Navnet hos leverandøren. Du kan også legge modellen til under Innstillinger → KI-assistenter." />
               ) : (
                 <SelectField label="Bildemodell" value={settings.image_model} onChange={(e) => set({ image_model: e.target.value })}
-                  options={[{ value: "", label: "Velges automatisk ut fra kvalitet" }, ...(provider?.models ?? []).map((m) => ({ value: m.id, label: `${m.label} – ${m.description}` }))]} />
+                  hint={imageModels.length ? undefined : "Ingen bildemodell er aktivert for leverandøren."}
+                  options={[AUTO, ...modelOptions(models, imageNeed, { value: "model_id", current: settings.image_model, describe: true })]} />
               )}
               <SelectField label="Bildekvalitet" value={settings.image_quality}
                 onChange={(e) => set({ image_quality: e.target.value as IllustrationSettings["image_quality"] })}
-                options={[{ value: "", label: "Velges automatisk" }, ...["low", "medium", "high", "xhigh", "max"].map((q) => ({ value: q, label: q }))]} />
-              <SelectField label="Bildeformat" value={settings.image_format} hint="«Automatisk» velger format per bilde."
+                options={[{ value: "", label: "Velges automatisk" }, ...qualities.map((q) => ({ value: q, label: q })),
+                  ...(settings.image_quality && !qualities.includes(settings.image_quality)
+                    ? [{ value: settings.image_quality, label: `${settings.image_quality} (støttes ikke av modellen)` }] : [])]} />
+              {complexities.length ? (
+                <SelectField label="Kompleksitet" value={settings.image_complexity ?? ""} hint="Hvor mye modellen arbeider med bildet."
+                  onChange={(e) => set({ image_complexity: e.target.value as IllustrationSettings["image_complexity"] })}
+                  options={[{ value: "", label: "Modellens standard" }, ...complexities.map((c) => ({ value: c, label: c }))]} />
+              ) : null}
+              <SelectField label="Bildeformat" value={settings.image_format}
+                hint={exactFormat ? "«Automatisk» velger format per bilde." : "Modellen har ikke dette formatet: bildet lages i nærmeste standardstørrelse (3:2)."}
                 onChange={(e) => set({ image_format: e.target.value as ImageFormat })}
                 options={Object.entries(catalog.formats).map(([value, label]) => ({ value, label }))} />
               <TextField label="Maksimal visningsbredde i Canvas (px)" type="number" min={240} max={2000} step={10} value={settings.max_width_px}
@@ -148,8 +184,10 @@ export function ImageSettingsStep({ courseId, settings, onChange, status, catalo
               <TextField label="Kreditering" value={settings.credit_text} onChange={(e) => set({ credit_text: e.target.value })} />
               <TextField label="Mappe i Canvas-filer" value={settings.folder} onChange={(e) => set({ folder: e.target.value })} />
             </div>
-            <Checkbox label="Bruk godkjente bilder som stilreferanse" checked={settings.use_reference_images}
-              onChange={(e) => set({ use_reference_images: e.target.checked })} />
+            {takesReferences ? (
+              <Checkbox label="Bruk godkjente bilder som stilreferanse" checked={settings.use_reference_images}
+                onChange={(e) => set({ use_reference_images: e.target.checked })} />
+            ) : null}
             <div>
               <Button size="sm" onClick={() => save.mutate()} loading={save.isPending}>Lagre som standard</Button>
             </div>

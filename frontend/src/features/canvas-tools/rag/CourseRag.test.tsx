@@ -69,7 +69,6 @@ const status = (partial: Partial<RagStatus> = {}): RagStatus => ({
   not_available: { video: "Video og lyd er ikke tilgjengelig i denne versjonen." },
   providers: [{ id: "openai", name: "OpenAI", type: "openai" }],
   transcription: { mode: "local", plan: null },
-  transcription_models: [{ id: "gpt-transcribe", label: "GPT Transcribe", provider_type: "openai", segments: false, default: true }],
   ...partial,
 });
 

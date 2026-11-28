@@ -99,6 +99,8 @@ class ImageGenerationRequest(BaseModel):
     background: Literal["opaque", "transparent", "auto"] = "opaque"
     reference_images: list[ImagePart] = Field(default_factory=list)
     input_fidelity: Literal["low", "high"] | None = None
+    #: Only for models that have the parameter (the registry's ``params.complexities``); None = not sent.
+    complexity: Literal["low", "medium", "high"] | None = None
 
 
 class GeneratedImage(BaseModel):

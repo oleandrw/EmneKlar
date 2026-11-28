@@ -4,6 +4,7 @@ import { Save } from "lucide-react";
 import { useState } from "react";
 
 import { api } from "../../../core/api/client";
+import { modelOptions, selectableModels, useModelRegistry } from "../../../core/models";
 import {
   Alert,
   Badge,
@@ -35,6 +36,9 @@ export function SettingsPanel({ status, courseId }: { status: RagStatus; courseI
       toast.show({ tone: "success", title: "Innstillingene er lagret" });
     },
   });
+  const registry = useModelRegistry();
+  const embeddingNeed = { requires: ["embedding"], providerId: form.embedding_provider_id };
+  const embeddingModels = selectableModels(registry.data?.models, embeddingNeed);
   const models = status.local.models;
   const options = (kind: LocalModel["kind"]) => [
     { value: "", label: `Standard (${models.find((m) => m.kind === kind && m.default)?.label ?? "katalogen"})` },
@@ -73,8 +77,15 @@ export function SettingsPanel({ status, courseId }: { status: RagStatus; courseI
               <SelectField label="Leverandør" value={form.embedding_provider_id}
                 onChange={(e) => set({ embedding_provider_id: e.target.value })}
                 options={status.providers.map((p) => ({ value: p.id, label: p.name }))} />
-              <TextField label="Modell hos leverandøren" value={form.embedding_provider_model}
-                onChange={(e) => set({ embedding_provider_model: e.target.value })} hint="For eksempel bge-m3 i Ollama." />
+              {embeddingModels.length ? (
+                <SelectField label="Modell hos leverandøren" value={form.embedding_provider_model}
+                  onChange={(e) => set({ embedding_provider_model: e.target.value })} placeholder="Velg modell"
+                  options={modelOptions(registry.data?.models, embeddingNeed, { value: "model_id", current: form.embedding_provider_model })} />
+              ) : (
+                <TextField label="Modell hos leverandøren" value={form.embedding_provider_model}
+                  onChange={(e) => set({ embedding_provider_model: e.target.value })}
+                  hint="For eksempel bge-m3 i Ollama. Embedding-modeller du legger til under Innstillinger → KI-assistenter, kan velges her." />
+              )}
             </div>
           ) : null}
           {installed.reranker ? (

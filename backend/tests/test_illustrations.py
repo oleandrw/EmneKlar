@@ -336,7 +336,7 @@ def test_quality_profiles_pick_role_models_in_order() -> None:
                       "openai/gpt-6.1-terra", "anthropic/claude-sonnet-5-5", "openai/gpt-6.1-sol")
     ready = {"openai": True, "anthropic": True}
     best = profiles.get("max")
-    assert best.image_models == ("openai/gpt-image-2.5-sunburst",)
+    assert best.image_strategy == "quality", "image models are not named: the registry's best enabled one is used"
     assert profiles.get("balanced").default and not best.default, "«Balansert» is the default quality"
     assert profiles.preferred_models(best, "illustration_analysis", models, ready, vision=False)[0]["model_id"] == \
         "claude-fable-5-1"
@@ -346,7 +346,7 @@ def test_quality_profiles_pick_role_models_in_order() -> None:
     assert profiles.preferred_models(best, "illustration_analysis", models, only_openai, vision=False)[0][
         "model_id"] == "gpt-6-astra"
     fast = profiles.get("fast")
-    assert fast.review_rounds == 0 and fast.image_models == ("openai/gpt-image-2.5-flare",)
+    assert fast.review_rounds == 0 and fast.image_strategy == "speed"
     chosen = profiles.preferred_models(fast, "illustration_review", models, ready, vision=True,
                                        override="anthropic/claude-opus-5-5")
     assert chosen[0]["model_id"] == "claude-opus-5-5", "the teacher's own choice comes first"
@@ -558,7 +558,8 @@ def test_status_and_catalog(canvas_client: TestClient) -> None:
     assert status["ai"]["available"] is False, "core features work without AI; the assistant says why it cannot run"
     catalog = canvas_client.get("/api/illustrations/catalog").json()
     assert [p["id"] for p in catalog["quality_profiles"]] == ["max", "balanced", "fast"]
-    assert {m["id"] for m in catalog["image_models"]} == {"gpt-image-2.5-sunburst", "gpt-image-2.5-flare"}
+    assert "image_models" not in catalog and "text_models" not in status, "model lists come from /api/ai/models"
+    assert catalog["role_requires"]["illustration_review"] == ["text", "vision"]
     assert [(s["key"], s["label"]) for s in catalog["styles"]] == [("happy_pixar", "Happy Pixar"),
                                                                    ("custom", "Egendefinert")]
     index = canvas_client.get(f"/api/courses/{COURSE_ID}/illustrations/scope-index").json()

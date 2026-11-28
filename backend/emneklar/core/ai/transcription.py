@@ -1,40 +1,27 @@
-"""Catalog of transcription models at AI providers (``transcription_models.json``) – no model names in features."""
+"""Transcription models at AI providers as features see them – built from the model registry.
+
+Transcription is a kind of model in the registry (``ai_models.kind == "transcription"``,
+:mod:`emneklar.core.ai.catalog`). ``segments`` says whether the model gives timestamps per sentence; None = unknown
+(tried with timestamps first).
+"""
 
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass
-from functools import cache
-from pathlib import Path
 from typing import Any
 
-CATALOG_PATH = Path(__file__).resolve().parent / "transcription_models.json"
+from emneklar.core.ai.catalog import load_catalog
+
+#: Providers where the model is a name the user decides (an Azure deployment, a model on an own server).
+NAMED_PROVIDER_TYPES = ("azure_openai", "openai_compatible")
 
 
-@dataclass(frozen=True)
-class TranscriptionModel:
-    id: str
-    label: str
-    provider_type: str
-    segments: bool | None  # None = unknown (tried with timestamps first)
-    default: bool = False
-
-    def as_dict(self) -> dict[str, Any]:
-        return {"id": self.id, "label": self.label, "provider_type": self.provider_type, "segments": self.segments,
-                "default": self.default}
+def note() -> str:
+    return str(load_catalog().get("transcription_note") or "")
 
 
-@cache
-def catalog() -> tuple[TranscriptionModel, ...]:
-    data = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
-    return tuple(TranscriptionModel(id=m["id"], label=m["label"], provider_type=m["provider_type"],
-                                    segments=m.get("segments"), default=bool(m.get("default"))) for m in data["models"])
-
-
-def resolve(provider_type: str, model_id: str) -> TranscriptionModel | None:
-    """The chosen model, or the catalog default for the provider type. None when no model is known or chosen."""
-    options = [m for m in catalog() if m.provider_type == provider_type]
-    if model_id:
-        return next((m for m in options if m.id == model_id), None) or TranscriptionModel(
-            id=model_id, label=model_id, provider_type=provider_type, segments=None)
-    return next((m for m in options if m.default), None)
+def describe(row: dict[str, Any] | None, *, model_id: str = "", provider_type: str = "") -> dict[str, Any]:
+    name = model_id or (row["model_id"] if row else "")
+    return {"id": name, "label": (row["display_name"] if row else name) or name,
+            "provider_id": row["provider_id"] if row else "", "provider_type": provider_type,
+            "segments": row["params"].get("segments") if row else None,
+            "default": bool(row.get("is_default")) if row else False}

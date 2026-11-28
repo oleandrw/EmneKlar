@@ -49,9 +49,11 @@ backend/emneklar/
     jobs/              manager.py (bakgrunnsjobber), progress.py, eta.py
     changes/           engine.py (endringskø, konflikt, backup, logg, angre), appliers.py
     backup/            store.py (sikkerhetskopier av Canvas-objekter)
-    ai/                providers/, catalog.py (modellregister), router.py, service.py (personvern, logg),
-                       images.py (bildemodeller, image_models.json), profiles.py (kvalitetsprofiler,
-                       model_profiles.json), pricing.py (veiledende priser for anslag, pricing.json),
+    ai/                providers/, catalog.py (modellregisteret: alle typer modeller, model_catalog.json),
+                       router.py, service.py (personvern, logg, valg av modell), images.py og transcription.py
+                       (bilde- og transkripsjonsmodeller slik funksjonene ser dem, bygd fra registeret),
+                       profiles.py (kvalitetsprofiler, model_profiles.json), pricing.py (veiledende priser
+                       for anslag, pricing.json),
                        local/ (lokale modeller for Emne-RAG: embedding, rerangering, NB-Whisper; local_models.json)
     updates/           versjonssjekk mot GitHub Releases
     flags.py           funksjonsflagg
@@ -145,10 +147,24 @@ hentes med token i backend; SVG serveres ikke).
 
 * `AIProvider`-abstraksjon: OpenAI (Chat Completions), Anthropic (Messages), Azure OpenAI (v1-API eller
   klassisk deployment-URL), lokal OpenAI-kompatibel (Ollama, LM Studio, vLLM).
-* **Modellregister** (`ai_models`): leverandør, modell, tekst/bilde/strukturert svar, kontekst-, kvalitets-,
-  hastighets- og kostnadsklasse, aktivert. Startdata fra en versjonert katalog; brukeren kan endre alt. Modeller
-  som oppdages hos leverandøren får ukjente egenskaper og må klassifiseres før bruk (bortsett fra der
-  leverandøren selv oppgir egenskapene, som Anthropics modelliste).
+* **Modellregisteret** (`ai_models`, `core/ai/catalog.py`) er eneste sannhetskilde for KI-modeller. En rad har
+  leverandør, modell-id, visningsnavn, **type** (`kind`: tekst, bildegenerering, transkripsjon, embedding),
+  kapabiliteter (utledet: tekst, bildeanalyse, strukturert svar, bildegenerering, referansebilder, transkripsjon,
+  tidsstempler, embedding), **støttede parametere** (`params`: kvalitetsnivåer, størrelser, eksakte størrelser per
+  bildeformat, referansebilder, kompleksitet; tidsstempler for transkripsjon), kontekst-, kvalitets-, hastighets- og
+  kostnadsklasse, aktivert, og lærerens egen preferanse (`priority` 0–3 og `is_default`, én standardmodell per
+  type). Veiledende pris slås opp i `pricing.json`. Startdata kommer fra en versjonert katalog
+  (`model_catalog.json`, kontrollert mot leverandørenes dokumentasjon); brukeren kan endre alt. Modeller som
+  oppdages hos leverandøren får ukjente egenskaper og må klassifiseres før bruk; typen *foreslås* ut fra navnet
+  (`kind_hints`), men ingenting antas ut fra et versjonsnummer.
+* **Modellvelgere har ingen egne lister.** Grensesnittet leser `GET /api/ai/models` gjennom `core/models.ts`
+  (`useModelRegistry`, `modelOptions`): en velger sier hvilke kapabiliteter funksjonen trenger og får de aktiverte,
+  klassifiserte modellene som har dem. Bakenden bruker det samme (`catalog.usable`, `catalog.ordered`,
+  `AIService.pick_model`). Endringer under Innstillinger gjelder fra neste forespørsel (ingen mellomlagring i
+  bakenden), og grensesnittet henter på nytt med `useModelRegistryRefresh` – uten omstart eller ny innlasting. Et
+  lagret valg som er slått av eller fjernet, erstattes av et automatisk valg, og brukeren får beskjed; i det øyeblikket
+  et bilde lages, brukes aldri en annen modell enn den som ble vist. Modellnavn i tidligere resultater (bruksloggen,
+  illustrasjoner) er tekst og endres ikke.
 * **Ruteren** velger billigste modell som forventes å holde nok kvalitet for oppgaven (oppgavetype,
   kompleksitet, bilde, kontekststørrelse, strategi), med reserveliste ved feil. Ingen modellnavn er hardkodet i
   funksjonene.
@@ -164,9 +180,10 @@ hentes med token i backend; SVG serveres ikke).
   `DATA_RULE`. Modellene får ingen verktøy, og svarene valideres mot skjema.
 * **Bildegenerering** er en egen leverandøroppgave (`AIProvider.generate_image`): OpenAI Image API
   (`/images/generations`, og `/images/edits` med referansebilder i `image[]`), Azure OpenAI og OpenAI-kompatible
-  servere. Anthropic-modeller analyserer bilder, men lager dem ikke. Bildemodellene står i `image_models.json`;
-  en ny bildegenerator er en ny katalograd (og en implementasjon for en ny API-familie). Samme personvernport og
-  bruksloggen gjelder.
+  servere. Anthropic-modeller analyserer bilder, men lager dem ikke. Bildemodellene er rader i modellregisteret
+  (type bildegenerering); en ny bildegenerator er en ny rad (og en implementasjon for en ny API-familie).
+  `images.fit` tilpasser forespørselen til modellen: en parameter modellen ikke støtter, sendes aldri. Samme
+  personvernport og bruksloggen gjelder.
 * **Kvalitetsprofiler** (`model_profiles.json`: Maksimal kvalitet / Balansert / Rask) gir foretrukne modeller per
   rolle; bare aktiverte modeller hos klare leverandører brukes, ellers velger ruteren med profilens strategi.
   `AIService.run(preferred=…)` prøver profilens modeller først, deretter ruterens valg og reserver. Reservelisten

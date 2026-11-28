@@ -1,6 +1,15 @@
 {
-  "version": "2026-11-04",
-  "note": "Kuratert startliste kontrollert mot leverandørenes dokumentasjon 4. november 2026. Klassene er relative: kvalitet og kostnad 1 (lav) til 4 (høy), hastighet 1 (treg) til 3 (rask), kontekst 1 (opptil ca. 30k tokens) til 4 (over ca. 380k). Alt kan endres under Innstillinger → KI-assistenter. Priser lagres ikke.",
+  "version": "2026-11-27",
+  "note": "Kuratert startliste kontrollert mot leverandørenes dokumentasjon (tekstmodeller 4. november 2026, bilde- og transkripsjonsmodeller 27. november 2026). Klassene er relative: kvalitet og kostnad 1 (lav) til 4 (høy), hastighet 1 (treg) til 3 (rask), kontekst 1 (opptil ca. 30k tokens) til 4 (over ca. 380k). Alt kan endres under Innstillinger → KI-assistenter. Veiledende priser ligger i pricing.json.",
+  "image_note": "Bildemodeller (OpenAI Image API: /images/generations, og /images/edits med referansebilder i feltet image[], inntil 16 bilder). Kontrollert mot OpenAIs API-referanse 27. november 2026: GPT image-modellene svarer alltid med base64 og støtter standardstørrelsene 1024x1024, 1536x1024 og 1024x1536 og kvalitet low/medium/high. For 2.5-modellene er også xhigh og max og vilkårlige størrelser dokumentert (bredde og høyde delelig med 16, sideforhold mellom 1:3 og 3:1, for eksempel 1536x864 for 16:9). For 2.6-modellene er parameteren complexity (low/medium/high) dokumentert; xhigh, max og vilkårlige størrelser er ikke dokumentert for dem og brukes ikke, så 16:9 lages i nærmeste standardstørrelse. input_fidelity er ikke dokumentert for noen av dem og sendes ikke. Anthropic-modeller kan analysere bilder, men ikke lage dem. For Azure OpenAI og egne servere skriver du navnet på deployment eller modell selv, eller legger modellen til under Innstillinger → KI-assistenter.",
+  "transcription_note": "Transkripsjonsmodeller (OpenAI-kompatibelt endepunkt /audio/transcriptions). Tidsstempler per setning betyr response_format verbose_json; modeller uten får tidsstempel per lydbit (60–120 sekunder, kuttet ved pauser). Kontrollert mot OpenAIs API-referanse og migreringsveiledning (november 2026): whisper-1 skal fjernes 26.02.2027. Ukjente modeller prøves med tidsstempler først.",
+  "kind_hints": [
+    {"pattern": "gpt-image-*", "kind": "image"},
+    {"pattern": "dall-e-*", "kind": "image"},
+    {"pattern": "*transcribe*", "kind": "transcription"},
+    {"pattern": "whisper*", "kind": "transcription"},
+    {"pattern": "*embedding*", "kind": "embedding"}
+  ],
   "models": [
     {"provider": "openai", "model_id": "gpt-6-luna", "display_name": "GPT-6 Luna", "vision": true, "structured_output": true, "context_class": 4, "quality_class": 2, "speed_class": 3, "cost_class": 1},
     {"provider": "openai", "model_id": "gpt-6.1-terra", "display_name": "GPT-6.1 Terra", "vision": true, "structured_output": true, "context_class": 4, "quality_class": 2, "speed_class": 3, "cost_class": 1},
@@ -9,6 +18,17 @@
     {"provider": "anthropic", "model_id": "claude-haiku-4-5-20251001", "display_name": "Claude Haiku 4.5", "vision": true, "structured_output": true, "context_class": 3, "quality_class": 2, "speed_class": 3, "cost_class": 2},
     {"provider": "anthropic", "model_id": "claude-sonnet-5-5", "display_name": "Claude Sonnet 5.5", "vision": true, "structured_output": true, "context_class": 4, "quality_class": 3, "speed_class": 2, "cost_class": 2},
     {"provider": "anthropic", "model_id": "claude-opus-5-5", "display_name": "Claude Opus 5.5", "vision": true, "structured_output": true, "context_class": 4, "quality_class": 4, "speed_class": 1, "cost_class": 3},
-    {"provider": "anthropic", "model_id": "claude-fable-5-1", "display_name": "Claude Fable 5.1", "vision": true, "structured_output": true, "context_class": 4, "quality_class": 4, "speed_class": 1, "cost_class": 4}
+    {"provider": "anthropic", "model_id": "claude-fable-5-1", "display_name": "Claude Fable 5.1", "vision": true, "structured_output": true, "context_class": 4, "quality_class": 4, "speed_class": 1, "cost_class": 4},
+    {"provider": "openai", "kind": "image", "model_id": "gpt-image-2.5-sunburst", "display_name": "GPT-Image-2.5 Sunburst", "description": "Høyeste bildekvalitet.", "quality_class": 4, "speed_class": 1, "cost_class": 3, "default": true,
+     "params": {"qualities": ["low", "medium", "high", "xhigh", "max"], "sizes": ["1536x1024", "1024x1024", "1024x1536"], "aspect_sizes": {"16:9": "1536x864", "3:2": "1536x1024", "4:3": "1536x1152", "1:1": "1024x1024", "2:3": "1024x1536"}, "reference_images": true, "max_reference_images": 16, "complexities": [], "input_fidelity": false}},
+    {"provider": "openai", "kind": "image", "model_id": "gpt-image-2.5-flare", "display_name": "GPT-Image-2.5 Flare", "description": "Raskere og mer kostnadseffektiv generering.", "quality_class": 3, "speed_class": 3, "cost_class": 2,
+     "params": {"qualities": ["low", "medium", "high", "xhigh", "max"], "sizes": ["1536x1024", "1024x1024", "1024x1536"], "aspect_sizes": {"16:9": "1536x864", "3:2": "1536x1024", "4:3": "1536x1152", "1:1": "1024x1024", "2:3": "1024x1536"}, "reference_images": true, "max_reference_images": 16, "complexities": [], "input_fidelity": false}},
+    {"provider": "openai", "kind": "image", "model_id": "gpt-image-2.6-sunburst", "display_name": "GPT-Image-2.6 Sunburst", "description": "Høy bildekvalitet, med valgfri kompleksitet.", "quality_class": 4, "speed_class": 1, "cost_class": 3,
+     "params": {"qualities": ["low", "medium", "high"], "sizes": ["1536x1024", "1024x1024", "1024x1536"], "aspect_sizes": {}, "reference_images": true, "max_reference_images": 16, "complexities": ["low", "medium", "high"], "input_fidelity": false}},
+    {"provider": "openai", "kind": "image", "model_id": "gpt-image-2.6-flare", "display_name": "GPT-Image-2.6 Flare", "description": "Raskere generering, med valgfri kompleksitet.", "quality_class": 3, "speed_class": 3, "cost_class": 2,
+     "params": {"qualities": ["low", "medium", "high"], "sizes": ["1536x1024", "1024x1024", "1024x1536"], "aspect_sizes": {}, "reference_images": true, "max_reference_images": 16, "complexities": ["low", "medium", "high"], "input_fidelity": false}},
+    {"provider": "openai", "kind": "transcription", "model_id": "gpt-transcribe", "display_name": "GPT Transcribe", "quality_class": 3, "speed_class": 2, "cost_class": 2, "default": true, "params": {"segments": false}},
+    {"provider": "openai", "kind": "transcription", "model_id": "gpt-4o-mini-transcribe", "display_name": "GPT-4o mini Transcribe (rimeligere)", "quality_class": 2, "speed_class": 3, "cost_class": 1, "params": {"segments": false}},
+    {"provider": "openai", "kind": "transcription", "model_id": "whisper-1", "display_name": "Whisper (tidsstempler per setning – fjernes 26.02.2027)", "quality_class": 2, "speed_class": 2, "cost_class": 2, "params": {"segments": true}}
   ]
 }

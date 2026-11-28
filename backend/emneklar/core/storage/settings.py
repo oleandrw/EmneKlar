@@ -152,7 +152,7 @@ class RagSettings(_Section):
     # Videos without captions: local NB-Whisper, an AI provider (OpenAI, Azure OpenAI, own server) or not at all.
     transcription: Literal["local", "provider", "off"] = "local"
     transcription_provider_id: str = Field("openai", max_length=40)
-    transcription_model: str = Field("", max_length=200)  # "" = catalog default (core/ai/transcription_models.json)
+    transcription_model: str = Field("", max_length=200)  # "" = chosen automatically from the model registry
     transcription_language: str = Field("", max_length=8, pattern=r"^([a-z]{2,3})?$")  # "" = detected automatically
     whisper_model: Literal["auto", "tiny", "base", "small", "medium", "large"] = "auto"
     whisper_other_language_model: str = Field("", max_length=200)
@@ -166,8 +166,9 @@ class RagSettings(_Section):
 
 
 class IllustrationSettings(_Section):
-    """KI-bildeassistent (Canvas-verktøy). Model choices refer to core/ai/model_profiles.json and image_models.json;
-    the per-role overrides are "provider_id/model_id" ("" = the quality profile decides)."""
+    """KI-bildeassistent (Canvas-verktøy). Model choices refer to the model registry (core/ai/catalog.py) and the
+    quality profiles (core/ai/model_profiles.json); the per-role overrides are "provider_id/model_id" ("" = the
+    quality profile decides)."""
 
     quality_profile: Literal["max", "balanced", "fast"] = "balanced"
     amount: Literal["low", "balanced", "high"] = "balanced"
@@ -175,8 +176,10 @@ class IllustrationSettings(_Section):
     planning_model: str = Field("", max_length=250)
     review_model: str = Field("", max_length=250)
     image_provider_id: str = Field("openai", max_length=40)
-    image_model: str = Field("", max_length=200)  # "" = the quality profile's image model
+    image_model: str = Field("", max_length=200)  # "" = chosen automatically for the quality profile
     image_quality: Literal["", "low", "medium", "high", "xhigh", "max"] = ""
+    # Only sent to image models that have the parameter; "" = the model's own default.
+    image_complexity: Literal["", "low", "medium", "high"] = ""
     # "auto" = the planner picks the format per illustration (within the design profile); otherwise fixed.
     image_format: Literal["auto", "16:9", "3:2", "4:3", "1:1", "2:3"] = "auto"
     use_reference_images: bool = True

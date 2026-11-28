@@ -2,8 +2,8 @@
 
 Goal: use the least expensive / smallest model that is expected to give
 adequate quality for the task. No model names are hard-coded – routing works
-only on the capability registry (quality, speed, cost, context, vision,
-structured output) and the user's strategy.
+only on the model registry (kind, quality, speed, cost, context, vision,
+structured output, the teacher's default and priority) and the user's strategy.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from emneklar.core.ai.catalog import preference
 from emneklar.core.storage.settings import AppSettings
 
 
@@ -25,6 +26,11 @@ class TaskProfile:
     structured: bool
     output_tokens: int
     complex_input_tokens: int  # above this input size the task needs one quality class more
+
+    @property
+    def requires(self) -> tuple[str, ...]:
+        """The capabilities a model must have to be offered for the task (see ``catalog.capabilities``)."""
+        return ("text", "vision") if self.vision else ("text",)
 
 
 TASKS: dict[str, TaskProfile] = {t.key: t for t in (
@@ -140,8 +146,8 @@ def route(task: str, settings: AppSettings, models: list[dict[str, Any]], ready:
     usable: list[dict[str, Any]] = []
     for m in models:
         name = f"{m['display_name']} ({m['provider_id']})"
-        if not m["enabled"]:
-            continue
+        if not m["enabled"] or m.get("kind", "text") != "text":
+            continue  # image, transcription and embedding models are never candidates for a text task
         if not m["capabilities_known"]:
             excluded.append(f"{name}: ikke klassifisert")
             continue
@@ -175,11 +181,14 @@ def route(task: str, settings: AppSettings, models: list[dict[str, Any]], ready:
         return 0 if (m["structured_output"] or not profile.structured) else 1
 
     if strategy == "speed":
-        ordered = sorted(pool, key=lambda m: (structured_first(m), -m["speed_class"], m["cost_class"], -m["quality_class"]))
+        ordered = sorted(pool, key=lambda m: (structured_first(m), *preference(m), -m["speed_class"], m["cost_class"],
+                                              -m["quality_class"]))
     elif strategy == "quality":
-        ordered = sorted(pool, key=lambda m: (structured_first(m), -m["quality_class"], m["cost_class"]))
+        ordered = sorted(pool, key=lambda m: (structured_first(m), *preference(m), -m["quality_class"],
+                                              m["cost_class"]))
     else:  # auto / low_cost: cheapest adequate model, then faster, then better
-        ordered = sorted(pool, key=lambda m: (structured_first(m), m["cost_class"], -m["speed_class"], m["quality_class"]))
+        ordered = sorted(pool, key=lambda m: (structured_first(m), *preference(m), m["cost_class"], -m["speed_class"],
+                                              m["quality_class"]))
     preferred = settings.ai.task_providers.get(task)
     if preferred:
         ordered.sort(key=lambda m: 0 if m["provider_id"] == preferred else 1)
@@ -212,4 +221,8 @@ def route(task: str, settings: AppSettings, models: list[dict[str, Any]], ready:
                        f"for «{profile.label}» ({', '.join(needs)}).")
     if preferred and m["provider_id"] == preferred:
         decision.reason += " Foretrukket leverandør for oppgaven er brukt."
+    if m.get("is_default"):
+        decision.reason += " Modellen er standardmodellen din."
+    elif int(m.get("priority") or 0) > 0:
+        decision.reason += " Modellen har prioritet hos deg."
     return decision
