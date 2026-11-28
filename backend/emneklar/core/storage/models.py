@@ -319,7 +319,7 @@ class Backup(Base):
 
 
 class AIModel(Base):
-    """Capability registry entry. Seeded from model_catalog.json; user-editable."""
+    """Model registry entry – the one source of truth for AI models. Seeded from model_catalog.json; user-editable."""
 
     __tablename__ = "ai_models"
     __table_args__ = (UniqueConstraint("provider_id", "model_id", name="uq_ai_models_provider_model"),)
@@ -327,9 +327,16 @@ class AIModel(Base):
     provider_id: Mapped[str] = mapped_column(String(40))
     model_id: Mapped[str] = mapped_column(String(200))
     display_name: Mapped[str] = mapped_column(String(200), default="")
+    #: text | image | transcription | embedding – what the model is (core/ai/catalog.py). ``text`` mirrors it.
+    kind: Mapped[str] = mapped_column(String(16), default="text", server_default="text")
+    description: Mapped[str] = mapped_column(Text, default="", server_default="")
     text: Mapped[bool] = mapped_column(Boolean, default=True)
     vision: Mapped[bool] = mapped_column(Boolean, default=False)
     structured_output: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Request parameters the model supports (image: qualities, sizes, reference images …; transcription: segments).
+    params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
+    priority: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # 0 normal … 3 preferred first
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")  # one per kind
     context_class: Mapped[int] = mapped_column(Integer, default=1)  # 1 small … 4 very large
     quality_class: Mapped[int] = mapped_column(Integer, default=1)  # 1 basic … 4 frontier
     speed_class: Mapped[int] = mapped_column(Integer, default=2)  # 1 slow … 3 fast

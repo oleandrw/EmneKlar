@@ -1,18 +1,28 @@
-// Innstillinger → KI-assistenter: providers (keys go to the OS credential store), model registry,
-// cost/quality-aware routing and the metadata-only usage log.
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+// Innstillinger → KI-assistenter: providers (keys go to the OS credential store), the model registry (every kind of
+// model: text, image generation, transcription, embedding), cost/quality-aware routing and the metadata-only usage
+// log. A change here reaches every model selector in EmneKlar at once (core/models.ts).
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { KeyRound, Plus, PlugZap, Search, ShieldCheck, Trash } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import { api } from "../../core/api/client";
 import { formatDateTime, formatNumber } from "../../core/format";
+import {
+  modelOptions,
+  useModelRegistry,
+  useModelRegistryRefresh,
+  type AiModel,
+  type ModelKind,
+  type ModelRegistry,
+} from "../../core/models";
 import { useSession } from "../../core/session";
 import {
   Alert,
   Badge,
   Button,
   Card,
+  Checkbox,
   DataTable,
   Dialog,
   Disclosure,
@@ -51,22 +61,7 @@ interface Provider {
 /** Providers connected with one action, «Koble til» (a key checked before it is stored). */
 const KEY_PROVIDERS: Provider["type"][] = ["openai", "anthropic"];
 
-interface Model {
-  id: number;
-  provider_id: string;
-  model_id: string;
-  display_name: string;
-  vision: boolean;
-  structured_output: boolean;
-  context_class: number;
-  quality_class: number;
-  speed_class: number;
-  cost_class: number;
-  enabled: boolean;
-  source: "catalog" | "discovered" | "user";
-  capabilities_known: boolean;
-  notes: string | null;
-}
+type Model = AiModel;
 
 interface ShortModel {
   provider_id: string;
@@ -82,6 +77,8 @@ interface Routing {
     label: string;
     description: string;
     vision: boolean;
+    /** The capabilities a model needs for the task – what its selector filters the registry by. */
+    requires?: string[];
     decision: { primary: ShortModel | null; fallbacks: ShortModel[]; reason: string; excluded: string[] };
     manual_model: string | null;
     preferred_provider: string | null;
@@ -114,12 +111,8 @@ const STRATEGY_HINTS: Record<string, string> = {
 };
 const CLASS = (n: number, max: number) => `${n} av ${max}`;
 
-function useAiRefresh() {
-  const client = useQueryClient();
-  return () => {
-    for (const key of ["ai-providers", "ai-models", "ai-routing", "session"]) void client.invalidateQueries({ queryKey: [key] });
-  };
-}
+/** After any change here: every model selector and automatic choice in EmneKlar is fetched again. */
+const useAiRefresh = useModelRegistryRefresh;
 
 /** One status per card: in the header, never repeated in a box below. */
 function connectionStatus(provider: Provider): { tone: "success" | "danger" | "neutral"; label: string } {
@@ -353,19 +346,58 @@ function ProviderCard({ provider, discoveryEnabled }: { provider: Provider; disc
   );
 }
 
-function ClassifyDialog({ model, providers, onClose }: { model: Model | null; providers: Provider[]; onClose: () => void }) {
+const KIND_HINT: Record<ModelKind, string> = {
+  text: "Leser og skriver tekst. Brukes til analyse, forslag og kvalitetskontroll.",
+  image: "Lager bilder. Brukes av KI-bildeassistenten.",
+  transcription: "Gjør tale om til tekst. Brukes av Emnets kunnskapsbase.",
+  embedding: "Gjør tekst om til vektorer for søk. Brukes av Emnets kunnskapsbase.",
+};
+
+function ClassifyDialog({ model, providers, registry, onClose }: {
+  model: Model | null;
+  providers: Provider[];
+  registry: ModelRegistry;
+  onClose: () => void;
+}) {
   const refresh = useAiRefresh();
   const isNew = model === null;
   const [form, setForm] = useState({
     provider_id: model?.provider_id ?? providers[0]?.id ?? "", model_id: model?.model_id ?? "", display_name: model?.display_name ?? "",
     vision: model?.vision ?? false, structured_output: model?.structured_output ?? true, context_class: model?.context_class ?? 2,
     quality_class: model?.quality_class ?? 2, speed_class: model?.speed_class ?? 2, cost_class: model?.cost_class ?? 2,
+    kind: (model?.kind ?? "text") as ModelKind, priority: model?.priority ?? 0, is_default: model?.is_default ?? false,
+    // Parameters the model supports (image and transcription models).
+    like: "", qualities: model?.params.qualities ?? ["low", "medium", "high"],
+    reference_images: model?.params.reference_images ?? false, complexity: Boolean(model?.params.complexities?.length),
+    segments: model?.params.segments === true ? "yes" : model?.params.segments === false ? "no" : "unknown",
   });
+  // Known image models whose parameters can be copied («Samme innstillinger som …»).
+  const templates = registry.models.filter((m) => m.kind === "image" && m.source === "catalog" && m.id !== model?.id);
+  const body = () => {
+    const text = form.kind === "text";
+    const out: Record<string, unknown> = {
+      display_name: form.display_name || undefined, kind: form.kind, priority: form.priority, is_default: form.is_default,
+      quality_class: form.quality_class, speed_class: form.speed_class, cost_class: form.cost_class,
+      vision: text ? form.vision : false, structured_output: text ? form.structured_output : false,
+    };
+    if (text) out.context_class = form.context_class;
+    if (form.kind === "image") {
+      if (form.like) out.params_like = Number(form.like);
+      else {
+        out.params = {
+          ...(model?.kind === "image" ? model.params : {}), qualities: form.qualities, reference_images: form.reference_images,
+          max_reference_images: form.reference_images ? (model?.params.max_reference_images || 16) : 0,
+          complexities: form.complexity ? registry.image_complexities : [],
+        };
+      }
+    }
+    if (form.kind === "transcription") out.params = { segments: form.segments === "unknown" ? null : form.segments === "yes" };
+    return out;
+  };
   const save = useMutation({
-    mutationFn: () => (isNew ? api.post("/api/ai/models", form) : api.put(`/api/ai/models/${model.id}`, {
-      display_name: form.display_name, vision: form.vision, structured_output: form.structured_output,
-      context_class: form.context_class, quality_class: form.quality_class, speed_class: form.speed_class, cost_class: form.cost_class,
-    })),
+    mutationFn: () => (isNew
+      ? api.post("/api/ai/models", { provider_id: form.provider_id, model_id: form.model_id, ...body() })
+      : api.put(`/api/ai/models/${model.id}`, body())),
     onSuccess: () => {
       refresh();
       onClose();
@@ -377,7 +409,7 @@ function ClassifyDialog({ model, providers, onClose }: { model: Model | null; pr
   );
   return (
     <Dialog open onClose={onClose} title={isNew ? "Legg til modell" : `Klassifiser ${model.display_name}`} size="lg"
-      description="Klassene er relative og brukes til å velge modell. EmneKlar gjetter dem ikke fra leverandørens modelliste."
+      description="Typen avgjør hvor modellen kan velges. Klassene er relative og brukes til å velge modell. EmneKlar gjetter dem ikke fra leverandørens modelliste."
       footer={<><Button onClick={onClose}>Avbryt</Button><Button variant="primary" onClick={() => save.mutate()} loading={save.isPending}>Lagre</Button></>}>
       <div className="ek-stack">
         {isNew ? (
@@ -388,15 +420,56 @@ function ClassifyDialog({ model, providers, onClose }: { model: Model | null; pr
           </div>
         ) : null}
         <TextField label="Visningsnavn" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} />
+        <SelectField label="Modelltype" value={form.kind} hint={KIND_HINT[form.kind]}
+          onChange={(e) => setForm({ ...form, kind: e.target.value as ModelKind })}
+          options={registry.kinds.map((k) => ({ value: k.id, label: k.label }))} />
         <div className="ek-grid" data-cols="2">
           {num("quality_class", "Kvalitet", 1, 4, "1 = enkel, 4 = sterkest")}
           {num("speed_class", "Hastighet", 1, 3, "1 = treg, 3 = rask")}
           {num("cost_class", "Kostnad", 0, 4, "0 = gratis/lokal, 4 = dyrest")}
-          {num("context_class", "Kontekst", 1, 4, "1 = opptil ca. 30k tokens, 4 = over ca. 380k")}
+          {form.kind === "text" ? num("context_class", "Kontekst", 1, 4, "1 = opptil ca. 30k tokens, 4 = over ca. 380k") : null}
+          <SelectField label="Prioritet" hint="Høyere prioritet velges først når modellen er god nok for oppgaven."
+            value={String(form.priority)} onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })}
+            options={Array.from({ length: registry.max_priority + 1 }, (_, i) => ({ value: String(i), label: i === 0 ? "0 (normal)" : String(i) }))} />
         </div>
-        <Switch label="Kan tolke bilder" checked={form.vision} onChange={(vision) => setForm({ ...form, vision })} />
-        <Switch label="Støtter strukturert svar (JSON-skjema)" checked={form.structured_output}
-          onChange={(structured_output) => setForm({ ...form, structured_output })} />
+        <Switch label={`Standardmodell for ${registry.kinds.find((k) => k.id === form.kind)?.label.toLowerCase() ?? "typen"}`}
+          checked={form.is_default} onChange={(is_default) => setForm({ ...form, is_default })} />
+        {form.kind === "text" ? (
+          <>
+            <Switch label="Kan tolke bilder" checked={form.vision} onChange={(vision) => setForm({ ...form, vision })} />
+            <Switch label="Støtter strukturert svar (JSON-skjema)" checked={form.structured_output}
+              onChange={(structured_output) => setForm({ ...form, structured_output })} />
+          </>
+        ) : null}
+        {form.kind === "image" ? (
+          <fieldset className="ek-stack" data-gap="3">
+            <legend>Innstillinger modellen støtter</legend>
+            <p className="ek-small ek-muted">Bare det du oppgir her, vises i KI-bildeassistenten og sendes til modellen. Kontroller mot leverandørens dokumentasjon.</p>
+            {templates.length ? (
+              <SelectField label="Samme innstillinger som" value={form.like} onChange={(e) => setForm({ ...form, like: e.target.value })}
+                options={[{ value: "", label: "Angi selv" }, ...templates.map((t) => ({ value: String(t.id), label: t.display_name }))]} />
+            ) : null}
+            {form.like ? null : (
+              <>
+                <div className="ek-cluster" role="group" aria-label="Kvalitetsnivåer">
+                  {registry.image_qualities.map((q) => (
+                    <Checkbox key={q} label={`Kvalitet ${q}`} checked={form.qualities.includes(q)}
+                      onChange={(e) => setForm({ ...form, qualities: e.target.checked ? [...form.qualities, q] : form.qualities.filter((x) => x !== q) })} />
+                  ))}
+                </div>
+                <Switch label="Tar imot referansebilder (stilreferanser)" checked={form.reference_images}
+                  onChange={(reference_images) => setForm({ ...form, reference_images })} />
+                <Switch label="Har parameteren kompleksitet (low, medium, high)" checked={form.complexity}
+                  onChange={(complexity) => setForm({ ...form, complexity })} />
+              </>
+            )}
+          </fieldset>
+        ) : null}
+        {form.kind === "transcription" ? (
+          <SelectField label="Tidsstempler per setning" value={form.segments} onChange={(e) => setForm({ ...form, segments: e.target.value })}
+            hint="«Ukjent» prøver med tidsstempler først."
+            options={[{ value: "unknown", label: "Ukjent" }, { value: "yes", label: "Ja" }, { value: "no", label: "Nei" }]} />
+        ) : null}
         {save.error ? <Alert tone="danger" role="alert">{(save.error as Error).message}</Alert> : null}
       </div>
     </Dialog>
@@ -407,7 +480,7 @@ export function AiSettings() {
   const session = useSession();
   const refresh = useAiRefresh();
   const providers = useQuery({ queryKey: ["ai-providers"], queryFn: () => api.get<{ providers: Provider[]; unavailable_reason: string | null; privacy: { allow_external_ai: boolean } }>("/api/ai/providers") });
-  const models = useQuery({ queryKey: ["ai-models"], queryFn: () => api.get<{ models: Model[]; catalog_version: string; catalog_note: string }>("/api/ai/models") });
+  const models = useModelRegistry();
   const routing = useQuery({ queryKey: ["ai-routing"], queryFn: () => api.get<Routing>("/api/ai/routing") });
   const usage = useQuery({ queryKey: ["ai-usage"], queryFn: () => api.get<Usage>("/api/ai/usage?limit=50") });
   const [classify, setClassify] = useState<Model | null | "new">(null);
@@ -449,10 +522,12 @@ export function AiSettings() {
         <span>{m.display_name}</span>
         <span className="ek-xs ek-muted">{m.model_id}</span>
         {!m.capabilities_known ? <Badge tone="warning">Må klassifiseres</Badge> : null}
+        {m.is_default ? <Badge tone="info">Standard</Badge> : m.priority > 0 ? <Badge>Prioritet {m.priority}</Badge> : null}
       </span>
     ) },
     { key: "provider", header: "Leverandør", cell: (m) => providerName(m.provider_id) },
-    { key: "vision", header: "Bilder", cell: (m) => (m.vision ? "Ja" : "Nei") },
+    { key: "kind", header: "Type", cell: (m) => m.kind_label },
+    { key: "vision", header: "Bildeanalyse", cell: (m) => (m.kind !== "text" ? "–" : m.vision ? "Ja" : "Nei") },
     { key: "quality", header: "Kvalitet", cell: (m) => CLASS(m.quality_class, 4) },
     { key: "speed", header: "Hastighet", cell: (m) => CLASS(m.speed_class, 3) },
     { key: "cost", header: "Kostnad", cell: (m) => CLASS(m.cost_class, 4) },
@@ -499,9 +574,8 @@ export function AiSettings() {
               {routing.data.tasks.map((t) => (
                 <SelectField key={t.key} label={t.label} value={t.manual_model ?? ""} placeholder="Ingen modell valgt"
                   onChange={(e) => updateRouting.mutate({ manual_models: Object.fromEntries(tasks.map((x) => [x.key, x.key === t.key ? e.target.value : (x.manual_model ?? "")])) })}
-                  options={(models.data?.models ?? []).filter((m) => m.enabled && (!t.vision || m.vision)).map((m) => ({
-                    value: `${m.provider_id}/${m.model_id}`, label: `${m.display_name} (${providerName(m.provider_id)})`,
-                  }))} />
+                  options={modelOptions(models.data?.models, { requires: t.requires ?? (t.vision ? ["text", "vision"] : ["text"]) },
+                    { value: "ref", current: t.manual_model, providerName })} />
               ))}
             </div>
           ) : null}
@@ -550,8 +624,9 @@ export function AiSettings() {
             ]} />
         ) : <p className="ek-small ek-mt-2">Ingen KI-kall ennå.</p>}
       </Card>
-      {classify !== null ? (
-        <ClassifyDialog model={classify === "new" ? null : classify} providers={providerList} onClose={() => setClassify(null)} />
+      {classify !== null && models.data ? (
+        <ClassifyDialog model={classify === "new" ? null : classify} providers={providerList} registry={models.data}
+          onClose={() => setClassify(null)} />
       ) : null}
     </div>
   );

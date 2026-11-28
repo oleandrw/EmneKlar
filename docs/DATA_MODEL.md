@@ -32,7 +32,7 @@ Skjemaet endres bare med Alembic-migreringer (`backend/migrations`). Hemmelighet
 
 | Tabell | Innhold |
 |---|---|
-| `ai_models` | Modellregisteret: leverandør, modell-id, tekst, bilde, strukturert svar, kontekst-/kvalitets-/hastighets-/kostnadsklasse, aktivert, kilde (katalog/oppdaget/bruker), egenskaper kjent |
+| `ai_models` | Modellregisteret – eneste sannhetskilde for KI-modeller: leverandør, modell-id, visningsnavn, beskrivelse, type (`kind`: tekst/bildegenerering/transkripsjon/embedding), bildeanalyse, strukturert svar, støttede parametere (`params`, JSON), kontekst-/kvalitets-/hastighets-/kostnadsklasse, prioritet, standardmodell (én per type), aktivert, kilde (katalog/oppdaget/bruker), egenskaper kjent |
 | `ai_usage` | Metadata om hver KI-forespørsel (oppgave, modell, begrunnelse for valg, reserve brukt, tokens, oppsummering av nyttelast) – **aldri innhold** |
 
 Leverandøroppsett (endepunkt, API-versjon, aktivert) ligger i innstillingene; nøkler i nøkkelringen.

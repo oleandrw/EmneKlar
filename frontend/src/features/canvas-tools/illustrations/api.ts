@@ -36,6 +36,8 @@ export interface IllustrationSettings {
   image_provider_id: string;
   image_model: string;
   image_quality: "" | "low" | "medium" | "high" | "xhigh" | "max";
+  /** Only sent to image models that have the parameter; "" = the model's own default. */
+  image_complexity?: "" | "low" | "medium" | "high";
   image_format: ImageFormat;
   use_reference_images: boolean;
   captions: boolean;
@@ -61,6 +63,8 @@ export interface RoleChoice {
   primary: ModelRef | null;
   fallbacks: ModelRef[];
   reason: string;
+  /** The teacher's own choice for the role is no longer available: what happened instead. */
+  note?: string | null;
 }
 
 export interface ImageModel {
@@ -71,6 +75,8 @@ export interface ImageModel {
   reference_images: boolean;
   qualities: string[];
   sizes: string[];
+  aspect_sizes?: Record<string, string>;
+  complexities?: string[];
   default: boolean;
   known: boolean;
 }
@@ -83,9 +89,12 @@ export interface Choices {
     model: ImageModel | null;
     quality: string;
     size: string;
+    complexity?: string;
     reason: string;
     available: boolean;
     unavailable_reason: string | null;
+    /** The chosen image model is no longer available: what is used instead. */
+    note?: string | null;
   };
 }
 
@@ -134,19 +143,20 @@ export interface Status {
   settings: IllustrationSettings;
   choices: Choices;
   ai: { available: boolean; reason: string | null; external_allowed: boolean; confirm_before_send: boolean };
-  image_providers: { id: string; name: string; type: string; configured: boolean; models: ImageModel[]; needs_model_name: boolean }[];
+  /** Providers that can make images. Their models come from the model registry (core/models.ts). */
+  image_providers: { id: string; name: string; type: string; configured: boolean; needs_model_name: boolean }[];
   design: DesignProfile | null;
   design_versions: DesignProfile[];
   runs: RunSummary[];
   busy_job: { id: string; title: string; status: string } | null;
-  text_models: { ref: string; display_name: string; provider_id: string; vision: boolean }[];
 }
 
 export interface Catalog {
   styles: { key: string; label: string; description: string }[];
   quality_profiles: { id: QualityProfileId; label: string; description: string; default: boolean; review_rounds: number }[];
   roles: Record<string, string>;
-  image_models: ImageModel[];
+  /** The capabilities a model needs for each role – what the role's selector filters the registry by. */
+  role_requires?: Record<string, string[]>;
   placements: Record<string, string>;
   amounts: Record<Amount, string>;
   statuses: Record<string, string>;

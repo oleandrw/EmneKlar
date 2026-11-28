@@ -1,4 +1,7 @@
-"""AI providers, model registry, routing and usage (Innstillinger → KI-assistenter)."""
+"""AI providers, model registry, routing and usage (Innstillinger → KI-assistenter).
+
+``GET /api/ai/models`` is what every model selector in the user interface reads: all kinds of models with their
+capabilities, parameters, preference and indicative price."""
 
 from __future__ import annotations
 
@@ -12,7 +15,16 @@ from sqlalchemy import select
 
 from emneklar.api.deps import get_container
 from emneklar.core import flags
+from emneklar.core.ai import pricing
 from emneklar.core.ai.base import AIError
+from emneklar.core.ai.catalog import (
+    CAPABILITY_LABELS,
+    IMAGE_COMPLEXITIES,
+    IMAGE_QUALITIES,
+    KIND_LABELS,
+    MAX_PRIORITY,
+    suggested_kind,
+)
 from emneklar.core.ai.router import STRATEGY_LABEL, TASKS, USAGE_LABELS
 from emneklar.core.ai.service import is_local
 from emneklar.core.auth.secrets import ai_key_name
@@ -307,7 +319,20 @@ async def models(c: AppContainer = Depends(get_container)) -> dict[str, Any]:
     from emneklar.core.ai.catalog import load_catalog
 
     catalog = load_catalog()
-    return {"models": c.ai.registry.list(), "catalog_version": catalog["version"], "catalog_note": catalog["note"]}
+    settings = c.settings.get()
+    types = {p.id: p.type for p in settings.ai.providers}
+    ready = c.ai.readiness(settings)
+    rows = []
+    for m in c.ai.registry.list():
+        ptype = types.get(m["provider_id"], m["provider_id"])
+        price = pricing.image_price(ptype, m["model_id"]) if m["kind"] == "image" else (
+            pricing.text_price(ptype, m["model_id"]) if m["kind"] == "text" else None)
+        rows.append({**m, "provider_ready": bool(ready.get(m["provider_id"])), "price": price,
+                     "suggested_kind": suggested_kind(m["model_id"], catalog)})
+    return {"models": rows, "catalog_version": catalog["version"], "catalog_note": catalog["note"],
+            "kinds": [{"id": k, "label": v} for k, v in KIND_LABELS.items()], "capabilities": CAPABILITY_LABELS,
+            "image_qualities": list(IMAGE_QUALITIES), "image_complexities": list(IMAGE_COMPLEXITIES),
+            "max_priority": MAX_PRIORITY, "pricing": pricing.summary()}
 
 
 class ModelBody(BaseModel):
@@ -322,6 +347,25 @@ class ModelBody(BaseModel):
     cost_class: int | None = None
     enabled: bool | None = None
     notes: str | None = Field(default=None, max_length=500)
+    kind: str | None = Field(default=None, max_length=16)
+    description: str | None = Field(default=None, max_length=300)
+    priority: int | None = None
+    is_default: bool | None = None
+    #: The request parameters the model supports (validated per kind in the registry).
+    params: dict[str, Any] | None = None
+    #: Copy the parameters of this registry model («Samme innstillinger som …») instead of sending ``params``.
+    params_like: int | None = None
+
+
+def _model_fields(body: ModelBody, c: AppContainer) -> dict[str, Any]:
+    fields = body.model_dump(exclude_none=True, exclude={"provider_id", "model_id", "params_like"})
+    if body.params_like is not None and body.params is None:
+        source = next((m for m in c.ai.registry.list() if m["id"] == body.params_like), None)
+        if source is None:
+            raise NotFoundError("not_found", detail="modell")
+        fields["params"] = source["params"]
+        fields.setdefault("kind", source["kind"])
+    return fields
 
 
 @router.post("/models")
@@ -329,13 +373,12 @@ async def add_model(body: ModelBody, c: AppContainer = Depends(get_container)) -
     if not body.provider_id or not body.model_id:
         raise AppError("validation_error", message="Velg leverandør og skriv modell- eller deployment-navn.")
     _find(c.settings.get(), body.provider_id)
-    fields = body.model_dump(exclude_none=True, exclude={"provider_id", "model_id"})
-    return c.ai.registry.add(body.provider_id, body.model_id, fields)
+    return c.ai.registry.add(body.provider_id, body.model_id, _model_fields(body, c))
 
 
 @router.put("/models/{model_pk}")
 async def update_model(model_pk: int, body: ModelBody, c: AppContainer = Depends(get_container)) -> dict[str, Any]:
-    return c.ai.registry.update(model_pk, body.model_dump(exclude_none=True, exclude={"provider_id", "model_id"}))
+    return c.ai.registry.update(model_pk, _model_fields(body, c))
 
 
 @router.delete("/models/{model_pk}")
@@ -351,6 +394,7 @@ async def routing(c: AppContainer = Depends(get_container)) -> dict[str, Any]:
     for key, task in TASKS.items():
         decision = c.ai.decide(key, input_chars=4000, images=1 if task.vision else 0)
         tasks.append({"key": key, "label": task.label, "description": task.description, "vision": task.vision,
+                      "requires": list(task.requires),
                       "min_quality": task.min_quality, "decision": decision.as_dict(),
                       "manual_model": settings.ai.manual_models.get(key),
                       "preferred_provider": settings.ai.task_providers.get(key)})

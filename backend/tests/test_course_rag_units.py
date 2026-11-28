@@ -607,7 +607,6 @@ def test_openai_transcription_request_and_fallbacks() -> None:
     import httpx
 
     from emneklar.core.ai.providers.openai_compat import AzureOpenAIProvider, OpenAICompatibleProvider
-    from emneklar.core.ai.transcription import resolve
 
     seen: list[httpx.Request] = []
 
@@ -637,9 +636,6 @@ def test_openai_transcription_request_and_fallbacks() -> None:
     asyncio.run(azure.transcribe("min-whisper", b"RIFF", "b.wav", segments=False))
     assert seen[-1].url.path == "/openai/deployments/min-whisper/audio/transcriptions"
     assert seen[-1].headers["api-key"] == "k"
-    default = resolve("openai", "")
-    assert default is not None and default.id == "gpt-transcribe" and default.segments is False
-    assert resolve("openai_compatible", "") is None and resolve("azure_openai", "dep").segments is None  # type: ignore[union-attr]
     assert seen[0].headers["content-type"].startswith("multipart/form-data")
 
 

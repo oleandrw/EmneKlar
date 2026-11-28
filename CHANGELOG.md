@@ -7,6 +7,22 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
 ## [Unreleased]
 
 ### Lagt til
+- **Ett modellregister for alle KI-modeller:** bildemodeller, transkripsjonsmodeller og embedding-modeller hos en
+  leverandør står nå i det samme registeret som tekstmodellene (Innstillinger → KI-assistenter → Modeller), med
+  type, kapabiliteter, støttede innstillinger, prioritet og standardmodell. Alle modellvelgere leser registeret og
+  viser bare aktiverte modeller med kapabilitetene funksjonen trenger: KI-bildeassistenten (analyse, bildeplan,
+  kvalitetskontroll og bildemodell), «Manuell styring» under Modellvalg, og transkripsjon og embedding i Emnets
+  kunnskapsbase. En modell du slår på, av, legger til, fjerner eller klassifiserer om, gjelder med en gang – uten
+  omstart og uten å laste siden på nytt.
+- **GPT-Image-2.6 Sunburst og Flare** er med i startlisten, kontrollert mot OpenAIs API-referanse 27.11.2026:
+  kvalitet low/medium/high, standardstørrelsene, inntil 16 referansebilder og den nye innstillingen
+  **Kompleksitet**. xhigh, max og eksakt 16:9 er bare dokumentert for 2.5-modellene, så 16:9 lages i nærmeste
+  standardstørrelse med 2.6. Det finnes ingen publisert pris EmneKlar kan bruke, så kostnadsanslaget mangler for dem.
+- **Innstillinger som følger modellen:** KI-bildeassistenten viser bare kvalitetsnivåene den valgte bildemodellen
+  har, «Kompleksitet» bare for modeller med parameteren og stilreferanser bare for modeller som tar imot bilder.
+  Parametere modellen ikke støtter, sendes aldri.
+- **Prioritet og standardmodell:** under «Klassifiser» kan du gi en modell prioritet (0–3) eller gjøre den til
+  standardmodell for typen. Den velges da først når den er god nok for oppgaven.
 - **Utvikling på en ny maskin – `scripts/dev.py`:** `setup` lager Python-miljøet med utviklingsverktøyene (som i CI),
   kjører `npm ci` og bygger grensesnittet. `start` kjører EmneKlar fra kildekoden mot ekte Canvas som en egen
   utviklingsinstans: datamappe `%LOCALAPPDATA%\EmneKlar-dev`, port 8771 og tjenesten «EmneKlar-dev» i Windows
@@ -228,6 +244,21 @@ Formatet følger [Keep a Changelog](https://keepachangelog.com/no/1.1.0/), og pr
   resultat eller årsak. Panelet lenker hit.
 
 ### Endret
+- **Automatisk modellvalg bruker modellregisteret:** kvalitetsprofilene i KI-bildeassistenten navngir ikke lenger
+  bildemodeller. «Maksimal kvalitet» tar den aktiverte bildemodellen med høyest kvalitetsklasse, «Rask» den med
+  høyest hastighetsklasse og «Balansert» standardmodellen din – ved likhet avgjør standard og prioritet, aldri
+  versjonsnummeret i navnet. «Prioriter lav kostnad» gjelder også valget av bildemodell. En bildemodell kan ikke
+  lenger bli valgt til en tekstoppgave.
+- **Et modellvalg som ikke lenger er tilgjengelig:** er modellen du valgte slått av eller fjernet, velger EmneKlar
+  en annen modell automatisk og sier fra om det i KI-bildeassistenten; valget ditt står fortsatt i feltet, merket
+  «ikke tilgjengelig». Et bilde lages aldri med en annen modell enn den som ble vist. Modellnavn i tidligere
+  resultater og i bruksloggen endres ikke.
+- **Modeller som var lagt inn som tekstmodeller:** modeller i familiene `gpt-image-*`, `dall-e-*`, `*transcribe*`,
+  `whisper*` og `*embedding*` får riktig type én gang ved oppdateringen (migrering 0009). Ingenting slettes, og
+  typen kan endres under «Klassifiser». Bilde- og transkripsjonsmodellene i startlisten virket før uansett hva
+  bryteren under Modeller sa. Derfor slås de på hvis «Hent modeller» hadde lagt dem inn og de aldri er
+  klassifisert, slik at KI-bildeassistenten og transkripsjon virker som før. En modell du selv har klassifisert,
+  beholder bryteren sin, og modeller utenfor startlisten står av til de er klassifisert.
 - **KI-bildeassistent – nye designprofiler:** de sju stilene (Moderne 3D, Minimalistisk flat design, Realistisk
   fotografisk stil, Akademiske illustrasjoner, Isometriske illustrasjoner, Infografisk stil og Egendefinert
   designprofil) er fjernet. En designprofil er nå én prompt som brukes i alle bildene i emnet. To profiler finnes:

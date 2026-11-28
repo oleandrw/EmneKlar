@@ -65,8 +65,6 @@ async def status(course_id: str, c: AppContainer = Depends(get_container)) -> di
     embedding, reranker, device = engine.choices(c)
     local = await asyncio.to_thread(c.local_models.status, settings.rag.device)
     ai_reason = c.ai.unavailable_reason(settings)
-    from emneklar.core.ai.transcription import catalog as transcription_catalog
-
     rag = settings.rag
     transcription = c.ai.transcription_plan(rag.transcription_provider_id, rag.transcription_model, summary="") \
         if rag.transcription == "provider" else None
@@ -83,9 +81,10 @@ async def status(course_id: str, c: AppContainer = Depends(get_container)) -> di
         "chunk_types": [{"key": k, "label": CHUNK_TYPE_LABELS[k]} for k in CHUNK_TYPES],
         "not_available": NOT_YET,
         "transcription": {"mode": rag.transcription, "plan": transcription},
-        "transcription_models": [m.as_dict() for m in transcription_catalog()],
-        "providers": [{"id": p.id, "name": p.name, "type": p.type} for p in settings.ai.providers
-                      if p.type != "anthropic"],
+        # Their models are not listed here: the selectors read the model registry (GET /api/ai/models).
+        "providers": [{"id": p.id, "name": p.name, "type": p.type,
+                       "needs_model_name": p.type in ("azure_openai", "openai_compatible")}
+                      for p in settings.ai.providers if p.type != "anthropic"],
     }
 
 

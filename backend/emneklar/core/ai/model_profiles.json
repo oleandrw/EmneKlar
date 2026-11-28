@@ -1,6 +1,6 @@
 {
   "version": "2026-11-04",
-  "note": "Kvalitetsprofiler for KI-bildeassistenten. For hver rolle prøves modellene i rekkefølge blant modeller som er aktivert under Innstillinger → KI-assistenter, hos leverandører som er klare (nøkkel, personvern). Finnes ingen av dem, velger ruteren en modell med strategien i fallback_strategy. Avanserte brukere kan velge egne modeller per rolle. Modellnavn oppgis som leverandør-id/modell-id og kan endres her uten kodeendring.",
+  "note": "Kvalitetsprofiler for KI-bildeassistenten. For hver rolle prøves modellene i rekkefølge blant modeller som er aktivert under Innstillinger → KI-assistenter, hos leverandører som er klare (nøkkel, personvern). En modell læreren har satt som standard eller gitt prioritet, går foran listen når den er god nok for rollen. Finnes ingen av dem, velger ruteren en modell med strategien i fallback_strategy. Avanserte brukere kan velge egne modeller per rolle. Modellnavn oppgis som leverandør-id/modell-id og kan endres her uten kodeendring. Bildemodeller navngis ikke: image.strategy sier hva som teller (quality = høyeste kvalitetsklasse, speed = høyeste hastighetsklasse, auto = lærerens standardmodell og prioritet først), og valget gjøres blant aktiverte bildemodeller i modellregisteret.",
   "roles": {
     "illustration_analysis": "Innholdsanalyse (emne, modul og side)",
     "illustration_planning": "Bildeplan og bildeprompt",
@@ -20,7 +20,7 @@
         "illustration_review": ["openai/gpt-6-astra", "anthropic/claude-opus-5-5", "anthropic/claude-fable-5-1"],
         "illustration_design": ["anthropic/claude-opus-5-5", "openai/gpt-6-astra", "anthropic/claude-fable-5-1"]
       },
-      "image": {"models": ["openai/gpt-image-2.5-sunburst"], "quality": "high"},
+      "image": {"strategy": "quality", "quality": "high"},
       "review_rounds": 2,
       "page_chars": 60000,
       "module_page_chars": 1800,
@@ -39,7 +39,7 @@
         "illustration_review": ["openai/gpt-6.1-sol", "anthropic/claude-sonnet-5-5", "openai/gpt-6.1-terra"],
         "illustration_design": ["anthropic/claude-sonnet-5-5", "openai/gpt-6.1-sol"]
       },
-      "image": {"models": ["openai/gpt-image-2.5-sunburst"], "quality": "medium"},
+      "image": {"strategy": "auto", "quality": "medium"},
       "review_rounds": 1,
       "page_chars": 40000,
       "module_page_chars": 1200,
@@ -58,7 +58,7 @@
         "illustration_review": ["openai/gpt-6.1-terra", "anthropic/claude-sonnet-5-5"],
         "illustration_design": ["openai/gpt-6.1-terra", "anthropic/claude-sonnet-5-5"]
       },
-      "image": {"models": ["openai/gpt-image-2.5-flare"], "quality": "medium"},
+      "image": {"strategy": "speed", "quality": "medium"},
       "review_rounds": 0,
       "page_chars": 25000,
       "module_page_chars": 700,

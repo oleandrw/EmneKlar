@@ -249,13 +249,13 @@ export interface RagStatus {
   file_groups: { key: FileGroup; label: string }[];
   chunk_types: { key: ChunkType; label: string }[];
   not_available: Record<string, string>;
-  providers: { id: string; name: string; type: string }[];
+  /** Providers with embeddings and transcription. Their models come from the model registry (core/models.ts). */
+  providers: { id: string; name: string; type: string; needs_model_name?: boolean }[];
   transcription: {
     mode: RagSettings["transcription"];
     plan: { available: boolean; reason: string | null; external: boolean;
       model: { id: string; label: string; segments: boolean | null } | null } | null;
   };
-  transcription_models: { id: string; label: string; provider_type: string; segments: boolean | null; default: boolean }[];
 }
 
 export interface AiTaskEstimate {

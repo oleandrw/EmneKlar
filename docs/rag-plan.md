@@ -172,8 +172,8 @@ Valget lagres som innstilling og gjelder alle emner.
 
 * Leverandører: OpenAI, Azure OpenAI (deploymentnavnet er modell-id-en) og egne OpenAI-kompatible servere
   (`/audio/transcriptions`, multipart). Andre leverandørtyper vises som utilgjengelige med forklaring.
-* Modeller står i `core/ai/transcription_models.json` (ingen modellnavn i funksjonskoden): `gpt-transcribe`
-  (standard), `gpt-4o-mini-transcribe` og `whisper-1`. Det står også om modellen gir tidsstempler per segment;
+* Modeller står i modellregisteret (type transkripsjon, startdata i `core/ai/model_catalog.json`; ingen modellnavn
+  i funksjonskoden): `gpt-transcribe` (standard), `gpt-4o-mini-transcribe` og `whisper-1`. Det står også om modellen gir tidsstempler per segment;
   en ukjent modell-id prøves først med segmenter og faller tilbake til ren tekst.
 * Lyden hentes ut med PyAV i en isolert parserprosess (`rag_audio_pieces`), blir mono 16 kHz WAV og kuttes i
   biter på 60–120 s ved den stilleste pausen. Stille biter sendes ikke. Bitene gir tidsstempler også når modellen

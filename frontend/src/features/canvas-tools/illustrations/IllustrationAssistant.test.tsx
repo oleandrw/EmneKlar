@@ -6,6 +6,7 @@ import { useState, type ReactNode } from "react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { useModelRegistryRefresh, type AiModel } from "../../../core/models";
 import { ToastProvider } from "../../../design-system";
 import { AnalyseStep } from "./AnalyseStep";
 import { DEFAULT_SCOPE, type Catalog, type Estimate, type Illustration, type IllustrationSettings, type RunDetail, type Scope, type ScopeIndex, type Status } from "./api";
@@ -56,7 +57,8 @@ const catalog: Catalog = {
     { id: "fast", label: "Rask", description: "Raskere.", default: false, review_rounds: 0 },
   ],
   roles: { illustration_analysis: "Innholdsanalyse", illustration_planning: "Bildeplan", illustration_review: "Kvalitetskontroll" },
-  image_models: [], placements: { after_explanation: "Etter den faglige forklaringen" }, amounts: { low: "Lav", balanced: "Balansert", high: "Høy" },
+  role_requires: { illustration_analysis: ["text"], illustration_planning: ["text"], illustration_review: ["text", "vision"] },
+  placements: { after_explanation: "Etter den faglige forklaringen" }, amounts: { low: "Lav", balanced: "Balansert", high: "Høy" },
   statuses: {}, usage_rights: [{ id: "own_copyright", label: "Jeg har opphavsretten" }],
   formats: { auto: "Automatisk (anbefalt)", "16:9": "Bred 16:9", "3:2": "Liggende 3:2", "4:3": "Liggende 4:3", "1:1": "Kvadratisk 1:1", "2:3": "Stående 2:3" },
   image_types: { diagram: "Diagram" },
@@ -86,10 +88,33 @@ const status: Status = {
       quality: "high", size: "1536x1024", reason: "Kvalitetsprofilen.", available: true, unavailable_reason: null },
   },
   ai: { available: true, reason: null, external_allowed: true, confirm_before_send: true },
-  image_providers: [{ id: "openai", name: "OpenAI", type: "openai", configured: true, models: [], needs_model_name: false }],
+  image_providers: [{ id: "openai", name: "OpenAI", type: "openai", configured: true, needs_model_name: false }],
   design: null, design_versions: [], runs: [], busy_job: null,
-  text_models: [{ ref: "anthropic/claude-opus-5-5", display_name: "Claude Opus 5.5", provider_id: "anthropic", vision: true }],
 };
+
+// The model registry as GET /api/ai/models returns it (core/models.ts) – what every selector reads.
+const registryModel = (provider_id: string, model_id: string, display_name: string, kind: AiModel["kind"], extra: Partial<AiModel> = {}): AiModel => ({
+  id: model_id.length * 31 + provider_id.length, provider_id, model_id, ref: `${provider_id}/${model_id}`, display_name, description: "", kind,
+  kind_label: kind, capabilities: kind === "image" ? ["image_generation", "reference_images"] : ["text", "vision", "structured_output"],
+  params: kind === "image" ? { qualities: ["low", "medium", "high"], sizes: ["1536x1024"], aspect_sizes: {}, reference_images: true, max_reference_images: 16, complexities: [] } : {},
+  vision: kind === "text", structured_output: kind === "text", context_class: 4, quality_class: 4, speed_class: 1, cost_class: 3, priority: 0,
+  is_default: false, enabled: true, source: "catalog", capabilities_known: true, notes: null, ...extra,
+});
+const registry = (models: AiModel[]) => ({
+  models, catalog_version: "2026-11-27", catalog_note: "", kinds: [{ id: "text", label: "Tekst" }, { id: "image", label: "Bildegenerering" }],
+  capabilities: {}, image_qualities: ["low", "medium", "high", "xhigh", "max"], image_complexities: ["low", "medium", "high"], max_priority: 3,
+});
+const REGISTRY = registry([
+  registryModel("anthropic", "claude-opus-5-5", "Claude Opus 5.5", "text"),
+  registryModel("openai", "gpt-6-luna", "GPT-6 Luna", "text", { vision: false, capabilities: ["text", "structured_output"] }),
+  registryModel("openai", "gpt-image-2.5-sunburst", "GPT-Image-2.5 Sunburst", "image", { is_default: true,
+    params: { qualities: ["low", "medium", "high", "xhigh", "max"], sizes: ["1536x1024"], aspect_sizes: { "16:9": "1536x864" }, reference_images: true, max_reference_images: 16, complexities: [] } }),
+  registryModel("openai", "gpt-image-2.6-sunburst", "GPT-Image-2.6 Sunburst", "image", {
+    params: { qualities: ["low", "medium", "high"], sizes: ["1536x1024"], aspect_sizes: {}, reference_images: true, max_reference_images: 16, complexities: ["low", "medium", "high"] } }),
+  registryModel("openai", "gpt-image-2.6-flare", "GPT-Image-2.6 Flare", "image", { enabled: false }),
+  registryModel("openai", "gpt-image-3-ukjent", "Uklassifisert bildemodell", "image", { capabilities_known: false }),
+  registryModel("azure", "bilde-deployment", "Azure-bilder", "image"),
+]);
 
 describe("ScopeStep", () => {
   it("offers the four scopes and selects several modules with checkboxes", async () => {
@@ -110,6 +135,78 @@ describe("ScopeStep", () => {
     expect(changes.at(-1)).toMatchObject({ type: "modules", module_ids: ["201", "202"] });
     expect(screen.getAllByText(/2 andre elementer \(brukes som kontekst\)/)).toHaveLength(2);
     expect(await axeViolations(container)).toEqual([]);
+  });
+});
+
+describe("ImageSettingsStep and the model registry", () => {
+  function Harness({ initial = settings, state = status }: { initial?: IllustrationSettings; state?: Status }) {
+    const [value, setValue] = useState(initial);
+    return <ImageSettingsStep courseId="101" settings={value} onChange={setValue} status={state} catalog={catalog} />;
+  }
+  const optionsOf = (label: RegExp | string) => within(screen.getByLabelText(label)).getAllByRole("option").map((o) => o.textContent);
+
+  it("offers exactly the enabled models with the capability each selector needs – GPT-Image-2.6 included", async () => {
+    const user = userEvent.setup();
+    mockApi({ "/illustrations/assets": { items: [] }, "/api/ai/models": REGISTRY });
+    render(wrap(<Harness />));
+    await user.click(screen.getByRole("button", { name: "Avanserte innstillinger" }));
+    await waitFor(() => expect(optionsOf("Bildemodell")).toContain("GPT-Image-2.6 Sunburst"));
+    expect(optionsOf("Bildemodell")).toEqual(["Velges automatisk ut fra kvalitet", "GPT-Image-2.5 Sunburst (standard)", "GPT-Image-2.6 Sunburst"]);
+    // Disabled, unclassified, another provider's, and text models are not image models here.
+    for (const absent of ["GPT-Image-2.6 Flare", "Uklassifisert bildemodell", "Azure-bilder", "Claude Opus 5.5"]) {
+      expect(optionsOf("Bildemodell").join("|")).not.toContain(absent);
+    }
+    // Text roles: never an image model; the review needs a model that can read images.
+    expect(optionsOf("Innholdsanalyse")).toEqual(["Velges automatisk ut fra kvalitet", "Claude Opus 5.5 (anthropic)", "GPT-6 Luna (openai)"]);
+    expect(optionsOf("Kvalitetskontroll")).toEqual(["Velges automatisk ut fra kvalitet", "Claude Opus 5.5 (anthropic)"]);
+  });
+
+  it("shows the settings the chosen image model supports, and nothing else", async () => {
+    const user = userEvent.setup();
+    mockApi({ "/illustrations/assets": { items: [] }, "/api/ai/models": REGISTRY });
+    render(wrap(<Harness initial={{ ...settings, image_format: "16:9" }} />));
+    await user.click(screen.getByRole("button", { name: "Avanserte innstillinger" }));
+    await waitFor(() => expect(optionsOf("Bildemodell")).toContain("GPT-Image-2.6 Sunburst"));
+    await user.selectOptions(screen.getByLabelText("Bildemodell"), "gpt-image-2.5-sunburst");
+    expect(optionsOf("Bildekvalitet")).toEqual(["Velges automatisk", "low", "medium", "high", "xhigh", "max"]);
+    expect(screen.queryByLabelText(/^Kompleksitet/)).not.toBeInTheDocument();
+    expect(screen.getByText("«Automatisk» velger format per bilde.")).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Bildekvalitet"), "max");
+    await user.selectOptions(screen.getByLabelText("Bildemodell"), "gpt-image-2.6-sunburst");
+    expect(optionsOf("Bildekvalitet")).toEqual(["Velges automatisk", "low", "medium", "high", "max (støttes ikke av modellen)"]);
+    expect(optionsOf(/^Kompleksitet/)).toEqual(["Modellens standard", "low", "medium", "high"]);
+    expect(screen.getByText(/bildet lages i nærmeste standardstørrelse/)).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Bruk godkjente bilder som stilreferanse" })).toBeInTheDocument();
+  });
+
+  it("says so when a chosen model is no longer available, and keeps the choice visible", async () => {
+    const user = userEvent.setup();
+    mockApi({ "/illustrations/assets": { items: [] }, "/api/ai/models": REGISTRY });
+    const stale: Status = { ...status, choices: { ...status.choices,
+      image: { ...status.choices.image, note: "Bildemodellen du valgte (gpt-image-2.6-flare) er slått av. GPT-Image-2.5 Sunburst brukes i stedet." } } };
+    render(wrap(<Harness initial={{ ...settings, image_model: "gpt-image-2.6-flare", analysis_model: "openai/fjernet-modell" }} state={stale} />));
+    expect(screen.getByText(/er slått av. GPT-Image-2.5 Sunburst brukes i stedet/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Avanserte innstillinger" }));
+    await waitFor(() => expect(optionsOf("Bildemodell")).toContain("gpt-image-2.6-flare (ikke tilgjengelig)"));
+    expect(optionsOf("Innholdsanalyse")).toContain("fjernet-modell (ikke tilgjengelig)");
+  });
+
+  it("follows the registry without a reload: a model that is switched on appears in the selector", async () => {
+    const user = userEvent.setup();
+    let current = registry(REGISTRY.models);
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(url.includes("/api/ai/models") ? current : { items: [] }))));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    function Settings() {
+      const refresh = useModelRegistryRefresh();
+      return <button onClick={() => { current = registry(REGISTRY.models.map((m) => ({ ...m, enabled: m.model_id !== "gpt-image-2.5-sunburst" }))); refresh(); }}>Endre under Innstillinger</button>;
+    }
+    render(<QueryClientProvider client={client}><ToastProvider><MemoryRouter><Harness /><Settings /></MemoryRouter></ToastProvider></QueryClientProvider>);
+    await user.click(screen.getByRole("button", { name: "Avanserte innstillinger" }));
+    await waitFor(() => expect(optionsOf("Bildemodell")).toContain("GPT-Image-2.5 Sunburst (standard)"));
+    expect(optionsOf("Bildemodell")).not.toContain("GPT-Image-2.6 Flare");
+    await user.click(screen.getByRole("button", { name: "Endre under Innstillinger" }));
+    await waitFor(() => expect(optionsOf("Bildemodell")).toContain("GPT-Image-2.6 Flare"));
+    expect(optionsOf("Bildemodell")).not.toContain("GPT-Image-2.5 Sunburst (standard)");
   });
 });
 

@@ -419,10 +419,9 @@ async def generate_one(state: RunState, ill: dict[str, Any]) -> None:
     references = _references(state)
     rounds = state.profile.review_rounds
     prompt = compose_prompt(ill, state.design)
-    from emneklar.core.ai.images import resolve as resolve_image
+    from emneklar.core.ai.images import size_for
 
-    catalog_model = resolve_image(_provider_type(state, image.provider_id), image.model["id"])
-    size = catalog_model.size_for(ill.get("aspect_ratio") or "3:2") if catalog_model else image.size
+    size = size_for(image.model, ill.get("aspect_ratio") or "3:2")
     versions = list(ill.get("versions") or [])
     best: dict[str, Any] | None = None
     final_review: dict[str, Any] = {}
@@ -433,6 +432,7 @@ async def generate_one(state: RunState, ill: dict[str, Any]) -> None:
                                    size=size)
         state.meter.check(estimate)
         request = ImageGenerationRequest(model=image.model["id"], prompt=prompt, size=size, quality=image.quality,
+                                         complexity=image.complexity or None,
                                          reference_images=[ImagePart.from_bytes(d, t) for _, d, t in references])
         result = await state.c.ai.generate_image(
             image.provider_id, image.model["id"], request, confirmed=state.confirmed, course_id=state.course_id,

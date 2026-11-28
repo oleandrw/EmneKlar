@@ -120,6 +120,8 @@ def image_fields(request: ImageGenerationRequest) -> dict[str, Any]:
                               "background": request.background}
     if request.input_fidelity and request.reference_images:
         fields["input_fidelity"] = request.input_fidelity
+    if request.complexity:
+        fields["complexity"] = request.complexity
     return fields
 
 

@@ -157,3 +157,49 @@ describe("KI-assistenter: «Koble til»", () => {
     expect(within(box).queryByText(/modell/i), "nothing about it on the card").toBeNull();
   });
 });
+
+describe("KI-assistenter: modellregisteret", () => {
+  const row = (id: number, model_id: string, kind: string, kind_label: string, extra: Record<string, unknown> = {}) => ({
+    id, provider_id: "openai", model_id, ref: `openai/${model_id}`, display_name: model_id, description: "", kind, kind_label,
+    capabilities: kind === "image" ? ["image_generation"] : ["text"], params: kind === "image" ? { qualities: ["low", "medium", "high"], reference_images: false, complexities: [] } : {},
+    vision: false, structured_output: kind === "text", context_class: 2, quality_class: 2, speed_class: 2, cost_class: 2, priority: 0,
+    is_default: false, enabled: true, source: "user", capabilities_known: true, notes: null, ...extra,
+  });
+  const registry = {
+    models: [row(1, "gpt-6.1-sol", "text", "Tekst"), row(2, "gpt-image-2.6-sunburst", "image", "Bildegenerering", { source: "catalog", is_default: true }),
+      row(3, "gpt-image-7-nova", "text", "Tekst")],
+    catalog_version: "2026-11-27", catalog_note: "Startliste.", capabilities: {}, max_priority: 3,
+    kinds: [{ id: "text", label: "Tekst" }, { id: "image", label: "Bildegenerering" }, { id: "transcription", label: "Transkripsjon" }, { id: "embedding", label: "Embedding" }],
+    image_qualities: ["low", "medium", "high", "xhigh", "max"], image_complexities: ["low", "medium", "high"],
+  };
+
+  it("shows the type of every model and lets the teacher reclassify one with the parameters of a known model", async () => {
+    const user = userEvent.setup();
+    const calls = renderSettings([provider("openai", { enabled: true, key_configured: true, last_status: "ok" })], (call) => {
+      if (call.url.startsWith("/api/ai/models") && call.method === "GET") return Response.json(registry);
+      if (call.url.startsWith("/api/ai/routing") && call.method === "GET") {
+        return Response.json({ strategy: "manual", strategies: [{ id: "manual", label: "Manuell styring" }], tasks: [
+          { key: "text_simple", label: "Enkel tekstomskriving", description: "", vision: false, requires: ["text"], manual_model: null, preferred_provider: null,
+            decision: { primary: null, fallbacks: [], reason: "", excluded: [] } }] });
+      }
+      return null;
+    });
+    const table = await screen.findByRole("table", { name: "Modeller" });
+    const image = within(table).getByRole("rowheader", { name: /gpt-image-2.6-sunburst/ }).closest("tr") as HTMLElement;
+    expect(within(image).getByText("Bildegenerering")).toBeInTheDocument();
+    expect(within(image).getByText("Standard")).toBeInTheDocument();
+    // The selector of a text task offers text models only – never an image model.
+    const manual = within(screen.getByLabelText("Enkel tekstomskriving")).getAllByRole("option").map((o) => o.textContent);
+    expect(manual.join("|")).toContain("gpt-6.1-sol");
+    expect(manual.join("|")).not.toContain("gpt-image-2.6-sunburst");
+
+    await user.click(within(table).getByRole("button", { name: "Klassifiser: gpt-image-7-nova" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.selectOptions(within(dialog).getByLabelText(/^Modelltype/), "image");
+    expect(within(dialog).queryByRole("switch", { name: "Kan tolke bilder" }), "text-only fields are hidden for an image model").toBeNull();
+    await user.selectOptions(within(dialog).getByLabelText("Samme innstillinger som"), "2");
+    await user.click(within(dialog).getByRole("button", { name: "Lagre" }));
+    await waitFor(() => expect(calls.find((c) => c.method === "PUT" && c.url === "/api/ai/models/3")).toBeTruthy());
+    expect(calls.find((c) => c.url === "/api/ai/models/3")?.body).toMatchObject({ kind: "image", params_like: 2, vision: false });
+  });
+});
